@@ -36,3 +36,45 @@
 .pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; border-radius: 50%; }
 
 /* ── Buttons & forms inherited from base.css ── */
+
+/* ── Entrance animations ── */
+.container-xl { animation: yu-fade-up .35s .08s ease both; }
+#server-list > div:nth-child(1)  { animation: yu-fade-up .35s .00s ease both; }
+#server-list > div:nth-child(2)  { animation: yu-fade-up .35s .07s ease both; }
+#server-list > div:nth-child(3)  { animation: yu-fade-up .35s .14s ease both; }
+#server-list > div:nth-child(4)  { animation: yu-fade-up .35s .21s ease both; }
+#server-list > div:nth-child(n+5){ animation: yu-fade-up .35s .28s ease both; }
+
+/* ── AMOLED mode ── */
+body.amoled {
+    --bg:       #000000;
+    --surface:  #000000;
+    --surface2: #080808;
+    --bdr:      rgba(255,255,255,.06);
+}
+body.amoled .yu-topbar     { background: #000; border-bottom-color: rgba(255,255,255,.06); }
+body.amoled .yu-card       { background: #000; }
+body.amoled .stat-box      { background: #080808; }
+body.amoled .dropdown-menu { background: #000 !important; }
+body.amoled .yu-modal-inner,
+body.amoled .modal-content { background: #000 !important; }
+
+/* AMOLED button icon: dim when off, bright when on */
+#amoled-btn i                 { color: var(--muted); transition: color .2s, opacity .2s; }
+body.amoled #amoled-btn i     { color: #fff; }
+
+/* Hide nav elements in AMOLED (fullscreen) mode */
+body.amoled #topbar-new-btn,
+body.amoled #topbar-dropdown  { display: none !important; }
+
+/* ── Mobile (dashboard) ── */
+@media (max-width: 575.98px) {
+    .yu-topbar { padding: 0 .7rem; gap: .35rem; height: 50px; }
+    .yu-topbar .yu-brand { font-size: .82rem; }
+    /* Collapse button text to icon-only: text nodes become 0px, icons restore */
+    .yu-topbar .btn-yu { font-size: 0; padding: .42rem .52rem; }
+    .yu-topbar .btn-yu i { font-size: .95rem; }
+    .yu-topbar .btn-yu span { font-size: .82rem; } /* restore username span */
+    .container-xl { padding-left: .75rem; padding-right: .75rem; }
+    #server-list .col-md-6 { min-width: 0; }
+}

@@ -75,6 +75,8 @@ pub struct ContainerInfo {
     pub ram_usage: String,
     /// Internal SQLite id. 0 if not yet resolved from DB.
     pub db_id: i64,
+    /// Owner username. Empty string if not yet resolved from DB.
+    pub owner: String,
 }
 
 pub async fn get_docker_client() -> Result<Docker> {
@@ -82,8 +84,12 @@ pub async fn get_docker_client() -> Result<Docker> {
 }
 
 pub async fn list_containers(docker: &Docker) -> Result<Vec<ContainerInfo>> {
+    let mut filters = std::collections::HashMap::new();
+    filters.insert("label".to_string(), vec!["yunexal.managed=true".to_string()]);
+
     let options = ListContainersOptions {
         all: true,
+        filters: Some(filters),
         ..Default::default()
     };
 
@@ -121,11 +127,57 @@ pub async fn list_containers(docker: &Docker) -> Result<Vec<ContainerInfo>> {
                 cpu_usage,
                 ram_usage,
                 db_id: 0,
+                owner: String::new(),
             }
         }
     });
 
     let info_list = futures_util::future::join_all(tasks).await;
+
+    Ok(info_list)
+}
+
+/// Same as list_containers but skips the blocking Docker stats stream.
+/// cpu_usage and ram_usage are left empty — fill them separately via get_container_stats.
+pub async fn list_containers_fast(docker: &Docker) -> Result<Vec<ContainerInfo>> {
+    let mut filters = std::collections::HashMap::new();
+    filters.insert("label".to_string(), vec!["yunexal.managed=true".to_string()]);
+
+    let options = ListContainersOptions {
+        all: true,
+        filters: Some(filters),
+        ..Default::default()
+    };
+
+    let containers = docker
+        .list_containers(Some(options))
+        .await
+        .context("Failed to list containers")?;
+
+    let info_list = containers.into_iter().map(|c| {
+        let name = c.names.as_ref()
+            .and_then(|n| n.first())
+            .map(|n| n.trim_start_matches('/'))
+            .unwrap_or("unknown")
+            .to_string();
+
+        let id = c.id.clone().unwrap_or_default();
+        let short_id = if id.len() > 12 { &id[..12] } else { &id }.to_string();
+        let state = c.state.map(|s| s.to_string()).unwrap_or_default();
+        let status = c.status.unwrap_or_default();
+
+        ContainerInfo {
+            id,
+            short_id,
+            name,
+            status,
+            state,
+            cpu_usage: String::new(),
+            ram_usage: String::new(),
+            db_id: 0,
+            owner: String::new(),
+        }
+    }).collect();
 
     Ok(info_list)
 }
@@ -173,6 +225,7 @@ pub async fn get_container(docker: &Docker, id: &str) -> Result<ContainerInfo> {
         cpu_usage,
         ram_usage,
         db_id: 0,
+        owner: String::new(),
     })
 }
 
@@ -270,6 +323,166 @@ pub async fn ensure_image(docker: &Docker, image: &str) -> Result<()> {
 
 pub async fn get_image_info(docker: &Docker, image: &str) -> Result<bollard::models::ImageInspect> {
     docker.inspect_image(image).await.map_err(|e| anyhow::anyhow!("Failed to inspect image: {}", e))
+}
+
+// ── Docker Image Management ───────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DockerImageInfo {
+    pub id: String,           // short sha (12 chars)
+    pub full_id: String,      // full sha256:... string
+    pub repo_tags: Vec<String>,
+    pub size_mb: String,
+    pub created: String,
+    pub in_use: bool,         // true if any yunexal container references this image
+}
+
+/// Lists all local Docker images, annotated with whether a managed container uses them.
+pub async fn list_docker_images(docker: &Docker) -> Result<Vec<DockerImageInfo>> {
+    use bollard::query_parameters::ListImagesOptions;
+
+    let images_fut = docker
+        .list_images(Some(ListImagesOptions { all: false, ..Default::default() }));
+
+    let mut filters = std::collections::HashMap::new();
+    filters.insert("label".to_string(), vec!["yunexal.managed=true".to_string()]);
+    let containers_fut = docker.list_containers(Some(ListContainersOptions {
+        all: true,
+        filters: Some(filters),
+        ..Default::default()
+    }));
+
+    let (summaries, containers) = tokio::try_join!(images_fut, containers_fut)
+        .context("Failed to list images/containers")?;
+
+    // Collect image IDs referenced by yunexal containers.
+    let used_images: std::collections::HashSet<String> = containers
+        .into_iter()
+        .filter_map(|c| c.image_id)
+        .collect();
+
+    let images = summaries
+        .into_iter()
+        .filter_map(|s| {
+            let full_id = s.id.clone();
+            let short_id = if full_id.starts_with("sha256:") {
+                full_id[7..].chars().take(12).collect()
+            } else {
+                full_id.chars().take(12).collect()
+            };
+            let size_mb = if s.size >= 1_073_741_824 {
+                format!("{:.1} GB", s.size as f64 / 1_073_741_824.0)
+            } else {
+                format!("{:.0} MB", s.size as f64 / 1_048_576.0)
+            };
+            // Format created Unix timestamp as YYYY-MM-DD
+            let created = {
+                let ts = s.created as u64;
+                let days = ts / 86400;
+                fn civil(d: u64) -> (u64, u64, u64) {
+                    let z = d + 719468;
+                    let era = z / 146097;
+                    let doe = z - era * 146097;
+                    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+                    let y = yoe + era * 400;
+                    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+                    let mp = (5 * doy + 2) / 153;
+                    let d = doy - (153 * mp + 2) / 5 + 1;
+                    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+                    let y = if m <= 2 { y + 1 } else { y };
+                    (y, m, d)
+                }
+                let (y, m, d) = civil(days);
+                format!("{:04}-{:02}-{:02}", y, m, d)
+            };
+            let in_use = used_images.contains(&full_id);
+            let repo_tags: Vec<String> = s.repo_tags.into_iter()
+                .filter(|t| t != "<none>:<none>")
+                .collect();
+            if repo_tags.is_empty() {
+                return None; // hide untagged (<none>:<none>-only) images
+            }
+            Some(DockerImageInfo { id: short_id, full_id, repo_tags, size_mb, created, in_use })
+        })
+        .collect();
+
+    Ok(images)
+}
+
+/// Deletes an image by full ID (sha256:...) or tag, with force=true.
+pub async fn delete_docker_image(docker: &Docker, image_ref: &str) -> Result<()> {
+    use bollard::query_parameters::RemoveImageOptionsBuilder;
+    let opts = RemoveImageOptionsBuilder::default().force(true).build();
+    docker
+        .remove_image(image_ref, Some(opts), None)
+        .await
+        .context("Failed to remove image")?;
+    Ok(())
+}
+
+/// Adds a new tag `new_tag` (format `repo:tag`) to an image identified by `image_ref`.
+pub async fn retag_docker_image(docker: &Docker, image_ref: &str, new_repo: &str, new_tag: &str) -> Result<()> {
+    use bollard::query_parameters::TagImageOptionsBuilder;
+    let opts = TagImageOptionsBuilder::default()
+        .repo(new_repo)
+        .tag(new_tag)
+        .build();
+    docker
+        .tag_image(image_ref, Some(opts))
+        .await
+        .context("Failed to tag image")?;
+    Ok(())
+}
+
+/// Creates a full independent copy of an image via `docker commit` of a temp container.
+/// Returns the new image's full ID (sha256:...).
+pub async fn duplicate_docker_image(docker: &Docker, image_ref: &str) -> Result<String> {
+    use bollard::query_parameters::{CreateContainerOptions, RemoveContainerOptions};
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let temp_name = format!("yunexal-dup-tmp-{}", ts);
+
+    // 1. Create a stopped temporary container from the source image
+    let create_opts = CreateContainerOptions {
+        name: Some(temp_name.clone()),
+        platform: String::new(),
+    };
+    let create_body = bollard::models::ContainerCreateBody {
+        image: Some(image_ref.to_string()),
+        ..Default::default()
+    };
+    let container = docker
+        .create_container(Some(create_opts), create_body)
+        .await
+        .context("Failed to create temp container for image duplication")?;
+    let cid = container.id.clone();
+
+    // 2. Commit via docker CLI (most reliable, matches CLI behaviour exactly)
+    let commit_out = tokio::process::Command::new("docker")
+        .args(["commit", &cid])
+        .output()
+        .await
+        .context("Failed to spawn docker commit")?;
+
+    // 3. Always clean up the temp container
+    let _ = docker
+        .remove_container(&cid, Some(RemoveContainerOptions { force: true, ..Default::default() }))
+        .await;
+
+    if !commit_out.status.success() {
+        let err = String::from_utf8_lossy(&commit_out.stderr).trim().to_string();
+        return Err(anyhow::anyhow!("docker commit failed: {}", err));
+    }
+
+    // stdout is "sha256:<hex>\n"
+    let new_id = String::from_utf8_lossy(&commit_out.stdout).trim().to_string();
+    if new_id.is_empty() {
+        return Err(anyhow::anyhow!("docker commit returned empty ID"));
+    }
+    Ok(new_id)
 }
 
 // Return type alias for complexity
@@ -847,4 +1060,125 @@ pub async fn recreate_container_with_cmd(docker: &Docker, id: &str, new_cmd: Opt
     // Start
     start_container(docker, &name).await?;
     Ok(())
+}
+
+// ── Container Network Isolation ──────────────────────────────────────────────
+
+/// Private CIDRs that managed containers must never reach.
+const ISOLATED_CIDRS: &[&str] = &[
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "127.0.0.0/8",
+    "169.254.0.0/16",   // link-local
+    "100.64.0.0/10",    // CGNAT / shared-address space
+];
+
+/// Creates a per-container isolated Docker bridge network named `yunexal-{container_name}`.
+/// - ICC disabled: containers on this bridge cannot peer-communicate.
+/// - IP masquerade enabled: outbound NAT to the public internet still works.
+///
+/// Returns `(network_name, bridge_iface)`.  The bridge interface is always
+/// `br-<first-12-hex-chars-of-network-id>`, which is how Docker names bridges.
+pub async fn create_isolated_network(docker: &Docker, container_name: &str) -> Result<(String, String)> {
+    use bollard::models::NetworkCreateRequest;
+
+    let network_name = format!("yunexal-{}", container_name);
+
+    // Remove any stale network with the same name first (idempotent).
+    let _ = docker.remove_network(&network_name).await;
+
+    let mut opts = std::collections::HashMap::new();
+    opts.insert("com.docker.network.bridge.enable_icc".to_string(), "false".to_string());
+    opts.insert("com.docker.network.bridge.enable_ip_masquerade".to_string(), "true".to_string());
+
+    let resp = docker.create_network(NetworkCreateRequest {
+        name: network_name.clone(),
+        driver: Some("bridge".to_string()),
+        options: Some(opts),
+        ..Default::default()
+    })
+    .await
+    .context("Failed to create isolated Docker network")?;
+
+    let network_id = resp.id;
+    let bridge = format!("br-{}", &network_id[..network_id.len().min(12)]);
+
+    Ok((network_name, bridge))
+}
+
+/// Inserts iptables `DROP` rules into the `DOCKER-USER` chain so that packets
+/// leaving `bridge` cannot reach private / loopback subnets.
+pub async fn apply_isolation_rules(bridge: &str) {
+    for cidr in ISOLATED_CIDRS {
+        let _ = tokio::process::Command::new("iptables")
+            .args(["-I", "DOCKER-USER", "-i", bridge, "-d", cidr, "-j", "DROP"])
+            .output()
+            .await;
+    }
+}
+
+/// Removes iptables `DROP` rules from `DOCKER-USER` for `bridge`.
+/// Safe to call even if the rules are already absent.
+pub async fn remove_isolation_rules(bridge: &str) {
+    for cidr in ISOLATED_CIDRS {
+        let _ = tokio::process::Command::new("iptables")
+            .args(["-D", "DOCKER-USER", "-i", bridge, "-d", cidr, "-j", "DROP"])
+            .output()
+            .await;
+    }
+}
+
+/// Reads the `yunexal.network` label stored on the container at creation time.
+pub async fn get_container_network_label(docker: &Docker, container_id: &str) -> Option<String> {
+    let inspect = get_container_inspect(docker, container_id).await.ok()?;
+    inspect.config?.labels?.get("yunexal.network").cloned()
+}
+
+/// Returns the Linux bridge interface name for a Docker network (by name or ID).
+pub async fn get_bridge_for_network(docker: &Docker, network_name: &str) -> Option<String> {
+    let inspect = docker
+        .inspect_network(network_name, None::<bollard::query_parameters::InspectNetworkOptions>)
+        .await
+        .ok()?;
+    let id = inspect.id?;
+    Some(format!("br-{}", &id[..id.len().min(12)]))
+}
+
+/// Re-applies RFC1918 isolation rules for a container that is being (re)started.
+/// Called alongside `reapply_bandwidth_limit` in every container-start path.
+pub async fn reapply_isolation_rules(docker: &Docker, container_id: &str) {
+    let Some(net_name) = get_container_network_label(docker, container_id).await else { return; };
+    let Some(bridge)   = get_bridge_for_network(docker, &net_name).await           else { return; };
+    apply_isolation_rules(&bridge).await;
+}
+
+/// Removes the container's dedicated network and its iptables rules.
+///
+/// **Must be called BEFORE `remove_container`** so that the `yunexal.network`
+/// label is still readable from the container inspect.  The function force-
+/// disconnects the container from the network so that `remove_network` succeeds
+/// even while the container still exists.
+pub async fn cleanup_isolation(docker: &Docker, container_id: &str) {
+    use bollard::models::NetworkDisconnectRequest;
+
+    let Some(net_name) = get_container_network_label(docker, container_id).await else { return; };
+
+    // Remove iptables rules first.
+    if let Some(bridge) = get_bridge_for_network(docker, &net_name).await {
+        remove_isolation_rules(&bridge).await;
+    }
+
+    // Force-disconnect the container so the network has no active endpoints,
+    // then remove it.  Both operations are best-effort.
+    let _ = docker
+        .disconnect_network(
+            &net_name,
+            NetworkDisconnectRequest {
+                container: container_id.to_string(),
+                force: Some(true),
+            },
+        )
+        .await;
+    let _ = docker.remove_network(&net_name).await;
 }

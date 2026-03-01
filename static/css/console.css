@@ -21,6 +21,10 @@ body { overflow: hidden; }
 /* ── Charts ── */
 .chart-container { position: relative; height: 110px; width: 100%; margin-bottom: .25rem; }
 
+/* ── Column entrance stagger ── */
+.yu-row-console > div:nth-child(1) { animation: yu-fade-up .3s .06s ease both; }
+.yu-row-console > div:nth-child(2) { animation: yu-fade-up .3s .14s ease both; }
+
 /* ── Responsive (console-specific overrides) ── */
 @media (max-width: 991.98px) {
     body { overflow: auto; }

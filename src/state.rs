@@ -12,8 +12,8 @@ pub struct AppState {
     #[allow(dead_code)]
     pub cache: Arc<DashMap<String, String>>,
     pub cookie_key: Key,
-    /// Display name of the primary admin (from env, used in templates only).
-    pub auth_username: String,
+    /// The address the server is listening on, e.g. "0.0.0.0:3000".
+    pub listen_addr: String,
 }
 
 impl AppState {
@@ -21,14 +21,14 @@ impl AppState {
         db: Pool<Sqlite>,
         docker: Docker,
         cookie_key: Key,
-        auth_username: String,
+        listen_addr: String,
     ) -> Self {
         Self {
             db,
             docker,
             cache: Arc::new(DashMap::new()),
             cookie_key,
-            auth_username,
+            listen_addr,
         }
     }
 }

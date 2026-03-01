@@ -3,6 +3,7 @@ use axum::{
     response::{IntoResponse, Redirect},
 };
 use axum_extra::extract::cookie::{Cookie, PrivateCookieJar, SameSite};
+use time::Duration as TimeDuration;
 use crate::{auth, db, password};
 use crate::state::AppState;
 use super::templates::{render, LoginForm, LoginTemplate};
@@ -28,6 +29,7 @@ pub async fn login_submit(
         cookie.set_http_only(true);
         cookie.set_same_site(SameSite::Lax);
         cookie.set_path("/");
+        cookie.set_max_age(TimeDuration::days(7));
         let updated_jar = jar.add(cookie);
         (updated_jar, Redirect::to("/")).into_response()
     } else {

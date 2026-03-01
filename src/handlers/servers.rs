@@ -31,6 +31,7 @@ fn err_container(docker_id: String, db_id: i64) -> ContainerInfo {
         cpu_usage: "-".into(),
         ram_usage: "-".into(),
         db_id,
+        owner: String::new(),
     }
 }
 
@@ -92,6 +93,7 @@ pub async fn start_server(
         error!("Failed to start container {}: {}", docker_id, e);
     } else {
         docker::reapply_bandwidth_limit(&state.docker, &docker_id).await;
+        docker::reapply_isolation_rules(&state.docker, &docker_id).await;
     }
     match docker::get_container(&state.docker, &docker_id).await {
         Ok(mut c) => { c.db_id = db_id; c.name = db_name.clone(); render(ServerCardTemplate { container: c, is_admin }).into_response() }
@@ -131,6 +133,7 @@ pub async fn restart_server(
         return format!("Failed to restart: {}", e).into_response();
     }
     docker::reapply_bandwidth_limit(&state.docker, &docker_id).await;
+    docker::reapply_isolation_rules(&state.docker, &docker_id).await;
     match docker::get_container(&state.docker, &docker_id).await {
         Ok(mut c) => { c.db_id = db_id; c.name = db_name.clone(); render(ServerCardTemplate { container: c, is_admin }).into_response() }
         Err(_) => "Restarted".into_response(),
@@ -215,6 +218,10 @@ pub async fn delete_server(
             error!("Failed to delete volume directory {}: {}", volume_dir, e);
         }
     }
+
+    // Clean up dedicated isolation network and iptables rules BEFORE removing
+    // the container so that the `yunexal.network` label is still readable.
+    docker::cleanup_isolation(&state.docker, &docker_id).await;
 
     if let Err(e) = docker::remove_container(&state.docker, &docker_id).await {
         error!("Failed to delete container {}: {}", docker_id, e);

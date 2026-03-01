@@ -72,8 +72,12 @@
     100% { background-position: 300% 0; }
 }
 
+/* ── Panel hover lift (supplements base.css) ── */
+.yu-panel { transition: box-shadow .2s, transform .2s; }
+.yu-panel:hover { transform: translateY(-1px); box-shadow: 0 4px 18px rgba(0,0,0,.25); }
+
 /* ── Badges ── */
-.badge-limit     { display: inline-flex; align-items: center; gap: .3rem; font-size: .75rem; font-weight: 600; padding: .25rem .65rem; border-radius: 999px; background: rgba(124,58,237,.14); color: #a78bfa; border: 1px solid rgba(124,58,237,.25); transition: all .3s; }
+.badge-limit     { display: inline-flex; align-items: center; gap: .3rem; font-size: .75rem; font-weight: 600; padding: .25rem .65rem; border-radius: 999px; background: rgba(124,58,237,.14); color: #a78bfa; border: 1px solid rgba(124,58,237,.25); transition: all .3s; animation: yu-scale-in .3s .25s ease both; }
 .badge-unlimited { background: rgba(16,185,129,.1);   color: #10b981; border: 1px solid rgba(16,185,129,.2); }
 .badge-gbit      { background: rgba(6,182,212,.12);   color: #22d3ee; border: 1px solid rgba(6,182,212,.3); }
 .badge-turbo     { background: rgba(74,222,128,.12);  color: #4ade80; border: 1px solid rgba(74,222,128,.3); }
@@ -83,3 +87,17 @@
 /* ── Preset buttons ── */
 .preset-btn { display: inline-flex; align-items: center; justify-content: center; padding: .3rem .7rem; border-radius: 6px; font-size: .775rem; font-weight: 600; cursor: pointer; border: 1px solid var(--bdr); background: var(--surface2); color: var(--muted); transition: all .15s; }
 .preset-btn:hover { border-color: rgba(124,58,237,.4); color: #a78bfa; background: rgba(124,58,237,.07); }
+
+/* ── Mobile (networking) ── */
+@media (max-width: 575.98px) {
+    /* Bandwidth header row: stack vertically */
+    .yu-panel-bd > div[style*="display:flex"] { flex-wrap: wrap !important; }
+    /* Preset buttons: wrap */
+    .yu-panel-bd div[style*="gap"] { flex-wrap: wrap !important; }
+    /* Range input: full width */
+    input[type="range"] { width: 100% !important; max-width: 100% !important; }
+    /* Port rows: allow wrap */
+    .yu-panel-bd .input-row { flex-direction: column; }
+    .yu-panel-bd .input-row .form-input { border-radius: 8px !important; }
+    .yu-panel-bd .input-row .form-input-addon { border-radius: 8px !important; border-left: 1px solid rgba(255,255,255,.1) !important; }
+}

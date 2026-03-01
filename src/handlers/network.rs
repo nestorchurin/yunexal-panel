@@ -199,6 +199,7 @@ async fn recreate_for_ports(
             error!("recreate_for_ports start: {}", e);
         } else {
             docker::reapply_bandwidth_limit(&state.docker, &new_id).await;
+            docker::reapply_isolation_rules(&state.docker, &new_id).await;
         }
     }
 

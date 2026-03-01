@@ -95,8 +95,55 @@ pub async fn init_db() -> Result<Pool<Sqlite>> {
     .execute(&pool)
     .await;
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS image_env_overrides (
+            image_id TEXT PRIMARY KEY,
+            env      TEXT NOT NULL DEFAULT ''
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .context("Failed to create image_env_overrides table")?;
+
     info!("Database initialized successfully");
     Ok(pool)
+}
+
+// ── Image ENV overrides ───────────────────────────────────────────────────────
+
+pub async fn get_image_env(pool: &Pool<Sqlite>, image_id: &str) -> Result<String> {
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT env FROM image_env_overrides WHERE image_id = ?",
+    )
+    .bind(image_id)
+    .fetch_optional(pool)
+    .await
+    .context("Failed to fetch image env overrides")?;
+    Ok(row.map(|(e,)| e).unwrap_or_default())
+}
+
+pub async fn set_image_env(pool: &Pool<Sqlite>, image_id: &str, env: &str) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO image_env_overrides (image_id, env) VALUES (?, ?)
+         ON CONFLICT(image_id) DO UPDATE SET env = excluded.env",
+    )
+    .bind(image_id)
+    .bind(env)
+    .execute(pool)
+    .await
+    .context("Failed to upsert image env overrides")?;
+    Ok(())
+}
+
+pub async fn delete_image_env(pool: &Pool<Sqlite>, image_id: &str) -> Result<()> {
+    sqlx::query("DELETE FROM image_env_overrides WHERE image_id = ?")
+        .bind(image_id)
+        .execute(pool)
+        .await
+        .context("delete_image_env")?;
+    Ok(())
 }
 
 // ── User CRUD ────────────────────────────────────────────────────────────────
@@ -198,21 +245,23 @@ pub async fn seed_root_user(
     pool: &Pool<Sqlite>,
     username: &str,
     password_hash: &str,
+    role: &str,
 ) -> Result<()> {
-    // Try inserting; on conflict update the hash + role to root.
+    // Try inserting; on conflict update the hash + role.
     sqlx::query(
         r#"INSERT INTO users (username, password_hash, role)
-           VALUES (?, ?, 'root')
+           VALUES (?, ?, ?)
            ON CONFLICT(username) DO UPDATE SET
                password_hash = excluded.password_hash,
-               role = 'root'"#,
+               role = excluded.role"#,
     )
     .bind(username)
     .bind(password_hash)
+    .bind(role)
     .execute(pool)
     .await
     .context("Failed to upsert root user")?;
-    info!("Root user '{}' ensured.", username);
+    info!("Root user '{}' ensured with role '{}'.", username, role);
     Ok(())
 }
 
@@ -315,15 +364,16 @@ pub async fn get_server_info_by_db_id(
     Ok(row)
 }
 
-/// Returns a map of Docker container_id → (SQLite server id, display name) for ALL servers.
-pub async fn get_server_info_map(pool: &Pool<Sqlite>) -> Result<HashMap<String, (i64, String)>> {
-    let rows = sqlx::query_as::<_, (String, i64, String)>(
-        "SELECT container_id, id, name FROM servers",
+/// Returns a map of Docker container_id → (SQLite server id, display name, owner username) for ALL servers.
+pub async fn get_server_info_map(pool: &Pool<Sqlite>) -> Result<HashMap<String, (i64, String, String)>> {
+    let rows = sqlx::query_as::<_, (String, i64, String, String)>(
+        "SELECT s.container_id, s.id, s.name, COALESCE(u.username, '') \
+         FROM servers s LEFT JOIN users u ON u.id = s.owner_id",
     )
     .fetch_all(pool)
     .await
     .context("get_server_info_map")?;
-    Ok(rows.into_iter().map(|(cid, id, name)| (cid, (id, name))).collect())
+    Ok(rows.into_iter().map(|(cid, id, name, owner)| (cid, (id, name, owner))).collect())
 }
 
 /// Deletes a server record by Docker container_id.

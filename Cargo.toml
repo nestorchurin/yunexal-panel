@@ -1,6 +1,6 @@
 [package]
 name = "yunexal-panel"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -23,6 +23,7 @@ dashmap = "6.0"
 html-escape = "0.2.13"
 urlencoding = "2"
 axum-extra = { version = "0.12.5", features = ["cookie-private"] }
+time = { version = "0.3", features = ["std"] }
 tower-http = { version = "0.6", features = ["fs"] }
 argon2 = { version = "0.5", features = ["std"] }
 rust-embed = { version = "8", features = ["include-exclude"] }

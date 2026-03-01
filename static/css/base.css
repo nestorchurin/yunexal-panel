@@ -61,7 +61,7 @@ a { text-decoration: none; color: inherit; }
 .yu-panel-bd { padding: 1.25rem; }
 
 /* ── Buttons ── */
-.btn-yu { display: inline-flex; align-items: center; gap: .35rem; padding: .45rem .95rem; border-radius: 8px; font-size: .825rem; font-weight: 500; cursor: pointer; border: none; font-family: 'Inter', sans-serif; transition: all .15s; line-height: 1; }
+.btn-yu { display: inline-flex; align-items: center; gap: .35rem; padding: .45rem .95rem; border-radius: 8px; font-size: .825rem; font-weight: 500; cursor: pointer; border: none; font-family: 'Inter', sans-serif; transition: all .15s; line-height: 1; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .btn-yu:disabled { opacity: .45; cursor: not-allowed; }
 .btn-yu-primary { background: var(--accent); color: #fff; }
 .btn-yu-primary:hover:not(:disabled) { background: #6d28d9; color: #fff; box-shadow: 0 4px 14px rgba(124,58,237,.35); }
@@ -117,7 +117,66 @@ a { text-decoration: none; color: inherit; }
     .yu-topbar-mobile { display: none !important; }
 }
 
+/* ── Mobile tweaks (server pages: console / files / networking / settings) ── */
+@media (max-width: 575.98px) {
+    .yu-content { padding: .9rem .75rem; }
+    .yu-panel-hd { padding: .7rem .85rem; font-size: .82rem; }
+    .yu-panel-bd { padding: .85rem; }
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 4px; }
+
+/* ── Animations ── */
+@keyframes yu-fade-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes yu-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes yu-scale-in {
+    from { opacity: 0; transform: scale(.96) translateY(8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes yu-slide-down {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes yu-dot-pulse {
+    0%, 100% { box-shadow: 0 0 8px var(--accent); }
+    50%       { box-shadow: 0 0 16px var(--accent), 0 0 24px rgba(124,58,237,.4); }
+}
+
+/* Global entrances */
+.yu-topbar { animation: yu-slide-down .3s ease both; }
+.yu-sidebar { animation: yu-fade-in .3s ease both; }
+.yu-content { animation: yu-fade-up .35s .05s ease both; }
+/* Panels (server pages) */
+.yu-panel { animation: yu-fade-up .3s ease both; }
+.yu-panel:nth-child(2) { animation-delay: .06s; }
+.yu-panel:nth-child(3) { animation-delay: .12s; }
+.yu-panel:nth-child(4) { animation-delay: .18s; }
+/* Modal card */
+.yu-modal-inner { animation: yu-scale-in .22s cubic-bezier(.2,.8,.4,1) both; }
+/* Brand dot pulse */
+.dot { animation: yu-dot-pulse 3s ease-in-out infinite; }
+
+/* Sidebar element stagger (server pages: console/files/networking/settings) */
+.sb-back   { animation: yu-fade-in  .22s .04s ease both; }
+.sb-brand  { animation: yu-fade-up  .24s .07s ease both; }
+.sb-server { animation: yu-fade-up  .26s .11s ease both; }
+.sb-nav .sb-link:nth-child(1) { animation: yu-fade-up .24s .15s ease both; }
+.sb-nav .sb-link:nth-child(2) { animation: yu-fade-up .24s .19s ease both; }
+.sb-nav .sb-link:nth-child(3) { animation: yu-fade-up .24s .23s ease both; }
+.sb-nav .sb-link:nth-child(4) { animation: yu-fade-up .24s .27s ease both; }
+.sb-nav .sb-link:nth-child(5) { animation: yu-fade-up .24s .31s ease both; }
+
+/* ── Topbar user button (admin + dashboard) ── */
+.yu-topbar-user { display: inline-flex; align-items: center; gap: .35rem; padding: .45rem .85rem; border-radius: 8px; font-size: .825rem; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif; transition: all .15s; line-height: 1; background: rgba(255,255,255,.05); color: var(--txt); border: 1px solid var(--bdr); text-decoration: none; }
+.yu-topbar-user:hover { background: rgba(255,255,255,.09); color: var(--txt); }
+.yu-topbar-user.active { background: rgba(124,58,237,.15); border-color: rgba(124,58,237,.35); color: var(--txt); }
+.yu-topbar-uname { font-size: .825rem; font-weight: 500; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

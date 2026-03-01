@@ -8,18 +8,38 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <link href="/static/css/base.css" rel="stylesheet">
-    <link href="/static/css/dashboard.css" rel="stylesheet">
+    <link href="/static/css/base.css?v=3" rel="stylesheet">
+    <link href="/static/css/dashboard.css?v=4" rel="stylesheet">
 </head>
 <body>
     <header class="yu-topbar">
         <div class="yu-brand"><span class="dot"></span>Yunexal Panel</div>
-        <div class="ms-auto d-flex gap-2">
+        <div class="ms-auto d-flex gap-2 align-items-center">
             {% if is_admin %}
-            <a href="/admin" class="btn-yu btn-yu-ghost"><i class="bi bi-shield-lock"></i> Admin</a>
-            <a href="/servers/new" class="btn-yu btn-yu-primary"><i class="bi bi-plus-lg"></i> New Server</a>
+            <a id="topbar-new-btn" href="/servers/new" class="btn-yu btn-yu-primary"><i class="bi bi-plus-lg"></i> New Server</a>
             {% endif %}
+            <button id="amoled-btn" class="btn-yu btn-yu-ghost d-sm-none" onclick="toggleAmoled()" title="AMOLED mode"><i class="bi bi-circle-fill"></i></button>
+            <div id="topbar-dropdown" class="dropdown">
+                <button class="btn-yu btn-yu-ghost" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-person" style="color:var(--muted);"></i>
+                    <span style="font-size:.825rem;font-weight:500;">{{ auth_username }}</span>
+                    <i class="bi bi-chevron-down" style="font-size:.6rem;opacity:.5;"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" style="min-width:180px;background:#111119;border:1px solid var(--bdr);border-radius:10px;padding:.4rem;">
+                    <li class="px-3 py-2" style="font-size:.75rem;color:var(--muted);border-bottom:1px solid var(--bdr);margin-bottom:.3rem;">Signed in as <strong style="color:var(--txt);">{{ auth_username }}</strong></li>
+                    {% if is_admin %}
+                    <li><a class="dropdown-item rounded-2" href="/admin" style="font-size:.82rem;color:var(--txt);"><i class="bi bi-shield-lock me-2 text-muted"></i>Admin Panel</a></li>
+                    <li><hr class="dropdown-divider" style="border-color:var(--bdr);margin:.3rem 0;"></li>
+                    {% endif %}
+                    <li><button class="dropdown-item rounded-2" style="font-size:.82rem;color:var(--txt);" onclick="openDashModal()"><i class="bi bi-key me-2 text-muted"></i>Change Password</button></li>
+                    <li><hr class="dropdown-divider" style="border-color:var(--bdr);margin:.3rem 0;"></li>
+                    <li>
+                        <form action="/logout" method="POST" style="margin:0;">
+                            <button type="submit" class="dropdown-item rounded-2" style="font-size:.82rem;color:#ef4444;"><i class="bi bi-box-arrow-right me-2"></i>Log Out</button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
         </div>
     </header>
 
@@ -28,10 +48,7 @@
             <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.03em;" class="mb-1">Dashboard</h1>
             <p class="mb-0" style="font-size:.825rem;color:var(--muted);">Manage your game servers</p>
         </div>
-        <div class="row g-3" id="server-list"
-             hx-get="/api/servers"
-             hx-trigger="every 5s"
-             hx-swap="innerHTML">
+        <div class="row g-3" id="server-list">
             {% include "server_list.html" %}
         </div>
     </div>
@@ -59,8 +76,72 @@
         </div>
     </div>
 
+    <!-- Change Password Modal -->
+    <div id="dashPwModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:600;backdrop-filter:blur(6px);align-items:center;justify-content:center;">
+        <div class="yu-modal-inner" style="background:var(--surface);border:1px solid var(--bdr);border-radius:16px;padding:2rem;max-width:360px;width:90%;">
+            <div style="display:flex;align-items:center;gap:.55rem;font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.3rem;">
+                <span style="width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent);flex-shrink:0;display:inline-block;"></span>
+                Change Password
+            </div>
+            <div style="font-size:.825rem;color:var(--muted);margin-bottom:1.75rem;">Enter your current and new password.</div>
+            <div id="dashPwAlert" style="display:none;border-radius:9px;padding:.65rem 1rem;font-size:.825rem;margin-bottom:1.25rem;display:none;align-items:center;gap:.5rem;"></div>
+            <div style="margin-bottom:1.1rem;">
+                <label style="font-size:.8rem;font-weight:500;color:var(--muted);display:block;margin-bottom:.4rem;">Current Password</label>
+                <input type="password" id="dashPwCurrent" placeholder="••••••••" style="background:var(--surface2);border:1px solid rgba(255,255,255,.1);color:var(--txt);padding:.65rem 1rem;border-radius:9px;font-size:.875rem;width:100%;outline:none;font-family:'Inter',sans-serif;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='rgba(124,58,237,.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,.12)'" onblur="this.style.borderColor='rgba(255,255,255,.1)';this.style.boxShadow='none'">
+            </div>
+            <div style="margin-bottom:1.1rem;">
+                <label style="font-size:.8rem;font-weight:500;color:var(--muted);display:block;margin-bottom:.4rem;">New Password</label>
+                <input type="password" id="dashPwNew" placeholder="••••••••" style="background:var(--surface2);border:1px solid rgba(255,255,255,.1);color:var(--txt);padding:.65rem 1rem;border-radius:9px;font-size:.875rem;width:100%;outline:none;font-family:'Inter',sans-serif;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='rgba(124,58,237,.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,.12)'" onblur="this.style.borderColor='rgba(255,255,255,.1)';this.style.boxShadow='none'">
+            </div>
+            <div style="margin-bottom:1.5rem;">
+                <label style="font-size:.8rem;font-weight:500;color:var(--muted);display:block;margin-bottom:.4rem;">Confirm New Password</label>
+                <input type="password" id="dashPwConfirm" placeholder="••••••••" style="background:var(--surface2);border:1px solid rgba(255,255,255,.1);color:var(--txt);padding:.65rem 1rem;border-radius:9px;font-size:.875rem;width:100%;outline:none;font-family:'Inter',sans-serif;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='rgba(124,58,237,.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,.12)'" onblur="this.style.borderColor='rgba(255,255,255,.1)';this.style.boxShadow='none'">
+            </div>
+            <button onclick="dashChangePassword()" style="background:var(--accent);color:#fff;border:none;border-radius:9px;padding:.7rem 1rem;font-size:.875rem;font-weight:600;width:100%;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:.4rem;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='var(--accent)'">
+                <i class="bi bi-shield-check"></i> Update Password
+            </button>
+            <button onclick="document.getElementById('dashPwModal').style.display='none'" style="background:transparent;border:none;color:var(--muted);font-size:.8rem;font-family:'Inter',sans-serif;cursor:pointer;width:100%;margin-top:.85rem;padding:.3rem;transition:color .15s;" onmouseover="this.style.color='var(--txt)'" onmouseout="this.style.color='var(--muted)'">
+                Cancel
+            </button>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/dashboard.js"></script>
-    <script src="/static/js/footer.js"></script>
+    <script src="/static/js/dashboard.js?v=6"></script>
+    <script src="/static/js/footer.js?v=3"></script>
+    <script>
+    function openDashModal() {
+        const modal = document.getElementById('dashPwModal');
+        modal.style.display = 'flex';
+        const inner = modal.querySelector('.yu-modal-inner');
+        if (inner) { inner.style.animation = 'none'; inner.offsetHeight; inner.style.animation = ''; }
+    }
+    async function dashChangePassword() {
+        const cur = document.getElementById('dashPwCurrent').value;
+        const nw  = document.getElementById('dashPwNew').value;
+        const cfm = document.getElementById('dashPwConfirm').value;
+        const alert = document.getElementById('dashPwAlert');
+        const show = (msg, ok) => {
+            alert.textContent = msg;
+            alert.style.display = 'block';
+            alert.style.background = ok ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)';
+            alert.style.color = ok ? '#10b981' : '#ef4444';
+            alert.style.border = ok ? '1px solid rgba(16,185,129,.25)' : '1px solid rgba(239,68,68,.25)';
+        };
+        if (!cur || !nw) return show('Please fill all fields.', false);
+        if (nw !== cfm) return show('New passwords do not match.', false);
+        if (nw.length < 8) return show('Password must be at least 8 characters.', false);
+        const res = await fetch('/api/user/change-password', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({current: cur, new_password: nw})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            show('Password updated successfully!', true);
+            setTimeout(() => { document.getElementById('dashPwModal').style.display = 'none'; }, 1500);
+        } else show(data.error || 'Failed to update password.', false);
+    }
+    </script>
 </body>
 </html>

@@ -24,6 +24,7 @@ pub struct UserInfo {
 pub struct IndexTemplate {
     pub containers: Vec<ContainerInfo>,
     pub is_admin: bool,
+    pub auth_username: String,
 }
 
 #[derive(Template)]
@@ -120,8 +121,10 @@ pub struct AdminTemplate {
     pub docker_mem_gb: String,
     pub docker_cpus: i64,
     pub docker_storage_driver: String,
+    pub listen_addr: String,
     pub auth_username: String,
     pub panel_memory_mb: String,
+    pub panel_version: String,
     pub users: Vec<UserInfo>,
     pub users_count: usize,
     pub tab: String,

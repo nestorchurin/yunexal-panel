@@ -103,6 +103,32 @@ pub async fn create_server(
         err!(e.to_string());
     }
 
+    // Apply image ENV overrides stored in the panel DB.
+    // DB values take precedence over YAML-supplied env (admin-defined defaults win).
+    let db_env_str = db::get_image_env(&state.db, target_image).await.unwrap_or_default();
+    if !db_env_str.is_empty() {
+        let db_overrides: Vec<String> = db_env_str
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && l.contains('='))
+            .map(|l| l.to_string())
+            .collect();
+        if !db_overrides.is_empty() {
+            let db_keys: std::collections::HashSet<&str> = db_overrides
+                .iter()
+                .filter_map(|l| l.split_once('=').map(|(k, _)| k))
+                .collect();
+            let mut merged: Vec<String> = config.env.clone().unwrap_or_default();
+            // Remove existing YAML entries whose key is overridden by DB
+            merged.retain(|e| {
+                let key = e.split_once('=').map(|(k, _)| k).unwrap_or(e.as_str());
+                !db_keys.contains(key)
+            });
+            merged.extend(db_overrides);
+            config.env = Some(merged);
+        }
+    }
+
     // Inspect image to find default volumes
     let image_info = match docker::get_image_info(&state.docker, target_image).await {
         Ok(i) => i,
@@ -189,8 +215,25 @@ pub async fn create_server(
     config.host_config = Some(host_config);
 
     // Store volume key as a Docker label for future lookup.
+    // Also tag as yunexal-managed so the panel filters to only these containers.
     let mut labels = std::collections::HashMap::new();
+    labels.insert("yunexal.managed".to_string(), "true".to_string());
     labels.insert("yunexal.volume_dir".to_string(), volume_key.clone());
+
+    // ── Per-container network isolation ─────────────────────────────────────
+    // Each container gets its own bridge so it is invisible to every other
+    // container, and iptables rules added at start-time block RFC1918 / loopback
+    // destinations so it can only reach the public internet.
+    match docker::create_isolated_network(&state.docker, &container_name).await {
+        Ok((net_name, _bridge)) => {
+            labels.insert("yunexal.network".to_string(), net_name.clone());
+            if let Some(ref mut hc) = config.host_config {
+                hc.network_mode = Some(net_name);
+            }
+        }
+        Err(e) => warn!("Could not create isolation network for '{}': {}", container_name, e),
+    }
+
     config.labels = Some(labels);
 
     config.tty = Some(true);
@@ -260,10 +303,36 @@ pub struct ImageQuery {
     pub image: String,
 }
 
+/// Resolves an image tag to its full ID and returns stored DB env overrides.
+/// Used by new_server to pre-populate custom env rows without requiring the full SHA.
+pub async fn api_image_env_overrides(
+    State(state): State<AppState>,
+    Query(q): Query<ImageQuery>,
+) -> impl IntoResponse {
+    // Inspect locally only — no pull, this is just a DB lookup
+    match docker::get_image_info(&state.docker, &q.image).await {
+        Ok(info) => {
+            let full_id = info.id.unwrap_or_default();
+            match db::get_image_env(&state.db, &full_id).await {
+                Ok(env) => Json(serde_json::json!({ "ok": true, "env": env })),
+                Err(_)  => Json(serde_json::json!({ "ok": true, "env": "" })),
+            }
+        }
+        Err(_) => Json(serde_json::json!({ "ok": true, "env": "" })),
+    }
+}
+
 pub async fn api_image_env(
     State(state): State<AppState>,
     Query(q): Query<ImageQuery>,
 ) -> impl IntoResponse {
+    // Try local inspect first (fast path for images already on disk).
+    // Only pull from registry if the image isn't found locally.
+    if docker::get_image_info(&state.docker, &q.image).await.is_err() {
+        if let Err(e) = docker::ensure_image(&state.docker, &q.image).await {
+            return Json(serde_json::json!({ "ok": false, "error": format!("Failed to pull image: {}", e) }));
+        }
+    }
     match docker::get_image_info(&state.docker, &q.image).await {
         Ok(info) => {
             let env: Vec<String> = info
@@ -276,4 +345,13 @@ pub async fn api_image_env(
             Json(serde_json::json!({ "ok": false, "error": e.to_string() }))
         }
     }
+}
+
+/// Returns a flat list of all local image tags for use in datalists / autocomplete.
+pub async fn api_local_images(State(state): State<AppState>) -> impl IntoResponse {
+    let tags: Vec<String> = match docker::list_docker_images(&state.docker).await {
+        Ok(images) => images.into_iter().flat_map(|i| i.repo_tags).collect(),
+        Err(_) => vec![],
+    };
+    Json(serde_json::json!({ "tags": tags }))
 }

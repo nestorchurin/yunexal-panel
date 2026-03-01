@@ -1,5 +1,22 @@
 /* ── File Browser Styles ── */
 
+/* ── Entrance animations ── */
+.fb-pathbar { animation: yu-fade-up .25s .05s ease both; }
+.fb-toolbar  { animation: yu-fade-up .25s .1s  ease both; }
+#fb-list .fb-row:nth-child(1)  { animation: yu-fade-up .2s .12s ease both; }
+#fb-list .fb-row:nth-child(2)  { animation: yu-fade-up .2s .16s ease both; }
+#fb-list .fb-row:nth-child(3)  { animation: yu-fade-up .2s .20s ease both; }
+#fb-list .fb-row:nth-child(4)  { animation: yu-fade-up .2s .24s ease both; }
+#fb-list .fb-row:nth-child(5)  { animation: yu-fade-up .2s .28s ease both; }
+#fb-list .fb-row:nth-child(6)  { animation: yu-fade-up .2s .32s ease both; }
+#fb-list .fb-row:nth-child(7)  { animation: yu-fade-up .2s .35s ease both; }
+#fb-list .fb-row:nth-child(8)  { animation: yu-fade-up .2s .37s ease both; }
+#fb-list .fb-row:nth-child(n+9) { animation: yu-fade-up .2s .39s ease both; }
+
+/* .fb-row hover lift */
+.fb-row { transition: background .1s, transform .12s, box-shadow .12s; }
+.fb-row:hover { transform: translateX(2px); }
+
 /* Breadcrumb bar */
 .fb-pathbar {
     display: flex;
@@ -180,6 +197,17 @@
 .toast-ok  { background: rgba(16,185,129,.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,.25); }
 .toast-err { background: rgba(239,68,68,.15);  color: #fca5a5; border: 1px solid rgba(239,68,68,.25); }
 .toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 9999; display: flex; flex-direction: column; align-items: flex-end; }
+
+/* ── Mobile (files) ── */
+@media (max-width: 575.98px) {
+    .fb-meta { display: none; }
+    .fb-toolbar { flex-direction: column; align-items: flex-start; }
+    .fb-toolbar-right { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+    .fb-pathbar { font-size: .74rem; }
+    .fb-row { padding: .45rem .5rem; gap: .5rem; }
+    .fb-icon { width: 30px; height: 30px; font-size: .9rem; }
+    .fb-name { font-size: .82rem; }
+}
 
 /* ── Context Menu ── */
 #fb-ctx-menu {

@@ -3312,7 +3312,7 @@ dependencies = [
 
 [[package]]
 name = "yunexal-panel"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "argon2",
@@ -3332,6 +3332,7 @@ dependencies = [
  "serde_yaml",
  "sqlx",
  "thiserror",
+ "time",
  "tokio",
  "tower-http",
  "tracing",

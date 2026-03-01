@@ -18,9 +18,28 @@
     <!-- Topbar -->
     <header class="yu-topbar">
         <button class="yu-hamburger" onclick="openSidebar()" title="Menu"><i class="bi bi-list"></i></button>
-        <a href="/" class="yu-back"><i class="bi bi-arrow-left"></i> Dashboard</a>
         <div class="yu-brand"><span class="dot"></span>Yunexal Panel</div>
         <span class="yu-badge">Admin</span>
+        <div class="dropdown" style="margin-left:auto;">
+            <button class="btn-yu btn-yu-ghost{% if tab == "settings" %} yu-topbar-user active{% endif %}" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-person" style="color:var(--muted);"></i>
+                <span style="font-size:.825rem;font-weight:500;">{{ auth_username }}</span>
+                <i class="bi bi-chevron-down" style="font-size:.6rem;opacity:.5;"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px;background:#111119;border:1px solid var(--bdr);border-radius:10px;padding:.4rem;">
+                <li class="px-3 py-2" style="font-size:.75rem;color:var(--muted);border-bottom:1px solid var(--bdr);margin-bottom:.3rem;">Signed in as <strong style="color:var(--txt);">{{ auth_username }}</strong></li>
+                <li><a class="dropdown-item rounded-2" href="/" style="font-size:.82rem;color:var(--txt);"><i class="bi bi-grid-1x2 me-2 text-muted"></i>Dashboard</a></li>
+                <li><hr class="dropdown-divider" style="border-color:var(--bdr);margin:.3rem 0;"></li>
+                <li><a class="dropdown-item rounded-2" href="/admin/settings" style="font-size:.82rem;color:var(--txt);" onclick="switchTab('settings'); return false;"><i class="bi bi-gear me-2 text-muted"></i>Settings</a></li>
+                <li><button class="dropdown-item rounded-2" style="font-size:.82rem;color:var(--txt);" onclick="openModal('adminPwModal')"><i class="bi bi-key me-2 text-muted"></i>Change Password</button></li>
+                <li><hr class="dropdown-divider" style="border-color:var(--bdr);margin:.3rem 0;"></li>
+                <li>
+                    <form action="/logout" method="POST" style="margin:0;">
+                        <button type="submit" class="dropdown-item rounded-2" style="font-size:.82rem;color:#ef4444;"><i class="bi bi-box-arrow-right me-2"></i>Log Out</button>
+                    </form>
+                </li>
+            </ul>
+        </div>
     </header>
 
     <div class="yu-shell">
@@ -34,14 +53,76 @@
                 <a href="/admin/containers" class="yu-nav-item{% if tab == "containers" %} active{% endif %}" onclick="switchTab('containers', this); return false;">
                     <i class="bi bi-boxes"></i> All Containers
                 </a>
-                <div class="yu-nav-label" style="margin-top:.4rem;">Management</div>
+                <a href="/admin/images" class="yu-nav-item{% if tab == "images" %} active{% endif %}" onclick="switchTab('images', this); return false;">
+                    <i class="bi bi-box-seam"></i> Images
+                </a>
+                <div class="yu-nav-label">Management</div>
                 <a href="/admin/users" class="yu-nav-item{% if tab == "users" %} active{% endif %}" onclick="switchTab('users', this); return false;">
                     <i class="bi bi-people"></i> Users
                 </a>
-            </div>
-            <div class="yu-sidebar-bottom">
-                <a href="/admin/settings" class="yu-nav-item{% if tab == "settings" %} active{% endif %}" onclick="switchTab('settings', this); return false;">
-                    <i class="bi bi-gear"></i> Settings
+                <a href="/admin/agents" class="yu-nav-item{% if tab == "agents" %} active{% endif %}" onclick="switchTab('agents', this); return false;">
+                    <i class="bi bi-robot"></i> Agents
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <a href="/admin/dns" class="yu-nav-item{% if tab == "dns" %} active{% endif %}" onclick="switchTab('dns', this); return false;">
+                    <i class="bi bi-diagram-3"></i> DNS
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <a href="/admin/firewall" class="yu-nav-item{% if tab == "firewall" %} active{% endif %}" onclick="switchTab('firewall', this); return false;">
+                    <i class="bi bi-shield-shaded"></i> Firewall
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <a href="/admin/backups" class="yu-nav-item{% if tab == "backups" %} active{% endif %}" onclick="switchTab('backups', this); return false;">
+                    <i class="bi bi-archive"></i> Backups
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <div class="yu-nav-label">Analytics</div>
+                <a href="/admin/insights" class="yu-nav-item{% if tab == "insights" %} active{% endif %}" onclick="switchTab('insights', this); return false;">
+                    <i class="bi bi-bar-chart-line"></i> Insights
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <a href="/admin/audit" class="yu-nav-item{% if tab == "audit" %} active{% endif %}" onclick="switchTab('audit', this); return false;">
+                    <i class="bi bi-clock-history"></i> Audit Log
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <div class="yu-nav-label">Projects</div>
+                <a href="/admin/workspaces" class="yu-nav-item{% if tab == "workspaces" %} active{% endif %}" onclick="switchTab('workspaces', this); return false;">
+                    <i class="bi bi-kanban"></i> Workspaces
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <a href="/admin/tickets" class="yu-nav-item{% if tab == "tickets" %} active{% endif %}" onclick="switchTab('tickets', this); return false;">
+                    <i class="bi bi-headset"></i> Tickets
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <div class="yu-nav-label">Commerce</div>
+                <a href="/admin/billing" class="yu-nav-item{% if tab == "billing" %} active{% endif %}" onclick="switchTab('billing', this); return false;">
+                    <i class="bi bi-credit-card"></i> Billing
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <a href="/admin/plans" class="yu-nav-item{% if tab == "plans" %} active{% endif %}" onclick="switchTab('plans', this); return false;">
+                    <i class="bi bi-layers"></i> Service Plans
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <a href="/admin/coupons" class="yu-nav-item{% if tab == "coupons" %} active{% endif %}" onclick="switchTab('coupons', this); return false;">
+                    <i class="bi bi-ticket-perforated"></i> Coupons
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <div class="yu-nav-label">Configuration</div>
+                <a href="/admin/notifications" class="yu-nav-item{% if tab == "notifications" %} active{% endif %}" onclick="switchTab('notifications', this); return false;">
+                    <i class="bi bi-bell"></i> Notifications
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <a href="/admin/themes" class="yu-nav-item{% if tab == "themes" %} active{% endif %}" onclick="switchTab('themes', this); return false;">
+                    <i class="bi bi-palette"></i> Themes
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <a href="/admin/apikeys" class="yu-nav-item{% if tab == "apikeys" %} active{% endif %}" onclick="switchTab('apikeys', this); return false;">
+                    <i class="bi bi-key"></i> API Keys
+                    <span class="yu-soon-badge">SOON</span>
+                </a>
+                <a href="/admin/nodes" class="yu-nav-item{% if tab == "nodes" %} active{% endif %}" onclick="switchTab('nodes', this); return false;">
+                    <i class="bi bi-hdd-network"></i> Node Manager
+                    <span class="yu-soon-badge">SOON</span>
                 </a>
             </div>
         </nav>
@@ -60,28 +141,28 @@
                 <div class="col-6 col-md-3">
                     <div class="stat-tile">
                         <div class="stat-tile-lbl">Total Containers</div>
-                        <div class="stat-tile-val">{{ total_containers }}</div>
+                        <div class="stat-tile-val" id="ov-total">{{ total_containers }}</div>
                         <div class="stat-tile-sub">all Docker containers</div>
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="stat-tile">
                         <div class="stat-tile-lbl">Running</div>
-                        <div class="stat-tile-val" style="color:#10b981;">{{ running_containers }}</div>
+                        <div class="stat-tile-val" style="color:#10b981;" id="ov-running">{{ running_containers }}</div>
                         <div class="stat-tile-sub">currently active</div>
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="stat-tile">
                         <div class="stat-tile-lbl">Stopped</div>
-                        <div class="stat-tile-val" style="color:#ef4444;">{{ stopped_containers }}</div>
+                        <div class="stat-tile-val" style="color:#ef4444;" id="ov-stopped">{{ stopped_containers }}</div>
                         <div class="stat-tile-sub">exited / dead</div>
                     </div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="stat-tile">
                         <div class="stat-tile-lbl">Docker Version</div>
-                        <div class="stat-tile-val" style="font-size:1.05rem;">{{ docker_version }}</div>
+                        <div class="stat-tile-val" style="font-size:1.05rem;" id="ov-docker-ver">{{ docker_version }}</div>
                         <div class="stat-tile-sub">engine</div>
                     </div>
                 </div>
@@ -105,10 +186,10 @@
                     <div class="yu-card">
                         <div class="yu-card-hd"><i class="bi bi-terminal me-2 text-muted"></i>Panel Info</div>
                         <div class="yu-card-bd">
-                            <div class="info-row"><span class="info-key">Panel Version</span><span class="info-val">0.1.0</span></div>
-                            <div class="info-row"><span class="info-key">Panel Memory</span><span class="info-val" style="color:#a78bfa;">{{ panel_memory_mb }}</span></div>
+                            <div class="info-row"><span class="info-key">Panel Version</span><span class="info-val">{{ panel_version }}</span></div>
+                            <div class="info-row"><span class="info-key">Panel Memory</span><span class="info-val" style="color:#a78bfa;" id="ov-panel-mem">{{ panel_memory_mb }}</span></div>
                             <div class="info-row"><span class="info-key">Auth User</span><span class="info-val">{{ auth_username }}</span></div>
-                            <div class="info-row"><span class="info-key">Listen Address</span><span class="info-val">0.0.0.0:3000</span></div>
+                            <div class="info-row"><span class="info-key">Listen Address</span><span class="info-val">{{ listen_addr }}</span></div>
                             <div class="info-row"><span class="info-key">Volumes Path</span><span class="info-val">./volumes</span></div>
                         </div>
                     </div>
@@ -125,7 +206,14 @@
             <div class="yu-card">
                 <div class="yu-card-hd">
                     <span><i class="bi bi-boxes me-2 text-muted"></i>All Docker Containers</span>
-                    <span style="font-size:.75rem;color:var(--muted);">{{ total_containers }} total</span>
+                    <div style="display:flex;align-items:center;gap:.5rem;">
+                        <span id="container-count-lbl" style="font-size:.75rem;color:var(--muted);">{{ total_containers }} total</span>
+                        <a href="/servers/new" class="btn-yu btn-primary-yu btn-sm-yu"><i class="bi bi-plus-lg"></i> New</a>
+                    </div>
+                </div>
+                <div class="yu-search-bar">
+                    <i class="bi bi-search"></i>
+                    <input id="containers-search" type="text" placeholder="Search by name, ID or state…" oninput="filterTableRows(this.value, 'containers-tbody')">
                 </div>
                 <div style="overflow-x:auto;">
                     <table class="yu-table">
@@ -134,6 +222,7 @@
                                 <th>Name</th>
                                 <th>ID</th>
                                 <th>Docker ID</th>
+                                <th>Owner</th>
                                 <th>State</th>
                                 <th>Status</th>
                                 <th>CPU</th>
@@ -141,12 +230,13 @@
                                 <th style="text-align:right;">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="containers-tbody">
                             {% for c in containers %}
                             <tr data-db-id="{{ c.db_id }}">
                                 <td style="font-weight:600;">{{ c.name }}</td>
                                 <td class="mono">#{{ c.db_id }}</td>
                                 <td class="mono" style="color:var(--muted);font-size:.75rem;">{{ c.short_id }}</td>
+                                <td style="font-size:.8rem;">{% if c.owner != "" %}{{ c.owner }}{% else %}<span style="color:var(--muted);">—</span>{% endif %}</td>
                                 <td class="ac-state-cell">
                                     {% if c.state == "running" %}
                                     <span class="pill pill-run"><span class="pill-dot"></span>running</span>
@@ -172,6 +262,45 @@
                                 </td>
                             </tr>
                             {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Images ─── -->
+        <div id="tab-images" class="yu-tab-panel{% if tab == "images" %} active{% endif %}">
+            <div class="yu-page-hd">
+                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Docker Images</div>
+                <p style="font-size:.825rem;color:var(--muted);margin:0;">Local images available on this host</p>
+            </div>
+            <div class="yu-card">
+                <div class="yu-card-hd">
+                    <span><i class="bi bi-box-seam me-2 text-muted"></i>Local Docker Images</span>
+                    <div style="display:flex;align-items:center;gap:.5rem;">
+                        <span id="img-count" style="font-size:.75rem;color:var(--muted);"></span>
+                        <button class="btn-yu btn-primary-yu btn-sm-yu" onclick="openPullModal()"><i class="bi bi-cloud-download"></i> Pull</button>
+                        <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="loadImages()" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
+                    </div>
+                </div>
+                <div class="yu-search-bar">
+                    <i class="bi bi-search"></i>
+                    <input id="img-search" type="text" placeholder="Search by tag, ID or size…" oninput="filterTableRows(this.value, 'img-tbody')">
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="yu-table" id="img-table">
+                        <thead>
+                            <tr>
+                                <th>Tags</th>
+                                <th>Short ID</th>
+                                <th>Size</th>
+                                <th>Created</th>
+                                <th>In Use</th>
+                                <th style="text-align:right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="img-tbody">
+                            <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -217,6 +346,10 @@
                             <span><i class="bi bi-people me-2 text-muted"></i>All Users</span>
                             <span style="font-size:.75rem;color:var(--muted);" id="user-count-lbl">{{ users_count }} total</span>
                         </div>
+                        <div class="yu-search-bar">
+                            <i class="bi bi-search"></i>
+                            <input id="users-search" type="text" placeholder="Search by username or role…" oninput="filterTableRows(this.value, 'users-tbody')">
+                        </div>
                         <div style="overflow-x:auto;">
                             <table class="yu-table" id="users-table">
                                 <thead>
@@ -258,6 +391,204 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: DNS ─── -->
+        <div id="tab-dns" class="yu-tab-panel{% if tab == "dns" %} active{% endif %}">
+            <div class="yu-page-hd">
+                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">DNS</div>
+                <p style="font-size:.825rem;color:var(--muted);margin:0;">Manage DNS records for your containers</p>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;">
+                    <i class="bi bi-diagram-3" style="font-size:1.8rem;color:#a78bfa;"></i>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div>
+                    <p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">DNS management is coming soon. You will be able to assign custom domains and records to your containers directly from the panel.</p>
+                </div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Billing ─── -->
+        <div id="tab-billing" class="yu-tab-panel{% if tab == "billing" %} active{% endif %}">
+            <div class="yu-page-hd">
+                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Billing</div>
+                <p style="font-size:.825rem;color:var(--muted);margin:0;">Invoices, payments and subscription management</p>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;">
+                    <i class="bi bi-credit-card" style="font-size:1.8rem;color:#a78bfa;"></i>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div>
+                    <p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Billing management is coming soon. You will be able to manage invoices, payments, and subscriptions directly from the panel.</p>
+                </div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Service Plans ─── -->
+        <div id="tab-plans" class="yu-tab-panel{% if tab == "plans" %} active{% endif %}">
+            <div class="yu-page-hd">
+                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Service Plans</div>
+                <p style="font-size:.825rem;color:var(--muted);margin:0;">Define and manage hosting tiers &amp; resource quotas</p>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;">
+                    <i class="bi bi-layers" style="font-size:1.8rem;color:#a78bfa;"></i>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div>
+                    <p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Service Plans are coming soon. You will be able to create tiered hosting plans with custom CPU, RAM, and bandwidth limits assigned per user.</p>
+                </div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Agents ─── -->
+        <div id="tab-agents" class="yu-tab-panel{% if tab == "agents" %} active{% endif %}">
+            <div class="yu-page-hd">
+                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Agents</div>
+                <p style="font-size:.825rem;color:var(--muted);margin:0;">Automated task runners and remote node management</p>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;">
+                    <i class="bi bi-robot" style="font-size:1.8rem;color:#a78bfa;"></i>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div>
+                    <p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Agents are coming soon. You will be able to deploy lightweight automation agents to remote nodes and trigger tasks directly from the panel.</p>
+                </div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Insights ─── -->
+        <div id="tab-insights" class="yu-tab-panel{% if tab == "insights" %} active{% endif %}">
+            <div class="yu-page-hd">
+                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Insights</div>
+                <p style="font-size:.825rem;color:var(--muted);margin:0;">Detailed analytics — resource usage, uptime &amp; traffic trends</p>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;">
+                    <i class="bi bi-bar-chart-line" style="font-size:1.8rem;color:#a78bfa;"></i>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div>
+                    <p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Insights are coming soon. You will get detailed charts for CPU, RAM, bandwidth, uptime history and per-user consumption across all containers.</p>
+                </div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Workspaces ─── -->
+        <div id="tab-workspaces" class="yu-tab-panel{% if tab == "workspaces" %} active{% endif %}">
+            <div class="yu-page-hd">
+                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Workspaces</div>
+                <p style="font-size:.825rem;color:var(--muted);margin:0;">Collaborative project spaces with task boards &amp; status tracking</p>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;">
+                    <i class="bi bi-kanban" style="font-size:1.8rem;color:#a78bfa;"></i>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div>
+                    <p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Workspaces are coming soon. You will be able to organise containers into project groups, assign statuses, and collaborate with your team through shared boards.</p>
+                </div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Firewall ─── -->
+        <div id="tab-firewall" class="yu-tab-panel{% if tab == "firewall" %} active{% endif %}">
+            <div class="yu-page-hd"><div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Firewall</div><p style="font-size:.825rem;color:var(--muted);margin:0;">Port-level allow/deny rules per container</p></div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;"><i class="bi bi-shield-shaded" style="font-size:1.8rem;color:#a78bfa;"></i></div>
+                <div style="text-align:center;"><div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div><p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Firewall rules are coming soon. You will be able to set per-container allow/deny rules for specific ports and IP ranges using iptables/nftables.</p></div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Backups ─── -->
+        <div id="tab-backups" class="yu-tab-panel{% if tab == "backups" %} active{% endif %}">
+            <div class="yu-page-hd"><div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Backups</div><p style="font-size:.825rem;color:var(--muted);margin:0;">Scheduled snapshots of container volume data</p></div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;"><i class="bi bi-archive" style="font-size:1.8rem;color:#a78bfa;"></i></div>
+                <div style="text-align:center;"><div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div><p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Automated backups are coming soon. You will be able to schedule snapshots of volume directories and restore them with a single click.</p></div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Audit Log ─── -->
+        <div id="tab-audit" class="yu-tab-panel{% if tab == "audit" %} active{% endif %}">
+            <div class="yu-page-hd"><div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Audit Log</div><p style="font-size:.825rem;color:var(--muted);margin:0;">Full history of admin and user actions</p></div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;"><i class="bi bi-clock-history" style="font-size:1.8rem;color:#a78bfa;"></i></div>
+                <div style="text-align:center;"><div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div><p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Audit Log is coming soon. Every action — container start/stop, user creation, password change — will be recorded with timestamps and actor info.</p></div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Tickets ─── -->
+        <div id="tab-tickets" class="yu-tab-panel{% if tab == "tickets" %} active{% endif %}">
+            <div class="yu-page-hd"><div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Tickets</div><p style="font-size:.825rem;color:var(--muted);margin:0;">User support requests &amp; admin responses</p></div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;"><i class="bi bi-headset" style="font-size:1.8rem;color:#a78bfa;"></i></div>
+                <div style="text-align:center;"><div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div><p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Tickets are coming soon. Users will be able to open support requests directly in the panel, and admins can respond and close them without leaving the dashboard.</p></div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Coupons ─── -->
+        <div id="tab-coupons" class="yu-tab-panel{% if tab == "coupons" %} active{% endif %}">
+            <div class="yu-page-hd"><div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Coupons</div><p style="font-size:.825rem;color:var(--muted);margin:0;">Discount codes for service plans</p></div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;"><i class="bi bi-ticket-perforated" style="font-size:1.8rem;color:#a78bfa;"></i></div>
+                <div style="text-align:center;"><div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div><p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Coupons are coming soon. You will be able to generate discount codes with percentage or fixed amounts, expiry dates, and usage limits for your service plans.</p></div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Notifications ─── -->
+        <div id="tab-notifications" class="yu-tab-panel{% if tab == "notifications" %} active{% endif %}">
+            <div class="yu-page-hd"><div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Notifications</div><p style="font-size:.825rem;color:var(--muted);margin:0;">Webhooks &amp; email alerts for panel events</p></div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;"><i class="bi bi-bell" style="font-size:1.8rem;color:#a78bfa;"></i></div>
+                <div style="text-align:center;"><div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div><p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Notifications are coming soon. You will be able to configure webhook URLs and email recipients to get alerted when a container crashes, disk exceeds 90%, or a user registers.</p></div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Themes ─── -->
+        <div id="tab-themes" class="yu-tab-panel{% if tab == "themes" %} active{% endif %}">
+            <div class="yu-page-hd"><div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Themes</div><p style="font-size:.825rem;color:var(--muted);margin:0;">Panel colour scheme &amp; branding customisation</p></div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;"><i class="bi bi-palette" style="font-size:1.8rem;color:#a78bfa;"></i></div>
+                <div style="text-align:center;"><div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div><p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Themes are coming soon. You will be able to switch between dark/light mode, pick a custom accent colour, and upload your own logo for the client portal.</p></div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: API Keys ─── -->
+        <div id="tab-apikeys" class="yu-tab-panel{% if tab == "apikeys" %} active{% endif %}">
+            <div class="yu-page-hd"><div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">API Keys</div><p style="font-size:.825rem;color:var(--muted);margin:0;">REST API tokens for external integrations</p></div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;"><i class="bi bi-key" style="font-size:1.8rem;color:#a78bfa;"></i></div>
+                <div style="text-align:center;"><div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div><p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">API Keys are coming soon. You will be able to generate scoped REST tokens to manage containers, users, and billing from external applications or CI/CD pipelines.</p></div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+        </div>
+
+        <!-- ─── PANEL: Node Manager ─── -->
+        <div id="tab-nodes" class="yu-tab-panel{% if tab == "nodes" %} active{% endif %}">
+            <div class="yu-page-hd"><div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Node Manager</div><p style="font-size:.825rem;color:var(--muted);margin:0;">Multi-host physical node management</p></div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
+                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;"><i class="bi bi-hdd-network" style="font-size:1.8rem;color:#a78bfa;"></i></div>
+                <div style="text-align:center;"><div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div><p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Node Manager is coming soon. You will be able to register multiple physical hosts, monitor their CPU/RAM/disk, and distribute containers across nodes from a single interface.</p></div>
+                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
             </div>
         </div>
 
@@ -313,9 +644,39 @@
         </main>
     </div>
 
+    <!-- Change Password Modal (topbar) -->
+    <div id="adminPwModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;backdrop-filter:blur(6px);align-items:center;justify-content:center;">
+        <div class="yu-modal-inner" style="background:var(--surface);border:1px solid var(--bdr);border-radius:16px;padding:2rem;max-width:360px;width:90%;">
+            <div style="display:flex;align-items:center;gap:.55rem;font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.3rem;">
+                <span style="width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent);flex-shrink:0;display:inline-block;"></span>
+                Change Password
+            </div>
+            <div style="font-size:.825rem;color:var(--muted);margin-bottom:1.75rem;">Enter your current and new password.</div>
+            <div id="apm-alert" style="display:none;border-radius:9px;padding:.65rem 1rem;font-size:.825rem;margin-bottom:1.25rem;align-items:center;gap:.5rem;"></div>
+            <div style="margin-bottom:1.1rem;">
+                <label style="font-size:.8rem;font-weight:500;color:var(--muted);display:block;margin-bottom:.4rem;">Current Password</label>
+                <input type="password" id="apm-current" placeholder="••••••••" style="background:var(--surface2);border:1px solid rgba(255,255,255,.1);color:var(--txt);padding:.65rem 1rem;border-radius:9px;font-size:.875rem;width:100%;outline:none;font-family:'Inter',sans-serif;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='rgba(124,58,237,.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,.12)'" onblur="this.style.borderColor='rgba(255,255,255,.1)';this.style.boxShadow='none'">
+            </div>
+            <div style="margin-bottom:1.1rem;">
+                <label style="font-size:.8rem;font-weight:500;color:var(--muted);display:block;margin-bottom:.4rem;">New Password</label>
+                <input type="password" id="apm-new" placeholder="••••••••" style="background:var(--surface2);border:1px solid rgba(255,255,255,.1);color:var(--txt);padding:.65rem 1rem;border-radius:9px;font-size:.875rem;width:100%;outline:none;font-family:'Inter',sans-serif;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='rgba(124,58,237,.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,.12)'" onblur="this.style.borderColor='rgba(255,255,255,.1)';this.style.boxShadow='none'">
+            </div>
+            <div style="margin-bottom:1.5rem;">
+                <label style="font-size:.8rem;font-weight:500;color:var(--muted);display:block;margin-bottom:.4rem;">Confirm New Password</label>
+                <input type="password" id="apm-confirm" placeholder="••••••••" style="background:var(--surface2);border:1px solid rgba(255,255,255,.1);color:var(--txt);padding:.65rem 1rem;border-radius:9px;font-size:.875rem;width:100%;outline:none;font-family:'Inter',sans-serif;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='rgba(124,58,237,.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,.12)'" onblur="this.style.borderColor='rgba(255,255,255,.1)';this.style.boxShadow='none'">
+            </div>
+            <button onclick="adminModalChangePw()" style="background:var(--accent);color:#fff;border:none;border-radius:9px;padding:.7rem 1rem;font-size:.875rem;font-weight:600;width:100%;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:.4rem;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='var(--accent)'">
+                <i class="bi bi-shield-check"></i> Update Password
+            </button>
+            <button onclick="document.getElementById('adminPwModal').style.display='none'" style="background:transparent;border:none;color:var(--muted);font-size:.8rem;font-family:'Inter',sans-serif;cursor:pointer;width:100%;margin-top:.85rem;padding:.3rem;transition:color .15s;" onmouseover="this.style.color='var(--txt)'" onmouseout="this.style.color='var(--muted)'">
+                Cancel
+            </button>
+        </div>
+    </div>
+
     <!-- Set User Password Modal -->
     <div id="setPwModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;backdrop-filter:blur(4px);align-items:center;justify-content:center;">
-        <div style="background:#111119;border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;max-width:380px;width:90%;">
+        <div class="yu-modal-inner" style="background:#111119;border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;max-width:380px;width:90%;">
             <div style="font-size:.95rem;font-weight:700;margin-bottom:.25rem;"><i class="bi bi-key me-2 text-muted"></i>Set Password</div>
             <div id="spw-user-lbl" style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;"></div>
             <div id="spw-alert" style="display:none;margin-bottom:.75rem;"></div>
@@ -331,8 +692,8 @@
     </div>
 
     <!-- Stop All Modal -->
-    <div id="stopAllModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;">
-        <div style="background:#111119;border:1px solid rgba(239,68,68,.3);border-radius:14px;padding:1.5rem;max-width:380px;width:90%;">
+    <div id="stopAllModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+        <div class="yu-modal-inner" style="background:#111119;border:1px solid rgba(239,68,68,.3);border-radius:14px;padding:1.5rem;max-width:380px;width:90%;">
             <div style="font-size:.95rem;font-weight:700;color:#ef4444;margin-bottom:.5rem;"><i class="bi bi-exclamation-triangle me-2"></i>Stop All Containers?</div>
             <p style="font-size:.845rem;color:var(--muted);margin-bottom:1.25rem;">All {{ running_containers }} running containers will be stopped. This may cause data loss.</p>
             <div style="display:flex;gap:.6rem;justify-content:flex-end;">
@@ -342,8 +703,43 @@
         </div>
     </div>
 
+    <!-- Pull image modal -->
+    <div id="imgPullModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+        <div class="yu-modal-inner" style="background:#111119;border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;max-width:420px;width:90%;">
+            <div style="font-size:.95rem;font-weight:700;margin-bottom:1rem;"><i class="bi bi-cloud-download me-2"></i>Pull Image</div>
+            <div class="mb-3">
+                <label style="font-size:.8rem;color:var(--muted);" class="mb-1">Image reference</label>
+                <input id="imgPullRef" type="text" class="yu-input w-100" placeholder="e.g. ubuntu:22.04" />
+            </div>
+            <div id="imgPullAlert" style="display:none;" class="yu-alert mb-3"></div>
+            <div style="display:flex;gap:.6rem;justify-content:flex-end;">
+                <button class="btn-yu btn-ghost-yu" onclick="closePullModal()">Cancel</button>
+                <button id="imgPullBtn" class="btn-yu btn-primary-yu" onclick="submitPull()"><i class="bi bi-cloud-download"></i> Pull</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image ENV overrides modal -->
+    <div id="imgEnvModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+        <div class="yu-modal-inner" style="background:#111119;border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;max-width:540px;width:95%;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem;">
+                <div style="font-size:.95rem;font-weight:700;"><i class="bi bi-sliders me-2"></i>ENV Overrides</div>
+                <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="addImgEnvRow()"><i class="bi bi-plus-lg"></i> Add</button>
+            </div>
+            <p id="imgEnvCurrent" style="font-size:.75rem;color:var(--muted);margin-bottom:.8rem;word-break:break-all;"></p>
+            <div id="imgEnvRows" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:.4rem;"></div>
+            <div id="imgEnvAlert" style="display:none;" class="yu-alert mt-2 mb-1"></div>
+            <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.9rem;">
+                <button class="btn-yu btn-ghost-yu" onclick="closeEnvModal()">Cancel</button>
+                <button class="btn-yu btn-primary-yu" onclick="submitEnv()"><i class="bi bi-check2"></i> Save</button>
+            </div>
+        </div>
+    </div>
+
+
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/admin.js"></script>
+    <script src="/static/js/admin.js?v=3"></script>
     <script src="/static/js/footer.js"></script>
 </body>
 </html>

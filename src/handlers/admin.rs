@@ -4,7 +4,8 @@ use axum::{
     response::{IntoResponse, Redirect},
     Json,
 };
-use crate::{db, docker, password};
+use axum_extra::extract::cookie::PrivateCookieJar;
+use crate::{auth, db, docker, password};
 use crate::state::AppState;
 use tracing::error;
 use super::templates::{
@@ -14,9 +15,17 @@ use super::templates::{
 
 // ── Admin page ───────────────────────────────────────────────────────────────
 
-const VALID_TABS: &[&str] = &["overview", "containers", "users", "settings"];
+const VALID_TABS: &[&str] = &[
+    "overview", "containers", "users", "images",
+    "agents", "dns", "firewall", "backups",
+    "insights", "audit",
+    "workspaces", "tickets",
+    "billing", "plans", "coupons",
+    "notifications", "themes", "apikeys", "nodes",
+    "settings",
+];
 
-async fn build_admin_template(state: &AppState, tab: String) -> AdminTemplate {
+async fn build_admin_template(state: &AppState, tab: String, username: String) -> AdminTemplate {
     let containers = match docker::list_containers(&state.docker).await {
         Ok(c) => c,
         Err(e) => {
@@ -89,9 +98,10 @@ async fn build_admin_template(state: &AppState, tab: String) -> AdminTemplate {
     let mut containers = containers;
     let info_map = db::get_server_info_map(&state.db).await.unwrap_or_default();
     for c in &mut containers {
-        if let Some((id, name)) = info_map.get(&c.id) {
+        if let Some((id, name, owner)) = info_map.get(&c.id) {
             c.db_id = *id;
             c.name = name.clone();
+            c.owner = owner.clone();
         }
     }
 
@@ -107,8 +117,10 @@ async fn build_admin_template(state: &AppState, tab: String) -> AdminTemplate {
         docker_mem_gb,
         docker_cpus,
         docker_storage_driver,
-        auth_username: state.auth_username.clone(),
+        listen_addr: state.listen_addr.clone(),
+        auth_username: username,
         panel_memory_mb,
+        panel_version: env!("CARGO_PKG_VERSION").to_string(),
         users,
         users_count,
         tab,
@@ -121,6 +133,7 @@ pub async fn admin_page() -> impl IntoResponse {
 
 pub async fn admin_tab_page(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(tab): Path<String>,
 ) -> impl IntoResponse {
     let tab = if VALID_TABS.contains(&tab.as_str()) {
@@ -128,7 +141,8 @@ pub async fn admin_tab_page(
     } else {
         "overview".to_string()
     };
-    render(build_admin_template(&state, tab).await)
+    let username = auth::session_username(&jar).unwrap_or_default();
+    render(build_admin_template(&state, tab, username).await)
 }
 
 // ── Docker helpers ───────────────────────────────────────────────────────────
@@ -153,10 +167,17 @@ pub async fn admin_stop_all(State(state): State<AppState>) -> impl IntoResponse 
 
 pub async fn admin_change_password(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Json(body): Json<ChangePwForm>,
 ) -> impl IntoResponse {
-    // Find admin user by the session's username (admin username from env)
-    let user = match db::find_user_by_username(&state.db, &state.auth_username).await {
+    let session_user = match auth::session_username(&jar) {
+        Some(u) => u,
+        None => return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "Not authenticated"})),
+        ),
+    };
+    let user = match db::find_user_by_username(&state.db, &session_user).await {
         Ok(Some(u)) => u,
         Ok(None) => {
             return (
@@ -463,6 +484,7 @@ pub async fn api_admin_edit_container(
                 error!("api_admin_edit_container start: {}", e);
             } else {
                 docker::reapply_bandwidth_limit(&state.docker, &new_id).await;
+                docker::reapply_isolation_rules(&state.docker, &new_id).await;
             }
         }
 
@@ -491,4 +513,276 @@ fn sort_lines(s: &str) -> Vec<String> {
         .collect();
     v.sort();
     v
+}
+
+// ── Image management API ──────────────────────────────────────────────────────
+
+pub async fn api_list_images(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    const CACHE_TTL: u64 = 30;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // Serve from cache if fresh
+    let cached_ts   = state.cache.get("images_ts").and_then(|v| v.value().parse::<u64>().ok());
+    let cached_data = state.cache.get("images_data").map(|v| v.value().clone());
+    if let (Some(ts), Some(data)) = (cached_ts, cached_data) {
+        if now.saturating_sub(ts) < CACHE_TTL {
+            return (
+                StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                data,
+            ).into_response();
+        }
+    }
+
+    match docker::list_docker_images(&state.docker).await {
+        Ok(images) => {
+            let body = serde_json::json!({ "ok": true, "images": images }).to_string();
+            state.cache.insert("images_data".to_string(), body.clone());
+            state.cache.insert("images_ts".to_string(), now.to_string());
+            (
+                StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                body,
+            ).into_response()
+        }
+        Err(e) => {
+            error!("api_list_images: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))).into_response()
+        }
+    }
+}
+
+pub async fn api_delete_image(
+    State(state): State<AppState>,
+    Path(image_ref): Path<String>,
+) -> impl IntoResponse {
+    let decoded = urlencoding::decode(&image_ref).unwrap_or(std::borrow::Cow::Borrowed(&image_ref)).into_owned();
+    match docker::delete_docker_image(&state.docker, &decoded).await {
+        Ok(_) => {
+            state.cache.remove("images_ts");
+            // Clean up any stored ENV overrides for this image
+            let _ = db::delete_image_env(&state.db, &decoded).await;
+            (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response()
+        }
+        Err(e) => {
+            error!("api_delete_image: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))).into_response()
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct PullImageForm {
+    pub image: String,
+}
+
+pub async fn api_pull_image(
+    State(state): State<AppState>,
+    Json(body): Json<PullImageForm>,
+) -> impl IntoResponse {
+    let image = body.image.trim().to_string();
+    if image.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "image reference is required" }))).into_response();
+    }
+    match docker::ensure_image(&state.docker, &image).await {
+        Ok(_) => {
+            state.cache.remove("images_ts");
+            (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response()
+        }
+        Err(e) => {
+            error!("api_pull_image: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))).into_response()
+        }
+    }
+}
+
+// ── Image ENV overrides API ───────────────────────────────────────────────────
+
+pub async fn api_get_image_env(
+    State(state): State<AppState>,
+    Path(image_ref): Path<String>,
+) -> impl IntoResponse {
+    let decoded = urlencoding::decode(&image_ref).unwrap_or(std::borrow::Cow::Borrowed(&image_ref)).into_owned();
+    match db::get_image_env(&state.db, &decoded).await {
+        Ok(env) => (StatusCode::OK, Json(serde_json::json!({ "ok": true, "env": env }))).into_response(),
+        Err(e) => {
+            error!("api_get_image_env: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))).into_response()
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct SetImageEnvForm {
+    pub env: String,
+}
+
+pub async fn api_set_image_env(
+    State(state): State<AppState>,
+    Path(image_ref): Path<String>,
+    Json(body): Json<SetImageEnvForm>,
+) -> impl IntoResponse {
+    let decoded = urlencoding::decode(&image_ref).unwrap_or(std::borrow::Cow::Borrowed(&image_ref)).into_owned();
+    match db::set_image_env(&state.db, &decoded, &body.env).await {
+        Ok(_) => {
+            // Invalidate image cache so next list reflects the update
+            state.cache.remove("images_ts");
+            (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response()
+        }
+        Err(e) => {
+            error!("api_set_image_env: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))).into_response()
+        }
+    }
+}
+
+// ── Image full duplicate API ──────────────────────────────────────────────────
+
+pub async fn api_duplicate_image(
+    State(state): State<AppState>,
+    Path(image_ref): Path<String>,
+) -> impl IntoResponse {
+    let decoded = urlencoding::decode(&image_ref).unwrap_or(std::borrow::Cow::Borrowed(&image_ref)).into_owned();
+
+    // Collect source tags and env overrides before any mutation
+    let src_tags: Vec<String> = docker::get_image_info(&state.docker, &decoded).await
+        .ok()
+        .and_then(|i| i.repo_tags)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|t| t != "<none>:<none>")
+        .collect();
+    let src_env = db::get_image_env(&state.db, &decoded).await.unwrap_or_default();
+
+    match docker::duplicate_docker_image(&state.docker, &decoded).await {
+        Ok(new_id) => {
+            // Give the duplicate an auto-generated unique tag so:
+            // 1. it's visible in the image list (not <none>:<none>)
+            // 2. the original keeps its own tags untouched
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            // Derive a base repo name from the first source tag, or fall back to "image"
+            let base_repo = src_tags.first()
+                .and_then(|t| t.rsplit_once(':').map(|(r, _)| r).or(Some(t.as_str())))
+                .unwrap_or("image");
+            let dup_repo = format!("{}-dup", base_repo);
+            let dup_tag  = ts.to_string();
+            if let Err(e) = docker::retag_docker_image(&state.docker, &new_id, &dup_repo, &dup_tag).await {
+                error!("api_duplicate_image: auto-tag {}: {}", new_id, e);
+            }
+
+            // Copy DB env overrides to the new image ID
+            if !src_env.is_empty() {
+                if let Err(e) = db::set_image_env(&state.db, &new_id, &src_env).await {
+                    error!("api_duplicate_image: copy env to {}: {}", new_id, e);
+                }
+            }
+
+            state.cache.remove("images_ts");
+            (StatusCode::OK, Json(serde_json::json!({ "ok": true, "new_id": new_id }))).into_response()
+        }
+        Err(e) => {
+            error!("api_duplicate_image: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))).into_response()
+        }
+    }
+}
+
+// ── Real-time polling endpoints ───────────────────────────────────────────────
+
+pub async fn api_admin_containers(State(state): State<AppState>) -> impl IntoResponse {
+    let mut containers = match docker::list_containers(&state.docker).await {
+        Ok(c) => c,
+        Err(e) => {
+            error!("api_admin_containers: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "Failed to list containers" })),
+            ).into_response();
+        }
+    };
+
+    let info_map = db::get_server_info_map(&state.db).await.unwrap_or_default();
+    for c in &mut containers {
+        if let Some((id, name, owner)) = info_map.get(&c.id) {
+            c.db_id = *id;
+            c.name = name.clone();
+            c.owner = owner.clone();
+        }
+    }
+
+    let total = containers.len();
+    let running = containers.iter().filter(|c| c.state == "running").count();
+    let stopped = total - running;
+
+    let list: Vec<serde_json::Value> = containers.iter().map(|c| {
+        serde_json::json!({
+            "db_id":     c.db_id,
+            "name":      c.name,
+            "short_id":  c.short_id,
+            "owner":     c.owner,
+            "state":     c.state,
+            "status":    c.status,
+            "cpu_usage": c.cpu_usage,
+            "ram_usage": c.ram_usage,
+        })
+    }).collect();
+
+    Json(serde_json::json!({
+        "ok": true,
+        "containers": list,
+        "total": total,
+        "running": running,
+        "stopped": stopped,
+    })).into_response()
+}
+
+pub async fn api_admin_overview(State(state): State<AppState>) -> impl IntoResponse {
+    let containers = match docker::list_containers(&state.docker).await {
+        Ok(c) => c,
+        Err(e) => {
+            error!("api_admin_overview: {}", e);
+            vec![]
+        }
+    };
+
+    let total = containers.len();
+    let running = containers.iter().filter(|c| c.state == "running").count();
+    let stopped = total - running;
+
+    let docker_version = match state.docker.version().await {
+        Ok(v) => v.version.unwrap_or_else(|| "unknown".to_string()),
+        Err(_) => "unknown".to_string(),
+    };
+
+    let panel_memory_mb = tokio::fs::read_to_string("/proc/self/status")
+        .await
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("VmRSS:"))
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|v| v.parse::<u64>().ok())
+        })
+        .map(|kb| format!("{:.1} MB", kb as f64 / 1024.0))
+        .unwrap_or_else(|| "N/A".to_string());
+
+    let users_count = db::list_users(&state.db).await.map(|u| u.len()).unwrap_or(0);
+
+    Json(serde_json::json!({
+        "ok": true,
+        "total_containers": total,
+        "running_containers": running,
+        "stopped_containers": stopped,
+        "docker_version": docker_version,
+        "panel_memory_mb": panel_memory_mb,
+        "users_count": users_count,
+    })).into_response()
 }

@@ -31,10 +31,13 @@ async fn serve_sw()       -> impl IntoResponse { serve_embedded("sw.js", "applic
 use admin::{
     admin_change_password, admin_edit_page, admin_page, admin_tab_page, admin_stop_all,
     api_admin_edit_container, api_create_user, api_delete_user, api_set_user_password,
+    api_list_images, api_delete_image,
+    api_get_image_env, api_set_image_env, api_duplicate_image, api_pull_image,
+    api_admin_containers, api_admin_overview,
 };
 use auth::{login_page, login_submit, logout};
-use create::{api_image_env, create_server};
-use dashboard::{dashboard, new_server_page, server_list_fragment};
+use create::{api_image_env, api_image_env_overrides, api_local_images, create_server};
+use dashboard::{api_dashboard_json, dashboard, new_server_page, server_list_fragment};
 use files::{copy_file, create_new_file, delete_file, edit_file_page, list_files_api, rename_file, save_file_content, upload_files};
 use network::{api_add_port, api_get_bandwidth, api_remove_port, api_set_bandwidth, api_tag_port, api_toggle_port, networking_page};
 use servers::{
@@ -53,6 +56,7 @@ pub fn create_router(state: AppState) -> Router {
         // Dashboard
         .route("/", get(dashboard))
         .route("/api/servers", get(server_list_fragment))
+        .route("/api/dashboard", get(api_dashboard_json))
         // Server pages
         .route("/servers/{id}/console", get(console_page))
         .route("/servers/{id}/files", get(files_page))
@@ -83,6 +87,8 @@ pub fn create_router(state: AppState) -> Router {
             .layer(axum::extract::DefaultBodyLimit::disable()))
         // WebSocket console
         .route("/api/servers/{id}/ws", get(console_ws))
+        // Account (own user)
+        .route("/api/user/change-password", post(admin_change_password))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware::require_auth,
@@ -92,6 +98,8 @@ pub fn create_router(state: AppState) -> Router {
     let admin_only = Router::new()
         .route("/servers/new", get(new_server_page).post(create_server))
         .route("/api/image/env", get(api_image_env))
+        .route("/api/image/env-overrides", get(api_image_env_overrides))
+        .route("/api/image/local", get(api_local_images))
         .route("/admin", get(admin_page))
         .route("/admin/{tab}", get(admin_tab_page))
         .route("/admin/servers/{id}/edit", get(admin_edit_page))
@@ -101,6 +109,13 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/admin/users/{id}/delete", post(api_delete_user))
         .route("/api/admin/users/{id}/set-password", post(api_set_user_password))
         .route("/api/admin/servers/{id}/edit", post(api_admin_edit_container))
+        .route("/api/admin/images", get(api_list_images))
+        .route("/api/admin/images/{ref}/delete", post(api_delete_image))
+        .route("/api/admin/images/{ref}/env", get(api_get_image_env).post(api_set_image_env))
+        .route("/api/admin/images/{ref}/duplicate", post(api_duplicate_image))
+        .route("/api/admin/images/pull", post(api_pull_image))
+        .route("/api/admin/containers", get(api_admin_containers))
+        .route("/api/admin/overview", get(api_admin_overview))
         .route("/api/servers/{id}/delete", post(delete_server))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
