@@ -8,10 +8,25 @@ pub mod servers;
 pub mod templates;
 pub mod ws;
 
-use axum::{middleware, routing::{get, post}, Router};
-use tower_http::services::{ServeDir, ServeFile};
+use axum::{http::{header, StatusCode}, middleware, response::IntoResponse, routing::{get, post}, Router};
+use axum_embed::ServeEmbed;
+use rust_embed::Embed;
 use crate::auth as auth_middleware;
 use crate::state::AppState;
+
+#[derive(Embed, Clone)]
+#[folder = "static/"]
+struct StaticAssets;
+
+/// Serve a single embedded static file for root-level assets (manifest.json, sw.js).
+async fn serve_embedded(path: &str, content_type: &'static str) -> impl IntoResponse {
+    match StaticAssets::get(path) {
+        Some(f) => ([(header::CONTENT_TYPE, content_type)], f.data.into_owned()).into_response(),
+        None    => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+async fn serve_manifest() -> impl IntoResponse { serve_embedded("manifest.json", "application/json").await }
+async fn serve_sw()       -> impl IntoResponse { serve_embedded("sw.js", "application/javascript").await }
 
 use admin::{
     admin_change_password, admin_edit_page, admin_page, admin_tab_page, admin_stop_all,
@@ -96,8 +111,8 @@ pub fn create_router(state: AppState) -> Router {
         .merge(public)
         .merge(protected)
         .merge(admin_only)
-        .route_service("/manifest.json", ServeFile::new("static/manifest.json"))
-        .route_service("/sw.js", ServeFile::new("static/sw.js"))
-        .nest_service("/static", ServeDir::new("static"))
+        .route("/manifest.json", get(serve_manifest))
+        .route("/sw.js", get(serve_sw))
+        .nest_service("/static", ServeEmbed::<StaticAssets>::new())
         .with_state(state)
 }
