@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit {{ container.name }} – Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        :root{--bg:#0b0b12;--surface:#111119;--surface2:#17171f;--bdr:rgba(255,255,255,.07);--txt:#e0e0f0;--muted:#6a6a8a;--accent:#7c3aed;}
+        *,*::before,*::after{box-sizing:border-box;}
+        body{background:var(--bg);color:var(--txt);font-family:'Inter',sans-serif;min-height:100vh;margin:0;}
+        a{text-decoration:none;color:inherit;}
+        .yu-topbar{height:56px;background:#0e0e18;border-bottom:1px solid var(--bdr);display:flex;align-items:center;padding:0 1.75rem;gap:1rem;position:sticky;top:0;z-index:100;}
+        .yu-back{display:flex;align-items:center;gap:.4rem;font-size:.8rem;color:var(--muted);transition:color .15s;}
+        .yu-back:hover{color:var(--txt);}
+        .yu-brand{font-size:.9rem;font-weight:700;letter-spacing:-.02em;display:flex;align-items:center;gap:.45rem;}
+        .yu-brand .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+        .yu-page{padding:2rem 1.5rem;max-width:900px;margin:0 auto;}
+        .yu-form-card{background:var(--surface);border:1px solid var(--bdr);border-radius:12px;overflow:hidden;}
+        .yu-form-hd{padding:1rem 1.5rem;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;gap:1rem;}
+        .yu-form-bd{padding:1.5rem;}
+        h5{font-size:.95rem;font-weight:600;letter-spacing:-.01em;color:var(--txt)!important;}
+        .form-control,.form-select{background:var(--surface2)!important;border:1px solid rgba(255,255,255,.1)!important;color:var(--txt)!important;border-radius:8px!important;font-size:.875rem;font-family:'Inter',sans-serif;}
+        .form-control:focus,.form-select:focus{background:var(--surface2)!important;border-color:rgba(124,58,237,.5)!important;box-shadow:0 0 0 3px rgba(124,58,237,.12)!important;color:var(--txt)!important;}
+        .form-control::placeholder{color:var(--muted);}
+        .input-group-text{background:var(--surface2)!important;border:1px solid rgba(255,255,255,.1)!important;color:var(--muted)!important;}
+        .form-label{color:var(--muted);font-size:.8rem;font-weight:500;}
+        .form-text{color:var(--muted)!important;font-size:.75rem;}
+        .btn-primary{background:#7c3aed!important;border-color:#7c3aed!important;font-family:'Inter',sans-serif;}
+        .btn-primary:hover{background:#6d28d9!important;border-color:#6d28d9!important;}
+        .btn-secondary{background:rgba(255,255,255,.05)!important;border-color:rgba(255,255,255,.1)!important;color:var(--txt)!important;font-family:'Inter',sans-serif;}
+        .btn-secondary:hover{background:rgba(255,255,255,.09)!important;}
+        .btn-outline-primary{border-color:rgba(124,58,237,.4)!important;color:#a78bfa!important;background:transparent!important;font-size:.8rem;}
+        .btn-outline-primary:hover{background:rgba(124,58,237,.1)!important;color:#a78bfa!important;}
+        .btn-outline-danger{border-color:rgba(239,68,68,.25)!important;color:#ef4444!important;background:transparent!important;}
+        .btn-outline-danger:hover{background:rgba(239,68,68,.1)!important;}
+        .alert-danger{background:rgba(239,68,68,.1)!important;border-color:rgba(239,68,68,.2)!important;color:#ef4444!important;border-radius:8px;}
+        .alert-info{background:rgba(96,165,250,.06)!important;border-color:rgba(96,165,250,.2)!important;color:#93c5fd!important;border-radius:8px;font-size:.8rem;}
+        hr{border-color:rgba(255,255,255,.07)!important;}
+        .pill-run{display:inline-flex;align-items:center;gap:.35rem;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:99px;background:rgba(16,185,129,.12);color:#10b981;border:1px solid rgba(16,185,129,.2);}
+        .pill-stop{display:inline-flex;align-items:center;gap:.35rem;font-size:.72rem;font-weight:600;padding:.2rem .6rem;border-radius:99px;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.2);}
+        .pill-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
+        .remove-row-btn{min-width:38px;}
+        #ae-feedback{font-size:.83rem;}
+        ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px;}
+    </style>
+</head>
+<body>
+    <header class="yu-topbar">
+        <a href="/admin/containers" class="yu-back"><i class="bi bi-arrow-left"></i> Admin</a>
+        <div class="yu-brand"><span class="dot"></span>Yunexal Panel</div>
+    </header>
+
+    <div class="yu-page">
+        <div class="yu-form-card">
+            <div class="yu-form-hd">
+                <div>
+                    <div style="font-size:1.1rem;font-weight:700;letter-spacing:-.02em;">Edit: {{ container.name }}</div>
+                    <div style="font-size:.72rem;color:var(--muted);margin-top:.15rem;font-family:monospace;">{{ container.id }}</div>
+                </div>
+                {% if container.state == "running" %}
+                <span class="pill-run"><span class="pill-dot"></span>running</span>
+                {% else %}
+                <span class="pill-stop"><span class="pill-dot"></span>{{ container.state }}</span>
+                {% endif %}
+            </div>
+            <div class="yu-form-bd">
+
+                {% if let Some(err) = error %}
+                <div class="alert alert-danger d-flex align-items-center mb-3" role="alert">
+                    <span class="me-2">⚠️</span><div>{{ err }}</div>
+                </div>
+                {% endif %}
+
+                <div class="alert alert-info d-flex align-items-start gap-2 mb-4" role="alert">
+                    <i class="bi bi-info-circle-fill mt-1" style="flex-shrink:0;"></i>
+                    <span>Name, owner, and resources are applied in-place without restart.
+                    Changing the <strong>image</strong>, <strong>ports</strong>, or <strong>environment</strong>
+                    will stop, recreate, and restart the container — volumes are preserved.</span>
+                </div>
+
+                <!-- General -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label for="ae-name" class="form-label">Container Name</label>
+                        <input type="text" class="form-control" id="ae-name" value="{{ container.name }}" autocomplete="off">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="ae-image" class="form-label">Docker Image</label>
+                        <input type="text" class="form-control" id="ae-image" value="{{ edit.image }}" placeholder="e.g. itzg/minecraft-server" autocomplete="off">
+                        <div class="form-text">Changing image will recreate the container.</div>
+                    </div>
+                </div>
+
+                <!-- Owner -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label for="ae-owner" class="form-label">Owner</label>
+                        <select class="form-select" id="ae-owner">
+                            <option value="0" {% if edit.owner_id == 0 %}selected{% endif %}>(none)</option>
+                            {% for u in users %}
+                            <option value="{{ u.id }}" {% if u.id == edit.owner_id %}selected{% endif %}>
+                                {{ u.username }} ({{ u.role }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">User who owns this container.</div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <h5 class="mb-3">Resources &amp; Limits</h5>
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <label class="form-label">CPU Limit (cores)</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="ae-cpu" step="0.1" min="0" value="{{ edit.cpu }}" placeholder="Unlimited">
+                            <span class="input-group-text">cores</span>
+                        </div>
+                        <div class="form-text small">e.g. 1.5 = 1.5 cores. 0 = no limit.</div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Memory Limit</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="ae-mem" min="0" value="{{ edit.memory_mb }}" placeholder="Unlimited">
+                            <span class="input-group-text">MB</span>
+                        </div>
+                        <div class="form-text small">e.g. 2048 = 2 GB. 0 = no limit.</div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Ports -->
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <label class="form-label d-flex justify-content-between align-items-center">
+                            <span>Port Mappings</span>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addPortRow()">+ Add Port</button>
+                        </label>
+                        <div id="ports-container"></div>
+                    </div>
+                </div>
+
+                <!-- Env -->
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <label class="form-label d-flex justify-content-between align-items-center">
+                            <span>Environment Variables</span>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addEnvRow()">+ Add</button>
+                        </label>
+                        <div id="env-container"></div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-4">
+                    <a href="/admin/containers" class="btn btn-secondary">Cancel</a>
+                    <div class="d-flex align-items-center gap-3">
+                        <span id="ae-feedback"></span>
+                        <button type="button" class="btn btn-primary" onclick="saveEdit(this)">
+                            <i class="bi bi-floppy me-1"></i> Save Changes
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const AE_ID = {{ id }};
+    const INITIAL_PORTS = `{{ edit.ports }}`.trim();
+    const INITIAL_ENV   = `{{ edit.env }}`.trim();
+
+    // ── Ports ──────────────────────────────────────────────────────────────────
+    function addPortRow(host = '', container = '', proto = 'tcp') {
+        const row = document.createElement('div');
+        row.className = 'row g-2 mb-2 port-row';
+        row.innerHTML = `
+            <div class="col">
+                <input type="number" class="form-control" placeholder="Host port" value="${host}" min="1" max="65535">
+            </div>
+            <div class="col-auto d-flex align-items-center px-1" style="color:var(--muted);">:</div>
+            <div class="col">
+                <input type="number" class="form-control" placeholder="Container port" value="${container}" min="1" max="65535">
+            </div>
+            <div class="col-auto" style="min-width:90px;">
+                <select class="form-select">
+                    <option value="tcp" ${proto==='tcp'?'selected':''}>TCP</option>
+                    <option value="udp" ${proto==='udp'?'selected':''}>UDP</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="button" class="btn btn-sm btn-outline-danger remove-row-btn" onclick="this.closest('.port-row').remove()">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>`;
+        document.getElementById('ports-container').appendChild(row);
+    }
+
+    function getPorts() {
+        return [...document.querySelectorAll('#ports-container .port-row')].map(row => {
+            const inputs = row.querySelectorAll('input');
+            const sel    = row.querySelector('select');
+            const host   = inputs[0].value.trim();
+            const cont   = inputs[1].value.trim();
+            if (!host || !cont) return null;
+            return `${host}:${cont}/${sel.value}`;
+        }).filter(Boolean).join('\n');
+    }
+
+    // ── Env ────────────────────────────────────────────────────────────────────
+    function addEnvRow(key = '', value = '') {
+        const row = document.createElement('div');
+        row.className = 'row g-2 mb-2 env-row';
+        row.innerHTML = `
+            <div class="col-md-4">
+                <input type="text" class="form-control" placeholder="KEY" value="${esc(key)}" autocomplete="off">
+            </div>
+            <div class="col-auto d-flex align-items-center px-1" style="color:var(--muted);">=</div>
+            <div class="col">
+                <input type="text" class="form-control" placeholder="VALUE" value="${esc(value)}" autocomplete="off">
+            </div>
+            <div class="col-auto">
+                <button type="button" class="btn btn-sm btn-outline-danger remove-row-btn" onclick="this.closest('.env-row').remove()">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>`;
+        document.getElementById('env-container').appendChild(row);
+    }
+
+    function getEnv() {
+        return [...document.querySelectorAll('#env-container .env-row')].map(row => {
+            const inputs = row.querySelectorAll('input');
+            const key = inputs[0].value.trim();
+            const val = inputs[1].value;
+            if (!key) return null;
+            return `${key}=${val}`;
+        }).filter(Boolean).join('\n');
+    }
+
+    function esc(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    }
+
+    // ── Init existing config ───────────────────────────────────────────────────
+    (function init() {
+        INITIAL_PORTS.split('\n').forEach(line => {
+            line = line.trim();
+            if (!line) return;
+            const slashIdx = line.lastIndexOf('/');
+            const proto = slashIdx >= 0 ? line.slice(slashIdx + 1) : 'tcp';
+            const main  = slashIdx >= 0 ? line.slice(0, slashIdx) : line;
+            const colonIdx = main.indexOf(':');
+            const host = colonIdx >= 0 ? main.slice(0, colonIdx) : main;
+            const cont = colonIdx >= 0 ? main.slice(colonIdx + 1) : main;
+            addPortRow(host, cont, proto);
+        });
+
+        INITIAL_ENV.split('\n').forEach(line => {
+            line = line.trim();
+            if (!line) return;
+            const eqIdx = line.indexOf('=');
+            const key = eqIdx >= 0 ? line.slice(0, eqIdx) : line;
+            const val = eqIdx >= 0 ? line.slice(eqIdx + 1) : '';
+            addEnvRow(key, val);
+        });
+    })();
+
+    // ── Save ───────────────────────────────────────────────────────────────────
+    async function saveEdit(btn) {
+        const feedback = document.getElementById('ae-feedback');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Saving…';
+        feedback.textContent = '';
+        feedback.style.color = '';
+
+        const body = {
+            name:      document.getElementById('ae-name').value.trim(),
+            image:     document.getElementById('ae-image').value.trim(),
+            owner_id:  parseInt(document.getElementById('ae-owner').value, 10) || 0,
+            memory_mb: parseInt(document.getElementById('ae-mem').value, 10)   || 0,
+            cpu:       parseFloat(document.getElementById('ae-cpu').value)      || 0,
+            ports:     getPorts(),
+            env:       getEnv(),
+        };
+
+        if (!body.name) {
+            feedback.textContent = 'Name cannot be empty.';
+            feedback.style.color = '#ef4444';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-floppy me-1"></i> Save Changes';
+            return;
+        }
+
+        try {
+            const res  = await fetch(`/api/admin/servers/${AE_ID}/edit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                feedback.textContent = '✗ ' + (data.error || 'Unknown error');
+                feedback.style.color = '#ef4444';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-floppy me-1"></i> Save Changes';
+                return;
+            }
+            feedback.textContent = '✓ Saved';
+            feedback.style.color = '#10b981';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-floppy me-1"></i> Save Changes';
+            if (data.new_id != null) {
+                feedback.textContent = '✓ Saved — reloading…';
+                setTimeout(() => { window.location.href = `/admin/servers/${data.new_id}/edit`; }, 800);
+            }
+        } catch (e) {
+            feedback.textContent = '✗ Network error';
+            feedback.style.color = '#ef4444';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-floppy me-1"></i> Save Changes';
+        }
+    }
+    </script>
+</body>
+</html>

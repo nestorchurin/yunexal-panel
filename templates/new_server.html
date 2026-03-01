@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Server - Yunexal Panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <style>
+        :root{--bg:#0b0b12;--surface:#111119;--surface2:#17171f;--bdr:rgba(255,255,255,.07);--txt:#e0e0f0;--muted:#6a6a8a;--accent:#7c3aed;}
+        *,*::before,*::after{box-sizing:border-box;}
+        body{background:var(--bg);color:var(--txt);font-family:'Inter',sans-serif;min-height:100vh;margin:0;}
+        a{text-decoration:none;color:inherit;}
+        .yu-topbar{height:56px;background:#0e0e18;border-bottom:1px solid var(--bdr);display:flex;align-items:center;padding:0 1.75rem;gap:1rem;position:sticky;top:0;z-index:100;}
+        .yu-back{display:flex;align-items:center;gap:.4rem;font-size:.8rem;color:var(--muted);transition:color .15s;}
+        .yu-back:hover{color:var(--txt);}
+        .yu-brand{font-size:.9rem;font-weight:700;letter-spacing:-.02em;display:flex;align-items:center;gap:.45rem;}
+        .yu-brand .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+        .yu-page{padding:2rem 1.5rem;max-width:900px;margin:0 auto;}
+        .yu-form-card{background:var(--surface);border:1px solid var(--bdr);border-radius:12px;overflow:hidden;}
+        .yu-form-hd{padding:1rem 1.5rem;border-bottom:1px solid var(--bdr);}
+        .yu-form-bd{padding:1.5rem;}
+        h5{font-size:.95rem;font-weight:600;letter-spacing:-.01em;color:var(--txt)!important;}
+        /* Bootstrap form overrides */
+        .form-control,.form-select{background:var(--surface2)!important;border:1px solid rgba(255,255,255,.1)!important;color:var(--txt)!important;border-radius:8px!important;font-size:.875rem;font-family:'Inter',sans-serif;}
+        .form-control:focus,.form-select:focus{background:var(--surface2)!important;border-color:rgba(124,58,237,.5)!important;box-shadow:0 0 0 3px rgba(124,58,237,.12)!important;color:var(--txt)!important;}
+        .form-control::placeholder{color:var(--muted);}
+        .input-group-text{background:var(--surface2)!important;border:1px solid rgba(255,255,255,.1)!important;color:var(--muted)!important;}
+        .form-label{color:var(--muted);font-size:.8rem;font-weight:500;}
+        .form-text{color:var(--muted)!important;font-size:.75rem;}
+        .form-text.small,.small{font-size:.72rem!important;}
+        .btn-primary{background:#7c3aed!important;border-color:#7c3aed!important;font-family:'Inter',sans-serif;}
+        .btn-primary:hover{background:#6d28d9!important;border-color:#6d28d9!important;}
+        .btn-secondary{background:rgba(255,255,255,.05)!important;border-color:rgba(255,255,255,.1)!important;color:var(--txt)!important;font-family:'Inter',sans-serif;}
+        .btn-secondary:hover{background:rgba(255,255,255,.09)!important;}
+        .btn-outline-primary{border-color:rgba(124,58,237,.4)!important;color:#a78bfa!important;background:transparent!important;font-size:.8rem;}
+        .btn-outline-primary:hover{background:rgba(124,58,237,.1)!important;color:#a78bfa!important;}
+        .btn-outline-danger{border-color:rgba(239,68,68,.25)!important;color:#ef4444!important;background:transparent!important;}
+        .btn-outline-danger:hover{background:rgba(239,68,68,.1)!important;}
+        .btn-warning{background:rgba(245,158,11,.1)!important;border-color:rgba(245,158,11,.2)!important;color:#f59e0b!important;}
+        .alert-danger{background:rgba(239,68,68,.1)!important;border-color:rgba(239,68,68,.2)!important;color:#ef4444!important;border-radius:8px;}
+        hr{border-color:rgba(255,255,255,.07)!important;}
+        .remove-row-btn{min-width:38px;}
+        .yu-editor-wrap{border:1px solid rgba(255,255,255,.1);border-radius:10px;overflow:hidden;background:#1e1e1e;}
+        .yu-editor-titlebar{display:flex;align-items:center;justify-content:space-between;padding:.45rem .9rem;background:#252526;border-bottom:1px solid rgba(255,255,255,.08);gap:.6rem;}
+        .yu-editor-titlebar-left{display:flex;align-items:center;gap:.55rem;}
+        .yu-editor-dot{width:11px;height:11px;border-radius:50%;}
+        .yu-editor-lang{font-size:.7rem;color:#858585;font-family:'Inter',sans-serif;letter-spacing:.04em;text-transform:uppercase;}
+        .yu-editor-copy-btn{display:flex;align-items:center;gap:.35rem;font-size:.72rem;color:#858585;background:transparent;border:none;cursor:pointer;padding:.25rem .5rem;border-radius:5px;transition:all .15s;font-family:'Inter',sans-serif;}
+        .yu-editor-copy-btn:hover{background:rgba(255,255,255,.07);color:#d4d4d4;}
+        #yaml-editor-container{height:260px;}
+        ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px;}
+    </style>
+</head>
+<body>
+    <header class="yu-topbar">
+        <a href="/" class="yu-back"><i class="bi bi-arrow-left"></i> Dashboard</a>
+        <div class="yu-brand"><span class="dot"></span>Yunexal Panel</div>
+    </header>
+
+    <div class="yu-page">
+        <div class="yu-form-card">
+            <div class="yu-form-hd">
+                <div style="font-size:1.1rem;font-weight:700;letter-spacing:-.02em;">Create New Server</div>
+            </div>
+            <div class="yu-form-bd">
+                        {% if error.is_some() %}
+                        <div class="alert alert-danger d-flex align-items-center" role="alert">
+                            <span class="me-2">⚠️</span>
+                            <div>{{ error.as_ref().unwrap() }}</div>
+                        </div>
+                        {% endif %}
+                        <form action="/servers/new" method="POST" id="createServerForm">
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <label for="name" class="form-label">Title / Server Name</label>
+                                    <input type="text" class="form-control" id="name" name="name" required placeholder="my-game-server">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="image" class="form-label">Docker Image</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="image" name="image" placeholder="nginx:latest">
+                                        <button type="button" class="btn btn-outline-primary" id="fetch-env-btn" onclick="fetchImageEnv()" title="Fetch default ENV vars from image">
+                                            <i class="bi bi-cloud-download"></i> Fetch ENV
+                                        </button>
+                                    </div>
+                                    <div class="form-text">Takes precedence over config image. <span id="fetch-env-status" style="font-size:.72rem;"></span></div>
+                                </div>
+                            </div>
+
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <label for="owner_id" class="form-label">Owner</label>
+                                    <select class="form-select" id="owner_id" name="owner_id">
+                                        <option value="0">— Self (you) —</option>
+                                        {% for u in users %}
+                                        <option value="{{ u.id }}">{{ u.username }} ({{ u.role }})</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text">User who will own this container.</div>
+                                </div>
+                            </div>
+
+                            <hr>
+
+                            <h5 class="mb-3">Resources & Limits</h5>
+                             <div class="row mb-3">
+                                <div class="col-md-3">
+                                    <label class="form-label">CPU Limit (Cores)</label>
+                                    <div class="input-group">
+                                         <input type="number" class="form-control" id="gui_cpus" step="0.1" min="0.1" placeholder="Unlimited" oninput="updateYaml()">
+                                         <span class="input-group-text">cores</span>
+                                    </div>
+                                    <div class="form-text small">e.g. 0.5 (50%), 1.0 (1 core)</div>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Memory Limit</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="gui_mem_val" placeholder="Unlimited" oninput="updateYaml()">
+                                        <select class="form-select" id="gui_mem_unit" style="max-width: 80px;" onchange="updateYaml()">
+                                            <option value="mb" selected>MB</option>
+                                            <option value="gb">GB</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Disk Limit (Optional)</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="gui_disk_val" placeholder="Unlimited" oninput="updateYaml()">
+                                        <select class="form-select" id="gui_disk_unit" style="max-width: 80px;" onchange="updateYaml()">
+                                            <option value="gb" selected>GB</option>
+                                            <option value="mb">MB</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-text small">Depends on docker storage driver</div>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Restart Policy</label>
+                                    <select class="form-select" id="gui_restart" onchange="updateYaml()">
+                                        <option value="no">No</option>
+                                        <option value="always">Always</option>
+                                        <option value="unless-stopped" selected>Unless Stopped</option>
+                                        <option value="on-failure">On Failure</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Bandwidth Limit</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="bandwidth_mbit" name="bandwidth_mbit" min="10" placeholder="Unlimited">
+                                        <span class="input-group-text">Mbit/s</span>
+                                    </div>
+                                    <div class="form-text small">10 Mbit/s minimum. Leave blank for unlimited.</div>
+                                </div>
+                             </div>
+
+                            <hr>
+
+                            <!-- GUI Builder -->
+                            <div class="row">
+                                <!-- Ports -->
+                                <div class="col-md-12 mb-3">
+                                    <label class="form-label d-flex justify-content-between">
+                                        Ports <button type="button" class="btn btn-sm btn-outline-primary" onclick="addPortRow()">+ Add Port</button>
+                                    </label>
+                                    <div id="ports-container">
+                                        <!-- Rows injected by JS -->
+                                    </div>
+                                </div>
+
+                                <!-- Environment -->
+                                <div class="col-md-12 mb-3">
+                                    <label class="form-label d-flex justify-content-between">
+                                        Environment Variables <button type="button" class="btn btn-sm btn-outline-primary" onclick="addEnvRow()">+ Add</button>
+                                    </label>
+                                    <div id="env-container"></div>
+                                </div>
+                            </div>
+
+                            <hr>
+
+                            <div class="mb-3">
+                                <label class="form-label mb-2" style="color:var(--muted);font-size:.8rem;font-weight:500;">Generated Configuration</label>
+                                <div class="yu-editor-wrap">
+                                    <div class="yu-editor-titlebar">
+                                        <div class="yu-editor-titlebar-left">
+                                            <span class="yu-editor-lang" style="margin-left:.3rem;">YAML</span>
+                                        </div>
+                                        <button type="button" class="yu-editor-copy-btn" onclick="copyYaml(this)">
+                                            <i class="bi bi-clipboard"></i> Copy
+                                        </button>
+                                    </div>
+                                    <div id="yaml-editor-container"></div>
+                                </div>
+                                <input type="hidden" id="config" name="config">
+                            </div>
+
+                            <div class="d-flex justify-content-between mt-4">
+                                <a href="/" class="btn btn-secondary">Cancel</a>
+                                <button type="submit" class="btn btn-primary">Create Server</button>
+                            </div>
+                        </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // --- Templates ---
+        function getPortRowHtml(host = '', container = '', proto = 'tcp') {
+            const isTcp = proto === 'tcp' ? 'selected' : '';
+            const isUdp = proto === 'udp' ? 'selected' : '';
+            const isBoth = proto === 'tcp+udp' ? 'selected' : '';
+            
+            return `
+            <div class="input-group mb-2 entry-row" style="max-width: 600px;">
+                <input type="number" min="1" max="65535" class="form-control host-input" placeholder="20000" value="${host}" oninput="updateYaml()">
+                <span class="input-group-text">:</span>
+                <input type="number" min="1" max="65535" class="form-control container-input" placeholder="20000" value="${container}" oninput="updateYaml()">
+                <select class="form-select proto-input" style="max-width: 100px;" onchange="updateYaml()">
+                    <option value="tcp" ${isTcp}>TCP</option>
+                    <option value="udp" ${isUdp}>UDP</option>
+                    <option value="tcp+udp" ${isBoth}>Both</option>
+                </select>
+                <button type="button" class="btn btn-outline-danger remove-row-btn" onclick="this.closest('.entry-row').remove(); updateYaml()">×</button>
+            </div>`;
+        }
+
+        function getEnvRowHtml(key = '', val = '') {
+            return `
+            <div class="input-group mb-2 entry-row">
+                <input type="text" class="form-control key-input" placeholder="VAR" value="${key}" oninput="updateYaml()">
+                <span class="input-group-text">=</span>
+                <input type="text" class="form-control val-input" placeholder="VAL" value="${val}" oninput="updateYaml()">
+                <button type="button" class="btn btn-outline-danger remove-row-btn" onclick="this.closest('.entry-row').remove(); updateYaml()">×</button>
+            </div>`;
+        }
+
+        function getVolRowHtml(host = '', container = '') {
+            return `
+            <div class="input-group mb-2 entry-row">
+                <input type="text" class="form-control host-input" placeholder="/host" value="${host}" oninput="updateYaml()">
+                <span class="input-group-text">:</span>
+                <input type="text" class="form-control container-input" placeholder="/data" value="${container}" oninput="updateYaml()">
+                <button type="button" class="btn btn-outline-danger remove-row-btn" onclick="this.closest('.entry-row').remove(); updateYaml()">×</button>
+            </div>`;
+        }
+
+        // --- Add Helpers ---
+        function addPortRow(h, c, p) { 
+            document.getElementById('ports-container').insertAdjacentHTML('beforeend', getPortRowHtml(h, c, p)); 
+            if(h === undefined) updateYaml(); 
+        }
+        function addEnvRow(k, v) { 
+            document.getElementById('env-container').insertAdjacentHTML('beforeend', getEnvRowHtml(k, v)); 
+             if(k === undefined) updateYaml();
+        }
+        function addVolRow(h, c) { 
+            document.getElementById('vol-container').insertAdjacentHTML('beforeend', getVolRowHtml(h, c)); 
+             if(h === undefined) updateYaml();
+        }
+
+        // --- Core Logic ---
+
+        function updateYaml() {
+            const config = {
+                image: document.getElementById('image').value || undefined,
+                restart: document.getElementById('gui_restart').value,
+                ports: [],
+                environment: [],
+                volumes: []
+            };
+
+            // Resources
+            const cpus = document.getElementById('gui_cpus').value;
+            if (cpus) config.cpus = parseFloat(cpus);
+            
+            const memVal = document.getElementById('gui_mem_val').value;
+            if (memVal) config.mem_limit = memVal + document.getElementById('gui_mem_unit').value;
+            
+            const diskVal = document.getElementById('gui_disk_val').value;
+            if (diskVal) config.disk_limit = diskVal + document.getElementById('gui_disk_unit').value;
+
+
+            // Ports
+            document.querySelectorAll('#ports-container .entry-row').forEach(row => {
+                const h = row.querySelector('.host-input').value;
+                const c = row.querySelector('.container-input').value;
+                const p = row.querySelector('.proto-input').value; // tcp, udp, tcp+udp
+                
+                if (h && c) {
+                     // FORMAT: 8080:80/tcp  or  8080:80/tcp+udp
+                     let entry = `${h}:${c}`;
+                     if (p) entry += `/${p}`;
+                     config.ports.push(entry);
+                }
+            });
+
+            // Env
+            document.querySelectorAll('#env-container .entry-row').forEach(row => {
+                const k = row.querySelector('.key-input').value;
+                const v = row.querySelector('.val-input').value;
+                if (k) config.environment.push(`${k}=${v}`);
+            });
+
+            // Volumes
+            document.querySelectorAll('#vol-container .entry-row').forEach(row => {
+                const h = row.querySelector('.host-input').value;
+                const c = row.querySelector('.container-input').value;
+                if (h && c) config.volumes.push(`${h}:${c}`);
+            });
+
+            // Clean up empty arrays
+            if (config.ports.length === 0) delete config.ports;
+            if (config.environment.length === 0) delete config.environment;
+            if (config.volumes.length === 0) delete config.volumes;
+            if (!config.image) delete config.image;
+
+            const yamlStr = jsyaml.dump(config, { indent: 2, lineWidth: -1 });
+            document.getElementById('config').value = yamlStr;
+            if (window.yamlEditor) {
+                const pos = window.yamlEditor.getPosition();
+                window.yamlEditor.setValue(yamlStr);
+                if (pos) window.yamlEditor.setPosition(pos);
+            }
+        }
+
+        function copyYaml(btn) {
+            const val = document.getElementById('config').value;
+            if (!val) return;
+            navigator.clipboard.writeText(val).then(() => {
+                btn.innerHTML = '<i class="bi bi-check2"></i> Copied!';
+                btn.style.color = '#22c55e';
+                setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy'; btn.style.color = ''; }, 2000);
+            });
+        }
+
+        // Listen to image changes to update YAML too
+        document.getElementById('image').addEventListener('input', updateYaml);
+
+        async function fetchImageEnv() {
+            const image = document.getElementById('image').value.trim();
+            if (!image) { alert('Enter a Docker image name first.'); return; }
+            const btn = document.getElementById('fetch-env-btn');
+            const status = document.getElementById('fetch-env-status');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Fetching…';
+            status.style.color = '';
+            status.textContent = '';
+            try {
+                const res = await fetch(`/api/image/env?image=${encodeURIComponent(image)}`);
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error || 'Unknown error');
+                const envVars = data.env || [];
+                // Append only vars not already present
+                const existing = new Set(
+                    Array.from(document.querySelectorAll('#env-container .key-input')).map(el => el.value)
+                );
+                let added = 0;
+                for (const pair of envVars) {
+                    const eq = pair.indexOf('=');
+                    const k = eq >= 0 ? pair.slice(0, eq) : pair;
+                    const v = eq >= 0 ? pair.slice(eq + 1) : '';
+                    if (!existing.has(k)) { addEnvRow(k, v); existing.add(k); added++; }
+                }
+                status.style.color = '#22c55e';
+                status.textContent = added > 0 ? `✓ Added ${added} var${added !== 1 ? 's' : ''}` : '✓ No new vars';
+            } catch (e) {
+                status.style.color = '#ef4444';
+                status.textContent = `✗ ${e.message}`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-cloud-download"></i> Fetch ENV';
+                setTimeout(() => { status.textContent = ''; }, 4000);
+            }
+        }
+
+
+        // Monaco Editor init
+        require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+        require(['vs/editor/editor.main'], function () {
+            window.yamlEditor = monaco.editor.create(document.getElementById('yaml-editor-container'), {
+                value: '',
+                language: 'yaml',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
+                fontSize: 13,
+                lineHeight: 20,
+                lineNumbers: 'on',
+                renderLineHighlight: 'gutter',
+                roundedSelection: true,
+                scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
+                padding: { top: 10, bottom: 10 },
+                wordWrap: 'off',
+                readOnly: false,
+                overviewRulerLanes: 0,
+                hideCursorInOverviewRuler: true,
+                overviewRulerBorder: false,
+                glyphMargin: false,
+                folding: true,
+                renderWhitespace: 'none',
+                bracketPairColorization: { enabled: true },
+            });
+            window.yamlEditor.onDidChangeModelContent(() => {
+                document.getElementById('config').value = window.yamlEditor.getValue();
+            });
+            // Initial generation
+            updateYaml();
+        });
+
+    </script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

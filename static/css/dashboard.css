@@ -1,0 +1,38 @@
+/* Dashboard-specific styles - supplements base.css */
+
+/* ── Topbar ── */
+.yu-topbar {
+    height: 56px;
+    background: #0e0e18;
+    border-bottom: 1px solid var(--bdr);
+    display: flex;
+    align-items: center;
+    padding: 0 1.75rem;
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+}
+.yu-brand { font-size: .95rem; font-weight: 700; letter-spacing: -.025em; display: flex; align-items: center; gap: .55rem; }
+.yu-brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+/* ── Server cards ── */
+.yu-card { background: var(--surface); border: 1px solid var(--bdr); border-radius: 13px; overflow: hidden; transition: border-color .2s, transform .15s, box-shadow .2s; }
+.yu-card:hover { border-color: rgba(124,58,237,.35); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+.card-stripe { height: 3px; }
+.stripe-running  { background: linear-gradient(90deg, #10b981, #34d399); }
+.stripe-stopped  { background: linear-gradient(90deg, #ef4444, #f87171); }
+.stripe-other    { background: linear-gradient(90deg, #7c3aed, #a78bfa); }
+
+/* ── Stat box in cards ── */
+.stat-box { background: var(--surface2); border-radius: 8px; padding: .55rem .8rem; }
+.stat-lbl { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: .15rem; }
+.stat-val { font-size: .875rem; font-weight: 600; }
+
+/* ── Status pills ── */
+.status-pill { display: inline-flex; align-items: center; gap: .3rem; font-size: .72rem; font-weight: 600; padding: .2rem .65rem; border-radius: 999px; }
+.pill-running { background: rgba(16,185,129,.12); color: #10b981; }
+.pill-stopped { background: rgba(239,68,68,.12); color: #ef4444; }
+.pill-other   { background: rgba(245,158,11,.12); color: #f59e0b; }
+.pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; border-radius: 50%; }
+
+/* ── Buttons & forms inherited from base.css ── */

@@ -1,0 +1,34 @@
+/* Console page overrides base.css */
+
+/* Full-height layout, no scroll on body */
+body { overflow: hidden; }
+
+.yu-layout { display: flex; height: 100vh; }
+.yu-sidebar { position: sticky; height: 100vh; overflow-y: auto; }
+
+/* ── Console main area ── */
+.yu-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.yu-content { flex: 1; padding: 1.25rem; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+
+/* ── Panels ── */
+.yu-panel { background: var(--surface); border: 1px solid var(--bdr); border-radius: 11px; overflow: hidden; margin-bottom: 0; }
+.yu-panel-hd { padding: .8rem 1rem; border-bottom: 1px solid var(--bdr); font-size: .85rem; font-weight: 600; display: flex; align-items: center; gap: .5rem; justify-content: space-between; }
+.yu-panel-bd { padding: 1rem; }
+
+/* ── Stats label ── */
+.stat-lbl { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+
+/* ── Charts ── */
+.chart-container { position: relative; height: 110px; width: 100%; margin-bottom: .25rem; }
+
+/* ── Responsive (console-specific overrides) ── */
+@media (max-width: 991.98px) {
+    body { overflow: auto; }
+    .yu-layout { flex-direction: column; height: auto; min-height: 100vh; }
+    .yu-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: visible; }
+    .yu-content { flex: 1; padding: 1rem; overflow: visible; min-height: auto; }
+    .yu-row-console { flex-direction: column !important; height: auto !important; flex: none !important; }
+    .yu-col-terminal { min-height: 0; height: auto !important; }
+    .yu-terminal-wrap { height: 55vmax !important; min-height: 320px; max-height: 520px; }
+    .yu-col-controls { overflow-y: visible !important; }
+}

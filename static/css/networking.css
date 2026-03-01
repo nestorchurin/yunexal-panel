@@ -1,0 +1,85 @@
+/* Networking-specific styles - supplements base.css */
+
+/* ── Toast notifications ── */
+.toast-container { position: fixed; top: 1rem; right: 1rem; z-index: 9999; display: flex; flex-direction: column; gap: .5rem; }
+.toast-msg { padding: .65rem 1rem; border-radius: 8px; font-size: .825rem; font-weight: 500; opacity: 0; transform: translateX(20px); transition: all .25s; pointer-events: none; }
+.toast-msg.show { opacity: 1; transform: translateX(0); }
+.toast-ok  { background: rgba(16,185,129,.15); color: #10b981; border: 1px solid rgba(16,185,129,.25); }
+.toast-err { background: rgba(239,68,68,.15);  color: #ef4444; border: 1px solid rgba(239,68,68,.25); }
+
+/* ── Bandwidth bar track ── */
+.bw-bar-track {
+    height: 14px;
+    background: rgba(255,255,255,.06);
+    border-radius: 99px;
+    overflow: hidden;
+    margin-bottom: .25rem;
+    transition: box-shadow .4s, border .4s;
+}
+.bw-track-gbit  { box-shadow: 0 0 10px rgba(6,182,212,.2); }
+.bw-track-turbo { box-shadow: 0 0 12px rgba(74,222,128,.25); }
+.bw-track-hyper { box-shadow: 0 0 16px rgba(168,85,247,.35); }
+.bw-track-ultra { box-shadow: 0 0 24px rgba(251,191,36,.45); border: 1px solid rgba(251,191,36,.18); }
+
+/* ── Fill base ── */
+.bw-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width .5s cubic-bezier(.4,0,.2,1);
+}
+
+/* Tier: normal (< 1 Gbit/s) — purple */
+.bw-tier-normal { background: linear-gradient(90deg, #7c3aed, #4f46e5); }
+
+/* Tier: gbit (1–5 Gbit/s) — cyan electric shimmer */
+.bw-tier-gbit {
+    background: linear-gradient(90deg, #06b6d4, #3b82f6, #818cf8, #06b6d4);
+    background-size: 200% 100%;
+    animation: bw-slide 20s linear infinite;
+    box-shadow: 0 0 10px rgba(6,182,212,.55), 0 0 20px rgba(59,130,246,.3);
+}
+
+/* Tier: turbo (2.5–5 Gbit/s) — lime green */
+.bw-tier-turbo {
+    background: linear-gradient(90deg, #4ade80, #22d3ee, #86efac, #a3e635, #4ade80);
+    background-size: 200% 100%;
+    animation: bw-slide 15s linear infinite;
+    box-shadow: 0 0 10px rgba(74,222,128,.6), 0 0 22px rgba(34,211,238,.3);
+}
+
+/* Tier: hyper (5–10 Gbit/s) — neon pink / purple */
+.bw-tier-hyper {
+    background: linear-gradient(90deg, #f472b6, #a855f7, #818cf8, #e879f9, #f472b6);
+    background-size: 200% 100%;
+    animation: bw-slide 10s linear infinite;
+    box-shadow: 0 0 14px rgba(168,85,247,.8), 0 0 28px rgba(244,114,182,.5), 0 0 48px rgba(168,85,247,.25);
+}
+
+/* Tier: ultra (≥ 10 Gbit/s) — gold */
+.bw-tier-ultra {
+    background: linear-gradient(90deg,#fcd34d, #f59e0b, #fde68a, #fbbf24, #fcd34d);
+    background-size: 300% 100%;
+    animation: bw-gold 5s linear infinite;
+    box-shadow: 0 0 18px rgba(251,191,36,.9), 0 0 36px rgba(245,158,11,.6), 0 0 64px rgba(251,191,36,.3);
+}
+
+@keyframes bw-slide {
+    0%   { background-position: 0% 0; }
+    100% { background-position: 200% 0; }
+}
+@keyframes bw-gold {
+    0%   { background-position: 0% 0; }
+    100% { background-position: 300% 0; }
+}
+
+/* ── Badges ── */
+.badge-limit     { display: inline-flex; align-items: center; gap: .3rem; font-size: .75rem; font-weight: 600; padding: .25rem .65rem; border-radius: 999px; background: rgba(124,58,237,.14); color: #a78bfa; border: 1px solid rgba(124,58,237,.25); transition: all .3s; }
+.badge-unlimited { background: rgba(16,185,129,.1);   color: #10b981; border: 1px solid rgba(16,185,129,.2); }
+.badge-gbit      { background: rgba(6,182,212,.12);   color: #22d3ee; border: 1px solid rgba(6,182,212,.3); }
+.badge-turbo     { background: rgba(74,222,128,.12);  color: #4ade80; border: 1px solid rgba(74,222,128,.3); }
+.badge-hyper     { background: rgba(168,85,247,.12);  color: #e879f9; border: 1px solid rgba(168,85,247,.3); }
+.badge-ultra     { background: rgba(251,191,36,.12);  color: #fbbf24; border: 1px solid rgba(251,191,36,.35); text-shadow: 0 0 8px rgba(251,191,36,.6); }
+
+/* ── Preset buttons ── */
+.preset-btn { display: inline-flex; align-items: center; justify-content: center; padding: .3rem .7rem; border-radius: 6px; font-size: .775rem; font-weight: 600; cursor: pointer; border: 1px solid var(--bdr); background: var(--surface2); color: var(--muted); transition: all .15s; }
+.preset-btn:hover { border-color: rgba(124,58,237,.4); color: #a78bfa; background: rgba(124,58,237,.07); }

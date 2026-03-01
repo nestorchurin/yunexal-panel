@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — Yunexal Panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg:#0b0b12; --surface:#111119; --surface2:#17171f;
+            --bdr:rgba(255,255,255,.07); --txt:#e0e0f0; --muted:#6a6a8a;
+            --accent:#7c3aed; --err:#ef4444;
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        body {
+            background: var(--bg); color: var(--txt);
+            font-family: 'Inter', sans-serif; min-height: 100vh; margin: 0;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden;
+        }
+        .login-wrap { width: 100%; max-width: 380px; padding: 1.5rem; }
+
+        .login-brand {
+            display: flex; align-items: center; justify-content: center;
+            gap: .55rem; font-size: 1rem; font-weight: 700;
+            letter-spacing: -.025em; margin-bottom: 2rem;
+        }
+        .login-brand .dot {
+            width: 9px; height: 9px; border-radius: 50%;
+            background: var(--accent); box-shadow: 0 0 14px var(--accent);
+        }
+
+        .login-card {
+            background: var(--surface); border: 1px solid var(--bdr);
+            border-radius: 16px; padding: 2rem;
+        }
+        .login-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -.02em; margin-bottom: .3rem; }
+        .login-sub { font-size: .825rem; color: var(--muted); margin-bottom: 1.75rem; }
+
+        .f-group { margin-bottom: 1.1rem; }
+        .f-label { font-size: .8rem; font-weight: 500; color: var(--muted); display: block; margin-bottom: .4rem; }
+        .f-input {
+            background: var(--surface2); border: 1px solid rgba(255,255,255,.1);
+            color: var(--txt); padding: .65rem 1rem; border-radius: 9px;
+            font-size: .875rem; width: 100%; outline: none;
+            transition: border-color .15s, box-shadow .15s;
+            font-family: 'Inter', sans-serif;
+        }
+        .f-input::placeholder { color: var(--muted); opacity: 1; }
+        .f-input:focus { border-color: rgba(124,58,237,.5); box-shadow: 0 0 0 3px rgba(124,58,237,.12); }
+
+        .btn-login {
+            background: var(--accent); color: #fff; border: none;
+            border-radius: 9px; padding: .7rem 1rem; font-size: .875rem;
+            font-weight: 600; width: 100%; cursor: pointer;
+            font-family: 'Inter', sans-serif; transition: background .15s;
+            margin-top: .25rem; display: flex; align-items: center;
+            justify-content: center; gap: .4rem;
+        }
+        .btn-login:hover { background: #6d28d9; }
+
+        .err-alert {
+            background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25);
+            color: #f87171; border-radius: 9px; padding: .65rem 1rem;
+            font-size: .825rem; margin-bottom: 1.25rem;
+            display: flex; align-items: center; gap: .5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-wrap">
+        <div class="login-brand"><span class="dot"></span>Yunexal Panel</div>
+        <div class="login-card">
+            <div class="login-title">Sign in</div>
+            <div class="login-sub">Enter your credentials to continue.</div>
+
+            {% if error.is_some() %}
+            <div class="err-alert">
+                <i class="bi bi-exclamation-circle-fill"></i>
+                {{ error.as_ref().unwrap() }}
+            </div>
+            {% endif %}
+
+            <form method="POST" action="/login">
+                <div class="f-group">
+                    <label for="username" class="f-label">Username</label>
+                    <input type="text" class="f-input" id="username" name="username"
+                           autocomplete="username" required autofocus placeholder="admin">
+                </div>
+                <div class="f-group" style="margin-bottom:1.5rem;">
+                    <label for="password" class="f-label">Password</label>
+                    <input type="password" class="f-input" id="password" name="password"
+                           autocomplete="current-password" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn-login">
+                    <i class="bi bi-box-arrow-in-right"></i> Sign In
+                </button>
+            </form>
+        </div>
+    </div>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

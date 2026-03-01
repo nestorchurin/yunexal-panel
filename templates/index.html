@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yunexal Panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link href="/static/css/base.css" rel="stylesheet">
+    <link href="/static/css/dashboard.css" rel="stylesheet">
+</head>
+<body>
+    <header class="yu-topbar">
+        <div class="yu-brand"><span class="dot"></span>Yunexal Panel</div>
+        <div class="ms-auto d-flex gap-2">
+            {% if is_admin %}
+            <a href="/admin" class="btn-yu btn-yu-ghost"><i class="bi bi-shield-lock"></i> Admin</a>
+            <a href="/servers/new" class="btn-yu btn-yu-primary"><i class="bi bi-plus-lg"></i> New Server</a>
+            {% endif %}
+        </div>
+    </header>
+
+    <div class="container-xl py-4">
+        <div class="mb-4">
+            <h1 style="font-size:1.35rem;font-weight:700;letter-spacing:-.03em;" class="mb-1">Dashboard</h1>
+            <p class="mb-0" style="font-size:.825rem;color:var(--muted);">Manage your game servers</p>
+        </div>
+        <div class="row g-3" id="server-list"
+             hx-get="/api/servers"
+             hx-trigger="every 5s"
+             hx-swap="innerHTML">
+            {% include "server_list.html" %}
+        </div>
+    </div>
+
+    <!-- Edit Server Modal -->
+    <div class="modal fade" id="editServerModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="mb-0 fw-semibold">Edit Server</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <form id="editServerForm">
+                    <div class="modal-body p-4">
+                        <label class="d-block mb-1" style="font-size:.8rem;font-weight:500;color:var(--muted);">Server Name</label>
+                        <input type="text" class="form-input" id="editServerName" name="name" required placeholder="my-server">
+                        <div class="mt-2" style="font-size:.75rem;color:var(--muted);">Renames the Docker container.</div>
+                    </div>
+                    <div class="modal-footer gap-2 d-flex justify-content-end">
+                        <button type="button" class="btn-yu btn-yu-ghost" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn-yu btn-yu-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<div class="col-md-6 col-xl-4" id="container-{{ container.db_id }}">
+    <div class="yu-card h-100">
+        <div class="card-stripe
+            {% if container.state == "running" %}stripe-running
+            {% else if container.state == "restarting" %}stripe-other
+            {% else %}stripe-stopped{% endif %}">
+        </div>
+        <div class="p-3">
+            <div class="d-flex align-items-start justify-content-between mb-2">
+                <div style="font-size:.95rem;font-weight:600;letter-spacing:-.015em;">{{ container.name }}</div>
+                <div class="status-pill
+                    {% if container.state == "running" %}pill-running
+                    {% else if container.state == "restarting" %}pill-other
+                    {% else %}pill-stopped{% endif %}">
+                    <span class="pill-dot"></span>
+                    {{ container.status }}
+                </div>
+            </div>
+            <div class="mb-3" style="font-size:.7rem;font-family:monospace;color:var(--muted);background:var(--surface2);padding:.18rem .5rem;border-radius:5px;display:inline-block;">#{{ container.db_id }}</div>
+            <div class="row g-2 mb-3">
+                <div class="col-6"><div class="stat-box"><div class="stat-lbl">CPU</div><div class="stat-val">{{ container.cpu_usage }}</div></div></div>
+                <div class="col-6"><div class="stat-box"><div class="stat-lbl">RAM</div><div class="stat-val">{{ container.ram_usage }}</div></div></div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap align-items-center">
+                <a href="/servers/{{ container.db_id }}/console" class="btn-yu btn-yu-primary" style="flex:1;justify-content:center;">
+                    <i class="bi bi-terminal-fill"></i> Console
+                </a>
+                {% if container.state == "running" %}
+                <button class="btn-yu btn-yu-danger"
+                        hx-post="/api/servers/{{ container.db_id }}/stop"
+                        hx-target="#container-{{ container.db_id }}"
+                        hx-swap="outerHTML">
+                    <i class="bi bi-stop-fill"></i> Stop
+                </button>
+                {% else %}
+                <button class="btn-yu btn-yu-success"
+                        hx-post="/api/servers/{{ container.db_id }}/start"
+                        hx-target="#container-{{ container.db_id }}"
+                        hx-swap="outerHTML">
+                    <i class="bi bi-play-fill"></i> Start
+                </button>
+                {% endif %}
+                <button class="btn-yu btn-yu-ghost btn-yu-icon"
+                        onclick="openEditModal('{{ container.db_id }}', '{{ container.name }}')"
+                        data-bs-toggle="modal" data-bs-target="#editServerModal"
+                        title="Edit">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                {% if is_admin %}
+                <button class="btn-yu btn-yu-danger btn-yu-icon"
+                        hx-post="/api/servers/{{ container.db_id }}/delete"
+                        hx-confirm="Delete server '{{ container.name }}'? This cannot be undone."
+                        hx-target="#container-{{ container.db_id }}"
+                        hx-swap="outerHTML"
+                        title="Delete">
+                    <i class="bi bi-trash"></i>
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>

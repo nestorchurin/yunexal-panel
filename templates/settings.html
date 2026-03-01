@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ container.name }} - Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link href="/static/css/base.css" rel="stylesheet">
+</head>
+<body>
+    <div class="yu-sb-overlay" id="sbOverlay" onclick="closeSidebar()"></div>
+    <div class="yu-layout">
+        <aside class="yu-sidebar" id="sidebar">
+            <a href="/" class="sb-back"><i class="bi bi-arrow-left"></i> Dashboard</a>
+            <div class="sb-brand"><span class="dot"></span>Yunexal Panel</div>
+            <div class="sb-server">
+                <div class="sb-server-name">{{ container.name }}</div>
+                <span class="sb-status
+                    {% if container.state == "running" %}sb-running
+                    {% else if container.state == "restarting" %}sb-other
+                    {% else %}sb-stopped{% endif %}">
+                    <span class="sb-dot"></span>{{ container.state }}
+                </span>
+            </div>
+            <nav class="sb-nav">
+                <a href="/servers/{{id}}/console" class="sb-link"><i class="bi bi-terminal-fill"></i> Console</a>
+                <a href="/servers/{{id}}/files" class="sb-link"><i class="bi bi-folder2-open"></i> Files</a>
+                <a href="/servers/{{id}}/networking" class="sb-link"><i class="bi bi-diagram-3"></i> Networking</a>
+                <a href="/servers/{{id}}/settings" class="sb-link active"><i class="bi bi-gear"></i> Settings</a>
+            </nav>
+        </aside>
+        <main class="yu-main">
+            <div class="yu-topbar-mobile">
+                <button class="yu-hamburger" onclick="openSidebar()"><i class="bi bi-list"></i></button>
+                <div class="yu-mob-brand"><span class="dot"></span>{{ container.name }}</div>
+            </div>
+            <div class="yu-content">
+                <h1 style="font-size:1.25rem;font-weight:700;letter-spacing:-.02em;margin-bottom:1.5rem;">Settings</h1>
+
+                <div class="yu-panel" style="border-color:rgba(239,68,68,.25);">
+                    <div class="yu-panel-hd" style="color:#ef4444;"><i class="bi bi-exclamation-triangle"></i> Danger Zone</div>
+                    <div class="yu-panel-bd">
+                        <p style="font-size:.875rem;font-weight:600;margin-bottom:.35rem;">Delete Server</p>
+                        <p style="font-size:.825rem;color:var(--muted);margin-bottom:1rem;">Once you delete a server, there is no going back. The volume directory will also be removed.</p>
+                        {% if is_admin %}
+                        <button class="btn-yu btn-yu-danger"
+                                hx-post="/api/servers/{{id}}/delete"
+                                hx-confirm="Are you sure you want to delete this server? This cannot be undone.">
+                            <i class="bi bi-trash"></i> Delete Server
+                        </button>
+                        {% else %}
+                        <p style="font-size:.825rem;color:var(--muted);">Only admins can delete servers.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/sidebar.js"></script>
+    <script src="/static/js/footer.js"></script>
+</body>
+</html>

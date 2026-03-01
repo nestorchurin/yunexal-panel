@@ -1,0 +1,27 @@
+[package]
+name = "yunexal-panel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.40", features = ["full"] }
+axum = { version = "0.8.8", features = ["ws", "multipart"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "tls-native-tls"] }
+bollard = "0.20.1"
+askama = "0.15.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.149"
+thiserror = "2.0.18"
+anyhow = "1.0.102"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+serde_yaml = "0.9.34-deprecated"
+rand = "0.10.0"
+futures-util = "0.3.32"
+dashmap = "6.0"
+html-escape = "0.2.13"
+urlencoding = "2"
+axum-extra = { version = "0.12.5", features = ["cookie-private"] }
+tower-http = { version = "0.6", features = ["fs"] }
+argon2 = { version = "0.5", features = ["std"] }
