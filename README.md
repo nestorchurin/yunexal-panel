@@ -7,6 +7,67 @@ Built with **Rust + Axum**, **HTMX**, **SQLite**, and **Bollard** (Docker SDK).
 
 ---
 
+## Installation (pre-built binary)
+
+Download the latest binary from the [Releases](https://github.com/nestorchurin/yunexal-panel/releases) page.
+
+```bash
+# 1. Download and extract
+tar -xzf yunexal-panel-linux-x86_64.tar.gz
+cd yunexal-panel
+
+# 2. Generate .env (interactive — sets admin credentials + cookie secret)
+./setup.sh
+
+# 3. Run
+./yunexal-panel
+```
+
+That's it. No Rust, no Cargo, no extra files needed — templates and static assets are embedded in the binary. The SQLite database and volume directories are created automatically on first run.
+
+---
+
+## Requirements
+
+| Requirement | Notes |
+|---|---|
+| **Docker Engine** 24.0+ | Must be running |
+| **Docker image `alpine`** | Pulled automatically by `setup.sh` |
+| **OS** | Linux x86_64 |
+| **RAM** | 256 MB for the panel process |
+
+> **Docker socket access** — add your user to the `docker` group:
+> ```bash
+> sudo usermod -aG docker $USER && newgrp docker
+> ```
+
+---
+
+## Configuration
+
+All configuration is done via `.env` in the **same directory as the binary**.  
+Use `setup.sh` to generate it, or create it manually:
+
+```dotenv
+# Admin credentials — applied to the DB on every startup
+PANEL_USERNAME=admin
+PANEL_PASSWORD=your_secure_password
+
+# 128-char hex string (64 random bytes) — signs session cookies.
+# Generate with:  openssl rand -hex 64
+COOKIE_SECRET=<128 hex chars>
+```
+
+> Changing `PANEL_PASSWORD` takes effect on next restart.  
+> Changing `COOKIE_SECRET` invalidates all active sessions.
+
+Alternatively pass values as environment variables without a `.env` file:
+```bash
+PANEL_USERNAME=admin PANEL_PASSWORD=secret COOKIE_SECRET=<128hex> ./yunexal-panel
+```
+
+---
+
 ## Features
 
 ### Dashboard
@@ -26,13 +87,13 @@ Built with **Rust + Axum**, **HTMX**, **SQLite**, and **Bollard** (Docker SDK).
 
 ### File Manager
 - Browse volume directories with folder/file icons and a breadcrumb bar
-- **Edit** text files in a full-screen code editor (Monaco-style textarea)
+- **Edit** text files in a full-screen code editor
 - **Create** new files and directories from the browser
-- **Rename** files and directories (right-click context menu or rename modal)
-- **Copy** files/directories (right-click → Copy, navigate, Paste)
+- **Rename** files and directories (right-click context menu)
+- **Copy / Paste** files and directories
 - **Delete** files and directories (with confirmation)
-- **Drag-and-drop upload** — drop files onto the panel; progress bar shows per-file and overall progress
-- All file operations fall back to an Alpine Docker helper container to bypass root-owned volume permissions
+- **Drag-and-drop upload** with per-file progress bar (supports large files, streamed directly to disk)
+- All write operations use an Alpine Docker helper container to bypass root-owned volume permissions
 
 ### Networking
 - View all port bindings (host ↔ container)
@@ -43,7 +104,7 @@ Built with **Rust + Axum**, **HTMX**, **SQLite**, and **Bollard** (Docker SDK).
 
 ### Server Creation
 - Create a new Docker container from a Docker Hub image name
-- Optional Docker Compose-style YAML config field (image, ports, environment, restart policy, CPU/RAM limits)
+- Optional Docker Compose-style YAML config (image, ports, environment, restart policy, CPU/RAM limits)
 - Auto-detects environment variables declared in the image (`EULA`, `MEMORY`, etc.)
 - Assign an owner user to the server
 
@@ -60,91 +121,44 @@ Built with **Rust + Axum**, **HTMX**, **SQLite**, and **Bollard** (Docker SDK).
 
 ---
 
-## Requirements
-
-| Requirement | Minimum version |
-|---|---|
-| **Rust** (stable) | 1.78+ |
-| **Cargo** | bundled with Rust |
-| **Docker Engine** | 24.0+ |
-| **Docker image `alpine`** | latest (pulled automatically by `setup.sh`) |
-| **OS** | Linux (x86_64 or arm64); macOS works for dev |
-| **RAM** | 256 MB for the panel process |
-| **Disk** | Space for server volumes + SQLite DB |
-
-> **Docker socket access** — the panel process must be able to reach the Docker daemon.  
-> Either run as root or add your user to the `docker` group:
-> ```bash
-> sudo usermod -aG docker $USER && newgrp docker
-> ```
-
----
-
-## Quick Start
+## Building from Source
 
 ```bash
-# 1. Clone
 git clone https://github.com/nestorchurin/yunexal-panel.git
 cd yunexal-panel
-
-# 2. Generate .env (interactive — sets admin credentials + cookie secret)
-./setup.sh
-
-# 3. Build and run
-cargo run
-
-# 4. Open http://localhost:3000
+./setup.sh          # generate .env
+cargo build --release
+./target/release/yunexal-panel
 ```
 
----
-
-## Configuration
-
-All configuration is done via `.env` (never committed to git).  
-Use `setup.sh` to generate it, or create it manually:
-
-```dotenv
-# Admin credentials — applied to the DB on every startup
-PANEL_USERNAME=admin
-PANEL_PASSWORD=your_secure_password
-
-# 128-char hex string (64 random bytes) — signs session cookies.
-# Generate with:  openssl rand -hex 64
-COOKIE_SECRET=<128 hex chars>
-```
-
-> Changing `COOKIE_SECRET` invalidates all active sessions.
+Requires Rust 1.78+ — install via [rustup.rs](https://rustup.rs).
 
 ---
 
 ## Project Structure
 
 ```
-├── src/
-│   ├── main.rs               # Entry point, Axum router setup
-│   ├── state.rs              # Shared AppState (DB pool, Docker client, cookie key)
-│   ├── auth.rs               # Session middleware, is_admin helpers
-│   ├── db.rs                 # SQLite schema, queries (users, servers, ports)
-│   ├── docker.rs             # Bollard wrappers (start/stop/stats/volumes/bandwidth)
-│   ├── compose.rs            # Docker Compose YAML parser
-│   └── handlers/
-│       ├── mod.rs            # Router definition (public / protected / admin_only)
-│       ├── auth.rs           # Login / logout handlers
-│       ├── dashboard.rs      # Dashboard + server list fragment
-│       ├── servers.rs        # Console, Files, Settings, Stats, lifecycle actions
-│       ├── files.rs          # File manager API (list/edit/create/rename/copy/delete/upload)
-│       ├── network.rs        # Networking page + port/bandwidth API
-│       ├── create.rs         # New server form + creation handler
-│       ├── admin.rs          # Admin panel (user/server management)
-│       ├── ws.rs             # WebSocket console handler
-│       └── templates.rs      # Askama template structs
-├── templates/                # Askama HTML templates
-├── static/                   # CSS, JS, icons
-├── volumes/                  # Docker volume mounts (git-ignored)
-├── yunexal.db                # SQLite database (git-ignored)
-├── .env                      # Secrets (git-ignored)
-├── setup.sh                  # Interactive environment generator
-└── Cargo.toml
+src/
+├── main.rs               # Entry point, router setup
+├── state.rs              # AppState (DB pool, Docker client, cookie key)
+├── auth.rs               # Session middleware, admin helpers
+├── db.rs                 # SQLite schema & queries
+├── docker.rs             # Bollard wrappers (start/stop/stats/volumes/bandwidth)
+├── compose.rs            # Docker Compose YAML parser
+└── handlers/
+    ├── mod.rs            # Router (public / protected / admin_only), embedded assets
+    ├── auth.rs           # Login / logout
+    ├── dashboard.rs      # Dashboard + server list fragment
+    ├── servers.rs        # Console, Files, Settings, Stats, lifecycle
+    ├── files.rs          # File manager API
+    ├── network.rs        # Networking + port/bandwidth API
+    ├── create.rs         # New server creation
+    ├── admin.rs          # Admin panel
+    ├── ws.rs             # WebSocket console
+    └── templates.rs      # Askama template structs
+templates/                # Embedded at compile time (Askama)
+static/                   # Embedded at compile time (rust-embed)
+setup.sh                  # Interactive .env generator
 ```
 
 ---
@@ -157,7 +171,8 @@ COOKIE_SECRET=<128 hex chars>
 | Async runtime | [Tokio](https://tokio.rs) |
 | Docker SDK | [Bollard](https://github.com/fussybeaver/bollard) |
 | Database | SQLite via [SQLx](https://github.com/launchbadge/sqlx) |
-| Templates | [Askama](https://github.com/djc/askama) (type-safe Jinja2) |
+| Templates | [Askama](https://github.com/djc/askama) — compiled into binary |
+| Static assets | [rust-embed](https://github.com/pyros2097/rust-embed) — compiled into binary |
 | Frontend | [HTMX](https://htmx.org) + Bootstrap 5 + vanilla JS |
 | Auth / cookies | [axum-extra](https://docs.rs/axum-extra) private cookies + Argon2 |
 
