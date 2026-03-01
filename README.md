@@ -1,9 +1,23 @@
-# Yunexal Panel
+# Yunexal Panel — `unstable`
 
-> **v0.1.0** — Beta  
+> ⚠️ **This is the `unstable` branch** — features here are in active development and may be broken or incomplete.  
+> For the latest stable release see the [`main`](https://github.com/nestorchurin/yunexal-panel/tree/main) branch.
+
+> **v0.2.0-dev** — Unstable  
 > A self-hosted web panel for managing Docker game-server containers.
 
-Built with **Rust + Axum**, **HTMX**, **SQLite**, and **Bollard** (Docker SDK).
+Built with **Rust + Axum**, **SQLite**, and **Bollard** (Docker SDK).
+
+---
+
+### What's new in this branch (unreleased)
+
+- **In-place dashboard** — server cards update without DOM re-creation (no animation flicker, live CPU/RAM via 1 s polling)
+- **In-place admin panel** — containers, images, and overview all update in-place
+- **AMOLED mode** — pure-black theme for mobile OLED screens, auto-enables fullscreen
+- **Mobile fixes** — `visibilitychange` polling resume, 7-day session cookie, 300 ms tap-delay removed
+- **Admin images** — in-place refresh, pull, delete, ENV override editor, duplicate
+- All `fetch` calls hardened with `credentials: 'same-origin'`
 
 ---
 
