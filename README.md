@@ -13,8 +13,9 @@ Download the latest binary from the [Releases](https://github.com/nestorchurin/y
 
 ```bash
 # 1. Download and extract
-tar -xzf yunexal-panel-linux-x86_64.tar.gz
-cd yunexal-panel
+wget https://github.com/nestorchurin/yunexal-panel/releases/download/v0.1.0/yunexal-panel-v0.1.0-linux-x86_64.tar.gz
+tar -xzf yunexal-panel-v0.1.0-linux-x86_64.tar.gz
+cd yunex-release
 
 # 2. Generate .env (interactive — sets admin credentials + cookie secret)
 ./setup.sh
