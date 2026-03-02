@@ -231,7 +231,7 @@
                         </thead>
                         <tbody id="containers-tbody">
                             {% for c in containers %}
-                            <tr data-db-id="{{ c.db_id }}">
+                            <tr data-db-id="{{ c.db_id }}" data-state="{{ c.state }}">
                                 <td style="font-weight:600;">{{ c.name }}</td>
                                 <td class="mono">#{{ c.db_id }}</td>
                                 <td class="mono" style="color:var(--muted);font-size:.75rem;">{{ c.short_id }}</td>
@@ -245,17 +245,17 @@
                                     <span class="pill pill-stop"><span class="pill-dot"></span>{{ c.state }}</span>
                                     {% endif %}
                                 </td>
-                                <td style="color:var(--muted);font-size:.8rem;">{{ c.status }}</td>
-                                <td style="font-size:.8rem;">{{ c.cpu_usage }}</td>
-                                <td style="font-size:.8rem;">{{ c.ram_usage }}</td>
+                                <td data-el="status" style="color:var(--muted);font-size:.8rem;">{{ c.status }}</td>
+                                <td id="ac-cpu-{{ c.db_id }}" style="font-size:.8rem;">{{ c.cpu_usage }}</td>
+                                <td id="ac-ram-{{ c.db_id }}" style="font-size:.8rem;">{{ c.ram_usage }}</td>
                                 <td style="text-align:right;">
                                     <div class="ac-actions" style="display:flex;gap:.4rem;justify-content:flex-end;">
                                         <a href="/admin/servers/{{ c.db_id }}/edit" class="btn-yu btn-ghost-yu btn-sm-yu" title="Edit"><i class="bi bi-pencil"></i></a>
                                         <a href="/servers/{{ c.db_id }}/console" class="btn-yu btn-ghost-yu btn-sm-yu"><i class="bi bi-terminal"></i></a>
                                         {% if c.state == "running" %}
-                                        <button class="btn-yu btn-danger-yu btn-sm-yu" onclick="adminAction('{{ c.db_id }}', 'stop', this)"><i class="bi bi-stop-fill"></i></button>
+                                        <button data-el="action-btn" class="btn-yu btn-danger-yu btn-sm-yu" onclick="adminAction('{{ c.db_id }}', 'stop', this)"><i class="bi bi-stop-fill"></i></button>
                                         {% else %}
-                                        <button class="btn-yu btn-success-yu btn-sm-yu" onclick="adminAction('{{ c.db_id }}', 'start', this)"><i class="bi bi-play-fill"></i></button>
+                                        <button data-el="action-btn" class="btn-yu btn-success-yu btn-sm-yu" onclick="adminAction('{{ c.db_id }}', 'start', this)"><i class="bi bi-play-fill"></i></button>
                                         {% endif %}
                                     </div>
                                 </td>
