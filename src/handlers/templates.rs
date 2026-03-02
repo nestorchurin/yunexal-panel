@@ -184,13 +184,20 @@ pub struct CreateServerForm {
     pub dns_srv_name: String,
     #[serde(default)]
     pub dns_srv_port: String,
-    /// SRV target hostname (leave empty to use zone name)
+    /// SRV target hostname (leave empty to use zone name or auto-generated A record)
     #[serde(default)]
     pub dns_srv_target: String,
     #[serde(default)]
     pub dns_srv_priority: String,
     #[serde(default)]
     pub dns_srv_weight: String,
+    // ── A record (created before SRV so its FQDN is the SRV target) ──────────
+    /// Subdomain for the auto-created A record (e.g. "mc" → mc.example.com)
+    #[serde(default)]
+    pub dns_a_subdomain: String,
+    /// IPv4 address for the A record
+    #[serde(default)]
+    pub dns_a_ip: String,
 }
 
 #[derive(Deserialize)]

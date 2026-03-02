@@ -405,6 +405,7 @@
                 <button class="yu-inner-tab active" onclick="dnsSwitchTab('providers', this)">Providers</button>
                 <button class="yu-inner-tab" onclick="dnsSwitchTab('records', this)">Records</button>
                 <button class="yu-inner-tab" onclick="dnsSwitchTab('ddns', this)">DDNS</button>
+                <button class="yu-inner-tab" onclick="dnsSwitchTab('containers', this)"><i class="bi bi-boxes me-1"></i>Containers</button>
             </div>
 
             <!-- ── SUB-TAB: Providers ── -->
@@ -568,6 +569,39 @@
             </div>
 
         </div>
+
+            <!-- ── SUB-TAB: Containers ── -->
+            <div id="dns-tab-containers" class="dns-subtab">
+                <div class="yu-card">
+                    <div class="yu-card-hd">
+                        <span><i class="bi bi-boxes me-2 text-muted"></i>Container-linked DNS Records</span>
+                        <div style="display:flex;align-items:center;gap:.75rem;">
+                            <span id="dns-containers-count" style="font-size:.75rem;color:var(--muted);"></span>
+                            <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsLoadContainerRecords()" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
+                        </div>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="yu-table">
+                            <thead>
+                                <tr>
+                                    <th>Server</th>
+                                    <th>Type</th>
+                                    <th>Name</th>
+                                    <th>Value</th>
+                                    <th>Zone</th>
+                                    <th>Remote ID</th>
+                                    <th style="text-align:right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dns-containers-tbody">
+                                <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Switch to this tab to load.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div><!-- /dns-tab-containers -->
+
+        </div><!-- /tab-dns -->
 
         <!-- ── DNS: Add/Edit Record Modal ── -->
         <div id="dnsRecordModal" class="yu-modal" style="display:none;">
@@ -995,7 +1029,7 @@
 
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/admin.js?v=11"></script>
+    <script src="/static/js/admin.js?v=12"></script>
     <script src="/static/js/footer.js"></script>
 </body>
 </html>

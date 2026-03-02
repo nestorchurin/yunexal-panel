@@ -41,6 +41,8 @@ use dns::{
     api_dns_test_provider, api_dns_list_zones, api_dns_remote_records, api_dns_local_records,
     api_dns_add_record, api_dns_update_record, api_dns_delete_record,
     api_dns_public_ip, api_dns_sync, api_dns_sync_records, api_dns_set_proxy,
+    api_dns_container_records,
+    api_server_dns_list, api_server_dns_add, api_server_dns_delete,
 };
 use auth::{login_page, login_submit, logout};
 use create::{api_image_env, api_image_env_overrides, api_local_images, create_server};
@@ -94,6 +96,14 @@ pub fn create_router(state: AppState) -> Router {
             .layer(axum::extract::DefaultBodyLimit::disable()))
         // WebSocket console
         .route("/api/servers/{id}/ws", get(console_ws))
+        // Server DNS records (owner-accessible)
+        .route("/api/servers/{id}/dns", get(api_server_dns_list))
+        .route("/api/servers/{id}/dns/add", post(api_server_dns_add))
+        .route("/api/servers/{id}/dns/{record_id}/delete", post(api_server_dns_delete))
+        // DNS read-only (needed by console add-record form)
+        .route("/api/dns/providers", get(api_dns_list_providers))
+        .route("/api/dns/providers/{id}/zones", get(api_dns_list_zones))
+        .route("/api/dns/public-ip", get(api_dns_public_ip))
         // Account (own user)
         .route("/api/user/change-password", post(admin_change_password))
         .route_layer(middleware::from_fn_with_state(
@@ -139,6 +149,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/admin/dns/public-ip",  get(api_dns_public_ip))
         .route("/api/admin/dns/sync",       post(api_dns_sync))
         .route("/api/admin/dns/providers/{id}/sync-records", post(api_dns_sync_records))
+        .route("/api/admin/dns/container-records", get(api_dns_container_records))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware::require_admin,

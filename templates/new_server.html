@@ -622,17 +622,33 @@
                         <div style="background:var(--surface3);border:1px solid var(--bdr);border-radius:8px;padding:.35rem .7rem;font-size:.74rem;color:var(--muted);margin-bottom:.75rem;">
                             Record name: <code id="srv-name-preview" style="color:#a78bfa;">_service._tcp</code>
                         </div>
-                        <div style="display:grid;grid-template-columns:110px 1fr;gap:.6rem;margin-bottom:.6rem;">
+                        <!-- A record: subdomain + IP ──────────────── -->
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.6rem;">
+                            <div>
+                                <label class="field-label">Subdomain <span style="font-size:.69rem;color:var(--muted);">(створюється A-запис)</span></label>
+                                <div style="display:flex;align-items:center;gap:.4rem;">
+                                    <input type="text" class="form-control" id="srv-a-subdomain" placeholder="mc" oninput="updateSrvTargetPreview()">
+                                    <span id="srv-zone-suffix" style="font-size:.76rem;color:var(--muted);white-space:nowrap;"></span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="field-label">IP for A record</label>
+                                <div style="display:flex;gap:.35rem;">
+                                    <input type="text" class="form-control" id="srv-a-ip" placeholder="1.2.3.4">
+                                    <button type="button" style="background:var(--surface3);border:1px solid var(--bdr2);color:var(--txt);border-radius:8px;padding:.3rem .6rem;white-space:nowrap;cursor:pointer;" onclick="fetchPublicIpForSrv()" title="Fetch public IP"><i class="bi bi-cloud-arrow-down"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- SRV target preview (auto-computed) -->
+                        <div style="background:var(--surface3);border:1px solid var(--bdr);border-radius:8px;padding:.35rem .7rem;font-size:.74rem;color:var(--muted);margin-bottom:.75rem;">
+                            SRV target → <code id="srv-target-preview" style="color:#a78bfa;">— filling zone domain —</code>
+                        </div>
+                        <!-- Port / Priority / Weight -->
+                        <div style="display:grid;grid-template-columns:110px 1fr 1fr;gap:.6rem;">
                             <div>
                                 <label class="field-label">Port</label>
                                 <input type="number" class="form-control" id="srv-port" min="1" max="65535" placeholder="25565">
                             </div>
-                            <div>
-                                <label class="field-label">Target Host <span style="font-size:.69rem;color:var(--muted);">(blank = zone domain)</span></label>
-                                <input type="text" class="form-control" id="srv-target" placeholder="Leave blank to use zone domain">
-                            </div>
-                        </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;">
                             <div>
                                 <label class="field-label">Priority</label>
                                 <input type="number" class="form-control" id="srv-priority" value="0" min="0">
@@ -692,6 +708,8 @@
     <input type="hidden" name="dns_srv_target" id="h-dns-srv-target" value="">
     <input type="hidden" name="dns_srv_priority" id="h-dns-srv-priority" value="0">
     <input type="hidden" name="dns_srv_weight" id="h-dns-srv-weight" value="0">
+    <input type="hidden" name="dns_a_subdomain" id="h-dns-a-subdomain" value="">
+    <input type="hidden" name="dns_a_ip" id="h-dns-a-ip" value="">
     <input type="hidden" id="config" name="config">
     </form>
 
@@ -937,6 +955,7 @@ function onSrvToggle() {
         const hp = document.querySelector('#ports-container .host-input');
         const sp = document.getElementById('srv-port');
         if (hp && hp.value && !sp.value) sp.value = hp.value;
+        updateSrvTargetPreview();
     }
 }
 function loadSrvProviders() {
@@ -954,7 +973,7 @@ function loadSrvProviders() {
 function onSrvProviderChange() {
     const pid = document.getElementById('srv-provider').value;
     const sel = document.getElementById('srv-zone');
-    if (!pid) { sel.innerHTML = '<option value="">Select provider first</option>'; return; }
+    if (!pid) { sel.innerHTML = '<option value="">Select provider first</option>'; updateSrvTargetPreview(); return; }
     sel.innerHTML = '<option value="">Loading\u2026</option>';
     fetch(`/api/admin/dns/providers/${pid}/zones`, { credentials: 'same-origin' })
         .then(r => r.json()).then(d => {
@@ -964,7 +983,34 @@ function onSrvProviderChange() {
                 o.value = z.id; o.textContent = z.name; o.dataset.name = z.name;
                 sel.appendChild(o);
             });
+            sel.onchange = () => updateSrvTargetPreview();
         }).catch(() => { sel.innerHTML = '<option value="">Failed to load</option>'; });
+}
+function _getSrvZoneName() {
+    const zSel = document.getElementById('srv-zone');
+    const idx = zSel.selectedIndex;
+    return idx > 0 ? (zSel.options[idx]?.dataset?.name || zSel.options[idx]?.text || '') : '';
+}
+function updateSrvTargetPreview() {
+    const sub    = document.getElementById('srv-a-subdomain').value.trim();
+    const zone   = _getSrvZoneName();
+    const suffix = document.getElementById('srv-zone-suffix');
+    const prev   = document.getElementById('srv-target-preview');
+    if (!prev) return;
+    if (zone) { suffix.textContent = '.' + zone; } else { suffix.textContent = ''; }
+    if (sub && zone)  { prev.textContent = `${sub}.${zone}`; }
+    else if (zone)    { prev.textContent = zone + ' (zone root)'; }
+    else              { prev.textContent = '\u2014 select zone first \u2014'; }
+}
+function fetchPublicIpForSrv() {
+    const btn = event.currentTarget;
+    const icon = btn.querySelector('i');
+    icon.className = 'bi bi-arrow-repeat';
+    fetch('/api/admin/dns/public-ip', { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(d => { if (d.ip) document.getElementById('srv-a-ip').value = d.ip; })
+        .catch(() => {})
+        .finally(() => { icon.className = 'bi bi-cloud-arrow-down'; });
 }
 function updateSrvPreview() {
     const s = document.getElementById('srv-service').value.trim().toLowerCase() || 'service';
@@ -989,16 +1035,21 @@ function prepareSrvHiddenFields() {
     const svc   = document.getElementById('srv-service').value.trim().toLowerCase();
     const proto = document.getElementById('srv-proto').value;
     const port  = document.getElementById('srv-port').value;
+    const aSub  = document.getElementById('srv-a-subdomain').value.trim();
+    const aIp   = document.getElementById('srv-a-ip').value.trim();
     if (!pid || !zid || !svc || !port) { document.getElementById('h-dns-srv-enabled').value = '0'; return; }
+    const computedTarget = aSub && zname ? `${aSub}.${zname}` : '';
     document.getElementById('h-dns-srv-enabled').value   = '1';
     document.getElementById('h-dns-provider-id').value   = pid;
     document.getElementById('h-dns-zone-id').value       = zid;
     document.getElementById('h-dns-zone-name').value     = zname;
     document.getElementById('h-dns-srv-name').value      = `_${svc}._${proto}`;
     document.getElementById('h-dns-srv-port').value      = port;
-    document.getElementById('h-dns-srv-target').value    = document.getElementById('srv-target').value.trim();
+    document.getElementById('h-dns-srv-target').value    = computedTarget;
     document.getElementById('h-dns-srv-priority').value  = document.getElementById('srv-priority').value || '0';
     document.getElementById('h-dns-srv-weight').value    = document.getElementById('srv-weight').value || '0';
+    document.getElementById('h-dns-a-subdomain').value   = aSub;
+    document.getElementById('h-dns-a-ip').value          = aIp;
 }
 
 </script>

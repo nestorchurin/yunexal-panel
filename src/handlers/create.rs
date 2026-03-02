@@ -293,28 +293,53 @@ pub async fn create_server(
     };
 
     if db_id > 0 {
-        // ── Auto-create SRV DNS record ────────────────────────────────────────
+        // ── Auto-create A + SRV DNS records ───────────────────────────────────
         if form.dns_srv_enabled.trim() == "1" {
             let pid: Option<i64> = form.dns_provider_id.trim().parse().ok();
             let port: Option<u64> = form.dns_srv_port.trim().parse().ok();
-            let srv_name = form.dns_srv_name.trim().to_string();
-            let zone_id  = form.dns_zone_id.trim().to_string();
+            let srv_name  = form.dns_srv_name.trim().to_string();
+            let zone_id   = form.dns_zone_id.trim().to_string();
             let zone_name = form.dns_zone_name.trim().to_string();
             let priority: i64 = form.dns_srv_priority.trim().parse().unwrap_or(0);
             let weight: u64   = form.dns_srv_weight.trim().parse().unwrap_or(0);
-            let target = if form.dns_srv_target.trim().is_empty() {
-                zone_name.clone()
-            } else {
-                form.dns_srv_target.trim().to_string()
-            };
+            let a_subdomain   = form.dns_a_subdomain.trim().to_string();
+            let a_ip          = form.dns_a_ip.trim().to_string();
+
             if let (Some(pid), Some(port)) = (pid, port) {
                 if !srv_name.is_empty() && !zone_id.is_empty() {
                     if let Ok(Some(provider)) = db::dns_get_provider(&state.db, pid).await {
                         let creds: serde_json::Value = serde_json::from_str(&provider.credentials)
                             .unwrap_or(serde_json::Value::Object(Default::default()));
                         if let Ok(client) = dns_lib::DnsClient::from_type(&provider.provider_type, &creds) {
+
+                            // Step 1 – A record (when subdomain + IP are supplied)
+                            let target = if !a_subdomain.is_empty() && !a_ip.is_empty() {
+                                let a_remote_id = client.create_record(&zone_id, &dns_lib::DnsRecordInput {
+                                    record_type: "A".to_string(),
+                                    name:        a_subdomain.clone(),
+                                    value:       a_ip.clone(),
+                                    ttl:         1,
+                                    priority:    0,
+                                    proxied:     false,
+                                }).await.unwrap_or_default();
+                                let _ = db::dns_add_record(
+                                    &state.db, pid,
+                                    &zone_id, &zone_name,
+                                    "A", &a_subdomain, &a_ip,
+                                    1, 0, false, &a_remote_id,
+                                    Some(db_id), false, 300,
+                                ).await;
+                                // SRV target = fully-qualified subdomain
+                                format!("{}.{}", a_subdomain, zone_name)
+                            } else if !form.dns_srv_target.trim().is_empty() {
+                                form.dns_srv_target.trim().to_string()
+                            } else {
+                                zone_name.clone()
+                            };
+
+                            // Step 2 – SRV record
                             let srv_value = format!("{} {} {}", weight, port, target);
-                            let remote_id = client.create_record(&zone_id, &dns_lib::DnsRecordInput {
+                            let srv_remote_id = client.create_record(&zone_id, &dns_lib::DnsRecordInput {
                                 record_type: "SRV".to_string(),
                                 name:        srv_name.clone(),
                                 value:       srv_value.clone(),
@@ -326,7 +351,7 @@ pub async fn create_server(
                                 &state.db, pid,
                                 &zone_id, &zone_name,
                                 "SRV", &srv_name, &srv_value,
-                                1, priority, false, &remote_id,
+                                1, priority, false, &srv_remote_id,
                                 Some(db_id), false, 300,
                             ).await;
                         }

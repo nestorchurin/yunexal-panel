@@ -548,3 +548,167 @@ pub async fn api_dns_sync_records(
 
     Json(json!({ "ok": true, "synced": synced }))
 }
+
+// ── GET /api/admin/dns/container-records ─────────────────────────────────────
+// Lists every panel-tracked record linked to a container, enriched with server name.
+
+pub async fn api_dns_container_records(State(state): State<AppState>) -> Json<Value> {
+    let records = match db::dns_list_all_container_records(&state.db).await {
+        Ok(r)  => r,
+        Err(e) => return Json(json!({ "ok": false, "error": e.to_string() })),
+    };
+    // Build server_id → name map
+    let servers: std::collections::HashMap<i64, String> =
+        db::list_servers_basic_info(&state.db).await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id, name, _)| (id, name))
+            .collect();
+
+    let list: Vec<Value> = records.iter().map(|r| {
+        let sname = r.container_id
+            .and_then(|id| servers.get(&id).cloned())
+            .unwrap_or_default();
+        json!({
+            "id":           r.id,
+            "server_id":    r.container_id,
+            "server_name":  sname,
+            "provider_id":  r.provider_id,
+            "zone_id":      r.zone_id,
+            "zone_name":    r.zone_name,
+            "record_type":  r.record_type,
+            "name":         r.name,
+            "value":        r.value,
+            "ttl":          r.ttl,
+            "priority":     r.priority,
+            "proxied":      r.proxied != 0,
+            "remote_id":    r.remote_id,
+            "ddns_enabled": r.ddns_enabled != 0,
+            "created_at":   r.created_at,
+        })
+    }).collect();
+
+    Json(json!({ "ok": true, "records": list }))
+}
+
+// ── GET /api/servers/:id/dns ──────────────────────────────────────────────────
+// Lists DNS records linked to a specific server (authenticated, not admin-only).
+
+pub async fn api_server_dns_list(
+    State(state): State<AppState>,
+    Path(server_id): Path<i64>,
+) -> Json<Value> {
+    match db::dns_list_records_by_server_id(&state.db, server_id).await {
+        Ok(records) => {
+            let list: Vec<Value> = records.iter().map(|r| json!({
+                "id":          r.id,
+                "provider_id": r.provider_id,
+                "zone_name":   r.zone_name,
+                "record_type": r.record_type,
+                "name":        r.name,
+                "value":       r.value,
+                "ttl":         r.ttl,
+                "priority":    r.priority,
+                "proxied":     r.proxied != 0,
+                "remote_id":   r.remote_id,
+                "ddns_enabled":r.ddns_enabled != 0,
+                "created_at":  r.created_at,
+            })).collect();
+            Json(json!({ "ok": true, "records": list }))
+        }
+        Err(e) => Json(json!({ "ok": false, "error": e.to_string() })),
+    }
+}
+
+// ── POST /api/servers/:id/dns/add ─────────────────────────────────────────────
+// Adds a DNS record linked to a server. Any authenticated user (owner check is
+// done at the auth layer since protected routes only reach owner-accessible ids).
+
+#[derive(Deserialize)]
+pub struct AddServerDnsBody {
+    pub provider_id:   i64,
+    pub zone_id:       String,
+    pub zone_name:     String,
+    pub record_type:   String,
+    pub name:          String,
+    pub value:         String,
+    pub ttl:           Option<i64>,
+    pub priority:      Option<i64>,
+    pub proxied:       Option<bool>,
+}
+
+pub async fn api_server_dns_add(
+    State(state): State<AppState>,
+    Path(server_id): Path<i64>,
+    Json(body): Json<AddServerDnsBody>,
+) -> Json<Value> {
+    let provider = match db::dns_get_provider(&state.db, body.provider_id).await {
+        Ok(Some(p)) => p,
+        Ok(None)    => return Json(json!({ "ok": false, "error": "Provider not found" })),
+        Err(e)      => return Json(json!({ "ok": false, "error": e.to_string() })),
+    };
+    let ttl      = body.ttl.unwrap_or(1);
+    let priority = body.priority.unwrap_or(0);
+    let proxied  = body.proxied.unwrap_or(false);
+
+    let creds: Value = serde_json::from_str(&provider.credentials)
+        .unwrap_or(Value::Object(Default::default()));
+    let client = match dns_lib::DnsClient::from_type(&provider.provider_type, &creds) {
+        Ok(c)  => c,
+        Err(e) => return Json(json!({ "ok": false, "error": e.to_string() })),
+    };
+    let remote_id = client.create_record(&body.zone_id, &dns_lib::DnsRecordInput {
+        record_type: body.record_type.clone(),
+        name:        body.name.clone(),
+        value:       body.value.clone(),
+        ttl, priority, proxied,
+    }).await.unwrap_or_default();
+
+    match db::dns_add_record(
+        &state.db, body.provider_id,
+        &body.zone_id, &body.zone_name,
+        &body.record_type, &body.name, &body.value,
+        ttl, priority, proxied, &remote_id,
+        Some(server_id), false, 300,
+    ).await {
+        Ok(id) => Json(json!({ "ok": true, "id": id, "remote_id": remote_id })),
+        Err(e) => Json(json!({ "ok": false, "error": e.to_string() })),
+    }
+}
+
+// ── POST /api/servers/:id/dns/:record_id/delete ───────────────────────────────
+// Deletes a server-linked DNS record from provider API and local DB.
+
+pub async fn api_server_dns_delete(
+    State(state): State<AppState>,
+    Path((server_id, record_id)): Path<(i64, i64)>,
+) -> Json<Value> {
+    // Load record and verify it belongs to this server
+    let records = match db::dns_list_records_by_server_id(&state.db, server_id).await {
+        Ok(r)  => r,
+        Err(e) => return Json(json!({ "ok": false, "error": e.to_string() })),
+    };
+    let rec = match records.iter().find(|r| r.id == record_id) {
+        Some(r) => r.clone(),
+        None    => return Json(json!({ "ok": false, "error": "Record not found or not owned by this server" })),
+    };
+
+    // Remove from provider (best-effort)
+    if !rec.remote_id.is_empty() {
+        if let Ok(Some(provider)) = db::dns_get_provider(&state.db, rec.provider_id).await {
+            let creds: Value = serde_json::from_str(&provider.credentials)
+                .unwrap_or(Value::Object(Default::default()));
+            if let Ok(client) = dns_lib::DnsClient::from_type(&provider.provider_type, &creds) {
+                if let Err(e) = client.delete_record(&rec.zone_id, &rec.remote_id).await {
+                    error!("api_server_dns_delete: provider delete failed: {}", e);
+                }
+            }
+        }
+    }
+
+    match db::dns_delete_record(&state.db, record_id).await {
+        Ok(()) => Json(json!({ "ok": true })),
+        Err(e) => Json(json!({ "ok": false, "error": e.to_string() })),
+    }
+}
+

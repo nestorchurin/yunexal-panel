@@ -629,9 +629,10 @@ function dnsSwitchTab(tab, btn) {
     const panel = document.getElementById('dns-tab-' + tab);
     if (panel) panel.classList.add('active');
     if (btn)   btn.classList.add('active');
-    if (tab === 'providers') dnsLoadProviders();
-    if (tab === 'records')   { dnsPopulateProviderDropdown(); if (_dnsCurrentProviderId && _dnsCurrentZoneId) { dnsLoadRemoteRecords(); dnsLoadLocalRecords(); } }
-    if (tab === 'ddns')      { dnsLoadDdns(); dnsGetPublicIp(); }
+    if (tab === 'providers')  dnsLoadProviders();
+    if (tab === 'records')    { dnsPopulateProviderDropdown(); if (_dnsCurrentProviderId && _dnsCurrentZoneId) { dnsLoadRemoteRecords(); dnsLoadLocalRecords(); } }
+    if (tab === 'ddns')       { dnsLoadDdns(); dnsGetPublicIp(); }
+    if (tab === 'containers') dnsLoadContainerRecords();
 }
 
 // ── Provider type → credential fields ────────────────────────────────────────
@@ -1250,6 +1251,49 @@ function dnsLoadDdns() {
     } else {
         _dnsLoadDdnsRows(tbody);
     }
+}
+
+// ── Container-linked DNS records sub-tab ──────────────────────────────────────
+
+function dnsLoadContainerRecords() {
+    const tbody = document.getElementById('dns-containers-tbody');
+    const countEl = document.getElementById('dns-containers-count');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;"><span class="spinner-border spinner-border-sm"></span> Loading\u2026</td></tr>';
+    fetch('/api/admin/dns/container-records', { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(d => {
+            const recs = d.records || [];
+            if (countEl) countEl.textContent = recs.length + ' record' + (recs.length !== 1 ? 's' : '');
+            if (!recs.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No DNS records linked to containers yet. Enable DNS/SRV when creating a server.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = recs.map(r => `
+<tr>
+    <td><a href="/servers/${r.server_id}/console" style="color:var(--txt);font-weight:500;text-decoration:none;">${escHtml(r.server_name || String(r.server_id))}</a></td>
+    <td><span class="dns-chip dns-chip-${(r.record_type||'').toLowerCase()}">${escHtml(r.record_type)}</span></td>
+    <td style="font-family:monospace;font-size:.8rem;">${escHtml(r.name)}</td>
+    <td style="font-family:monospace;font-size:.8rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(r.value)}">${escHtml(r.value)}</td>
+    <td style="font-size:.78rem;color:var(--muted);">${escHtml(r.zone_name)}</td>
+    <td style="font-size:.73rem;color:var(--muted);">${r.remote_id ? escHtml(r.remote_id.substring(0,12))+'\u2026' : '\u2014'}</td>
+    <td style="text-align:right;">
+        <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsDeleteContainerRecord(${r.id})" title="Delete from provider + panel" style="color:#ef4444;"><i class="bi bi-trash3"></i></button>
+    </td>
+</tr>`).join('');
+        })
+        .catch(() => {
+            if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;">Failed to load records.</td></tr>';
+        });
+}
+
+async function dnsDeleteContainerRecord(id) {
+    if (!confirm('Delete this DNS record from the provider and the panel?')) return;
+    try {
+        const d = await fetch(`/api/admin/dns/records/${id}/delete`, { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
+        if (d.ok) { dnsLoadContainerRecords(); }
+        else      { alert('Delete failed: ' + (d.error || '?')); }
+    } catch (e) { alert('Network error'); }
 }
 
 async function _dnsLoadDdnsRows(tbody) {

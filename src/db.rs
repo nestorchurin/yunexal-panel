@@ -760,6 +760,30 @@ pub async fn set_port_enabled(
     Ok(())
 }
 
+/// Returns all DNS records that are linked to a container (container_id IS NOT NULL),
+/// ordered by server name then record name.
+pub async fn dns_list_all_container_records(pool: &Pool<Sqlite>) -> Result<Vec<DnsRecord>> {
+    sqlx::query_as::<_, DnsRecord>(
+        "SELECT * FROM dns_records WHERE container_id IS NOT NULL ORDER BY container_id, name",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(Into::into)
+}
+
+/// Returns basic info for every server: (id, display_name, owner_username).
+pub async fn list_servers_basic_info(pool: &Pool<Sqlite>) -> Result<Vec<(i64, String, String)>> {
+    let rows = sqlx::query_as::<_, (i64, String, String)>(
+        r#"SELECT s.id, s.name, COALESCE(u.username, '') as owner
+           FROM servers s
+           LEFT JOIN users u ON s.owner_id = u.id
+           ORDER BY s.name"#,
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 /// Removes a port entry (called when a port binding is closed).
 pub async fn delete_port_entry(
     pool: &Pool<Sqlite>,
