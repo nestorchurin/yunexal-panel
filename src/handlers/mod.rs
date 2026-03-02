@@ -40,7 +40,7 @@ use dns::{
     api_dns_list_providers, api_dns_add_provider, api_dns_update_provider, api_dns_delete_provider,
     api_dns_test_provider, api_dns_list_zones, api_dns_remote_records, api_dns_local_records,
     api_dns_add_record, api_dns_update_record, api_dns_delete_record,
-    api_dns_public_ip, api_dns_sync, api_dns_sync_records,
+    api_dns_public_ip, api_dns_sync, api_dns_sync_records, api_dns_set_proxy,
 };
 use auth::{login_page, login_submit, logout};
 use create::{api_image_env, api_image_env_overrides, api_local_images, create_server};
@@ -135,6 +135,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/admin/dns/records",           post(api_dns_add_record))
         .route("/api/admin/dns/records/{id}/update", post(api_dns_update_record))
         .route("/api/admin/dns/records/{id}/delete", post(api_dns_delete_record))
+        .route("/api/admin/dns/records/{id}/set-proxy", post(api_dns_set_proxy))
         .route("/api/admin/dns/public-ip",  get(api_dns_public_ip))
         .route("/api/admin/dns/sync",       post(api_dns_sync))
         .route("/api/admin/dns/providers/{id}/sync-records", post(api_dns_sync_records))

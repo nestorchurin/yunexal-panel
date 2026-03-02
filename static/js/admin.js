@@ -548,6 +548,7 @@ let _dnsCurrentZoneName   = '';
 let _dnsTypeFilter        = '';
 let _dnsCurrentProviderType = '';
 let _dnsCachedRemoteMap     = {}; // { remote_id: RemoteDnsRecord } – refreshed each time provider records load
+let _dnsEditHasRemoteId     = false;
 
 // ── Type badge helper ─────────────────────────────────────────────────────────
 
@@ -950,7 +951,7 @@ function _dnsResetLocalTable() {
     const tbody = document.getElementById('dns-local-tbody');
     const count = document.getElementById('dns-local-count');
     const syncBtn = document.getElementById('dns-sync-btn');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view tracked records.</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view tracked records.</td></tr>';
     if (count) count.textContent = '';
     if (syncBtn) syncBtn.style.display = 'none';
 }
@@ -962,7 +963,7 @@ function dnsLoadLocalRecords() {
     const count = document.getElementById('dns-local-count');
     if (!tbody) return;
     if (!pid || !zid) { _dnsResetLocalTable(); return; }
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1.5rem;"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:1.5rem;"><span class="spinner-border spinner-border-sm"></span></td></tr>';
     const syncBtn = document.getElementById('dns-sync-btn');
     if (syncBtn) syncBtn.style.display = 'inline-flex';
     fetch(`/api/admin/dns/providers/${pid}/records`, { credentials: 'same-origin' })
@@ -971,19 +972,30 @@ function dnsLoadLocalRecords() {
             const recs = (d.records || []).filter(r => r.zone_id === zid || r.zone_name === _dnsCurrentZoneName);
             if (count) count.textContent = `${recs.length} tracked`;
             if (!recs.length) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No tracked records for this zone.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">No tracked records for this zone.</td></tr>';
                 return;
             }
             tbody.innerHTML = recs.map(r => {
                 // Prefer live values from remote cache when available
-                const live      = r.remote_id ? _dnsCachedRemoteMap[r.remote_id] : null;
-                const dispName  = live ? live.name  : r.name;
-                const dispValue = live ? live.value : r.value;
-                const dispTtl   = live ? live.ttl   : r.ttl;
+                const live        = r.remote_id ? _dnsCachedRemoteMap[r.remote_id] : null;
+                const dispName    = live ? live.name    : r.name;
+                const dispValue   = live ? live.value   : r.value;
+                const dispTtl     = live ? live.ttl     : r.ttl;
+                // Proxy uses DB value — kept in sync by set-proxy + sync-records endpoints
+                const dispProxied = !!r.proxied;
                 // Merge live values into the record passed to the edit form
                 const editRec   = live
                     ? { ...r, name: live.name, value: live.value, ttl: live.ttl, proxied: live.proxied, priority: live.priority }
                     : r;
+                // Proxy toggle cell — only for Cloudflare + proxiable record types
+                const cfProxiable = _dnsCurrentProviderType === 'cloudflare'
+                    && _CF_PROXIABLE.has(r.record_type.toUpperCase())
+                    && r.remote_id;
+                const proxyCell = cfProxiable
+                    ? (dispProxied
+                        ? `<button class="btn-yu btn-sm-yu" style="background:rgba(249,115,22,.18);border:none;padding:.2rem .45rem;border-radius:8px;cursor:pointer;" onclick="dnsSetProxy(${r.id},false)" title="Proxied (orange cloud) — click to DNS-only"><i class="bi bi-cloud-fill" style="color:#f97316;font-size:.9rem;"></i></button>`
+                        : `<button class="btn-yu btn-ghost-yu btn-sm-yu" style="opacity:.55;" onclick="dnsSetProxy(${r.id},true)" title="DNS only — click to enable Cloudflare proxy"><i class="bi bi-cloud" style="font-size:.9rem;"></i></button>`)
+                    : `<span style="color:var(--muted);font-size:.75rem;">—</span>`;
                 const ddnsBadge = r.ddns_enabled
                     ? `<span class="pill pill-run" style="font-size:.65rem;"><span class="pill-dot"></span>DDNS</span>`
                     : `<span style="color:var(--muted);font-size:.75rem;">—</span>`;
@@ -996,6 +1008,7 @@ function dnsLoadLocalRecords() {
                     <td>${_dnsTypeBadge(r.record_type)}</td>
                     <td class="mono" style="font-size:.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(dispValue)}">${escHtml(dispValue)}</td>
                     <td style="font-size:.8rem;">${dispTtl === 1 ? 'Auto' : dispTtl + 's'}</td>
+                    <td>${proxyCell}</td>
                     <td>${ddnsBadge}</td>
                     <td>${remoteLabel}</td>
                     <td style="text-align:right;">
@@ -1007,7 +1020,19 @@ function dnsLoadLocalRecords() {
                 </tr>`;
             }).join('');
             _dnsOverlayLiveValues(); // second-pass overlay in case remote data loaded after this
-        }).catch(() => { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;">Network error.</td></tr>'; });
+        }).catch(() => { tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#ef4444;padding:2rem;">Network error.</td></tr>'; });
+}
+
+// ── Set Cloudflare proxy (orange cloud toggle) ──────────────────────────────
+function dnsSetProxy(recordId, proxied) {
+    fetch(`/api/admin/dns/records/${recordId}/set-proxy`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proxied }),
+    }).then(r => r.json()).then(d => {
+        if (d.ok) { dnsLoadLocalRecords(); }
+        else { alert(d.error || 'Failed to update proxy.'); }
+    }).catch(() => alert('Network error.'));
 }
 
 // ── Import a remote record into local DB ──────────────────────────────────────
@@ -1045,6 +1070,11 @@ function dnsEditRecord(rec) {
         _dnsCurrentZoneName   = rec.zone_name;
     }
     _dnsEditRecordId = rec.id;
+    _dnsEditHasRemoteId = !!(rec.remote_id && rec.remote_id.length > 0);
+    // For edits with a remote_id, always push — hide the checkbox
+    const pushWrap = document.getElementById('drm-push-wrap');
+    if (pushWrap) pushWrap.style.display = _dnsEditHasRemoteId ? 'none' : '';
+    document.getElementById('drm-push').checked = true;
     document.getElementById('dns-rec-modal-title').textContent = 'Edit Record';
     document.getElementById('drm-type').value     = rec.record_type || 'A';
     document.getElementById('drm-name').value     = rec.name  || '';
@@ -1057,8 +1087,6 @@ function dnsEditRecord(rec) {
     ddnsChk.checked = !!rec.ddns_enabled;
     document.getElementById('drm-interval-wrap').style.display = rec.ddns_enabled ? '' : 'none';
     document.getElementById('drm-interval').value = rec.ddns_interval || 300;
-    // If record has a remote_id, offer to push update; otherwise default off
-    document.getElementById('drm-push').checked   = !!(rec.remote_id && rec.remote_id.length > 0);
     document.getElementById('dns-rec-alert').style.display = 'none';
     document.getElementById('drm-save-btn').disabled = false;
     document.getElementById('drm-save-btn').innerHTML = '<i class="bi bi-check-lg"></i> Save';
@@ -1070,7 +1098,11 @@ function dnsEditRecord(rec) {
 function dnsOpenAddRecordModal() {
     if (!_dnsCurrentProviderId) { alert('Select a provider and zone first.'); return; }
     _dnsEditRecordId = null;
+    _dnsEditHasRemoteId = false;
     document.getElementById('dns-rec-modal-title').textContent = 'Add Record';
+    // Show push checkbox for new records
+    const pushWrap2 = document.getElementById('drm-push-wrap');
+    if (pushWrap2) pushWrap2.style.display = '';
     document.getElementById('drm-type').value    = 'A';
     document.getElementById('drm-name').value    = '';
     document.getElementById('drm-value').value   = '';
@@ -1144,7 +1176,8 @@ function dnsSaveRecord() {
     const proxied  = document.getElementById('drm-proxied').value === 'true';
     const ddns     = document.getElementById('drm-ddns').checked;
     const interval = parseInt(document.getElementById('drm-interval').value) || 300;
-    const push     = document.getElementById('drm-push').checked;
+    // If editing a record that already lives on the provider, always push changes up
+    const push = _dnsEditHasRemoteId ? true : document.getElementById('drm-push').checked;
 
     if (!name || !value) return show(false, 'Name and value are required.');
     btn.disabled = true;

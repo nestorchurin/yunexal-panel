@@ -287,6 +287,27 @@ impl DnsClient {
         }
     }
 
+    // ── Set proxy flag (Cloudflare only) ────────────────────────────────────────
+    /// Sends a minimal PATCH to Cloudflare to toggle the orange-cloud proxy bit.
+    /// Other providers return Err (callers should skip pushing for them).
+    pub async fn set_proxy(&self, zone_id: &str, remote_id: &str, proxied: bool) -> Result<()> {
+        match self {
+            Self::Cloudflare { token } => {
+                let body = serde_json::json!({ "proxied": proxied });
+                let resp = Self::http()
+                    .patch(format!(
+                        "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
+                        zone_id, remote_id
+                    ))
+                    .header("Authorization", format!("Bearer {}", token))
+                    .json(&body).send().await?.json::<Value>().await?;
+                if resp["success"].as_bool().unwrap_or(false) { Ok(()) }
+                else { Err(anyhow!("Cloudflare set-proxy failed: {}", resp["errors"])) }
+            }
+            _ => Err(anyhow!("Proxy toggle not supported for this provider")),
+        }
+    }
+
     // ── DDNS: update A record with a new IP ───────────────────────────────────
 
     pub async fn update_ddns(&self, zone_id: &str, name: &str, ip: &str) -> Result<()> {

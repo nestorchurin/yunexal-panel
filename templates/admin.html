@@ -494,13 +494,14 @@
                                     <th>Type</th>
                                     <th>Value / Target</th>
                                     <th>TTL</th>
+                                    <th>Proxy</th>
                                     <th>DDNS</th>
                                     <th>Remote ID</th>
                                     <th style="text-align:right;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="dns-local-tbody">
-                                <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view tracked records.</td></tr>
+                                <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view tracked records.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -631,7 +632,7 @@
                         <label class="yu-label">DDNS Interval (s)</label>
                         <input type="number" class="yu-input" id="drm-interval" value="300" min="60">
                     </div>
-                    <div class="col-6">
+                    <div class="col-6" id="drm-push-wrap">
                         <label style="display:flex;align-items:center;gap:.55rem;cursor:pointer;font-size:.85rem;">
                             <input type="checkbox" id="drm-push" checked style="width:16px;height:16px;cursor:pointer;"> Push to provider API
                         </label>
@@ -994,7 +995,7 @@
 
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/admin.js?v=9"></script>
+    <script src="/static/js/admin.js?v=10"></script>
     <script src="/static/js/footer.js"></script>
 </body>
 </html>

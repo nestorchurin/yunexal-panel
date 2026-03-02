@@ -367,6 +367,50 @@ pub async fn api_dns_delete_record(
     }
 }
 
+// ── POST /api/admin/dns/records/:id/set-proxy ─────────────────────────────────
+/// Toggle the Cloudflare orange-cloud proxy for a single tracked record.
+/// Sends a minimal PATCH to Cloudflare (only the `proxied` field) and
+/// updates the local DB.
+
+#[derive(Deserialize)]
+pub struct SetProxyBody { pub proxied: bool }
+
+pub async fn api_dns_set_proxy(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Json(body): Json<SetProxyBody>,
+) -> Json<Value> {
+    // Find the record + its provider
+    if let Ok(providers) = db::dns_list_providers(&state.db).await {
+        'outer: for provider in &providers {
+            if let Ok(recs) = db::dns_list_records(&state.db, provider.id).await {
+                for rec in &recs {
+                    if rec.id != id { continue; }
+                    if rec.remote_id.is_empty() {
+                        return Json(json!({ "ok": false, "error": "Record has no remote ID — not pushed to provider yet" }));
+                    }
+                    match dns_client(provider) {
+                        Ok(client) => {
+                            if let Err(e) = client.set_proxy(&rec.zone_id, &rec.remote_id, body.proxied).await {
+                                return Json(json!({ "ok": false, "error": e.to_string() }));
+                            }
+                        }
+                        Err(e) => return Json(json!({ "ok": false, "error": e.to_string() })),
+                    }
+                    // Persist to local DB (preserve all other fields)
+                    let _ = db::dns_update_record(
+                        &state.db, id,
+                        &rec.name, &rec.value, rec.ttl, rec.priority,
+                        body.proxied, rec.ddns_enabled != 0, rec.ddns_interval,
+                    ).await;
+                    break 'outer;
+                }
+            }
+        }
+    }
+    Json(json!({ "ok": true, "proxied": body.proxied }))
+}
+
 // ── GET /api/admin/dns/public-ip ─────────────────────────────────────────────
 
 pub async fn api_dns_public_ip() -> Json<Value> {
