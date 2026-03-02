@@ -169,14 +169,34 @@ impl DnsClient {
     pub async fn create_record(&self, zone_id: &str, rec: &DnsRecordInput) -> Result<String> {
         match self {
             Self::Cloudflare { token } => {
-                let body = serde_json::json!({
-                    "type":    rec.record_type,
-                    "name":    rec.name,
-                    "content": rec.value,
-                    "ttl":     rec.ttl,
-                    "proxied": rec.proxied,
-                    "comment": "yunexal.managed=true",
-                });
+                let body = if rec.record_type.eq_ignore_ascii_case("SRV") {
+                    // SRV value stored as "weight port target"
+                    let parts: Vec<&str> = rec.value.split_whitespace().collect();
+                    let weight: u64 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
+                    let port: u64   = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    let target      = parts.get(2).copied().unwrap_or(".");
+                    serde_json::json!({
+                        "type": "SRV",
+                        "name": rec.name,
+                        "ttl":  rec.ttl,
+                        "data": {
+                            "priority": rec.priority,
+                            "weight":   weight,
+                            "port":     port,
+                            "target":   target,
+                        },
+                        "comment": "yunexal.managed=true",
+                    })
+                } else {
+                    serde_json::json!({
+                        "type":    rec.record_type,
+                        "name":    rec.name,
+                        "content": rec.value,
+                        "ttl":     rec.ttl,
+                        "proxied": rec.proxied,
+                        "comment": "yunexal.managed=true",
+                    })
+                };
                 let resp = Self::http()
                     .post(format!(
                         "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
@@ -221,14 +241,33 @@ impl DnsClient {
     ) -> Result<()> {
         match self {
             Self::Cloudflare { token } => {
-                let body = serde_json::json!({
-                    "type":    rec.record_type,
-                    "name":    rec.name,
-                    "content": rec.value,
-                    "ttl":     rec.ttl,
-                    "proxied": rec.proxied,
-                    "comment": "yunexal.managed=true",
-                });
+                let body = if rec.record_type.eq_ignore_ascii_case("SRV") {
+                    let parts: Vec<&str> = rec.value.split_whitespace().collect();
+                    let weight: u64 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
+                    let port: u64   = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                    let target      = parts.get(2).copied().unwrap_or(".");
+                    serde_json::json!({
+                        "type": "SRV",
+                        "name": rec.name,
+                        "ttl":  rec.ttl,
+                        "data": {
+                            "priority": rec.priority,
+                            "weight":   weight,
+                            "port":     port,
+                            "target":   target,
+                        },
+                        "comment": "yunexal.managed=true",
+                    })
+                } else {
+                    serde_json::json!({
+                        "type":    rec.record_type,
+                        "name":    rec.name,
+                        "content": rec.value,
+                        "ttl":     rec.ttl,
+                        "proxied": rec.proxied,
+                        "comment": "yunexal.managed=true",
+                    })
+                };
                 let resp = Self::http()
                     .patch(format!(
                         "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",

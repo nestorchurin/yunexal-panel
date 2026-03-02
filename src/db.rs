@@ -719,6 +719,24 @@ pub async fn dns_delete_record(pool: &Pool<Sqlite>, id: i64) -> Result<()> {
     Ok(())
 }
 
+/// Returns all DNS records linked to a specific server (by SQLite server id).
+pub async fn dns_list_records_by_server_id(pool: &Pool<Sqlite>, server_id: i64) -> Result<Vec<DnsRecord>> {
+    let rows = sqlx::query_as::<_, DnsRecord>(
+        "SELECT * FROM dns_records WHERE container_id = ?",
+    )
+    .bind(server_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// Deletes all DNS records in the panel DB linked to a specific server.
+pub async fn dns_delete_records_by_server_id(pool: &Pool<Sqlite>, server_id: i64) -> Result<()> {
+    sqlx::query("DELETE FROM dns_records WHERE container_id = ?")
+        .bind(server_id).execute(pool).await?;
+    Ok(())
+}
+
 /// Sets the enabled flag for a port entry (upserts if entry not yet tracked).
 pub async fn set_port_enabled(
     pool: &Pool<Sqlite>,

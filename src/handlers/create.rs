@@ -9,6 +9,7 @@ use rand::{distr::Alphanumeric, RngExt};
 use tracing::error;
 use crate::compose::ComposeService;
 use crate::{auth, db, docker};
+use crate::dns as dns_lib;
 use crate::state::AppState;
 use super::templates::{render, CreateServerForm, NewServerTemplate, UserInfo};
 use tracing::warn;
@@ -292,6 +293,47 @@ pub async fn create_server(
     };
 
     if db_id > 0 {
+        // ── Auto-create SRV DNS record ────────────────────────────────────────
+        if form.dns_srv_enabled.trim() == "1" {
+            let pid: Option<i64> = form.dns_provider_id.trim().parse().ok();
+            let port: Option<u64> = form.dns_srv_port.trim().parse().ok();
+            let srv_name = form.dns_srv_name.trim().to_string();
+            let zone_id  = form.dns_zone_id.trim().to_string();
+            let zone_name = form.dns_zone_name.trim().to_string();
+            let priority: i64 = form.dns_srv_priority.trim().parse().unwrap_or(0);
+            let weight: u64   = form.dns_srv_weight.trim().parse().unwrap_or(0);
+            let target = if form.dns_srv_target.trim().is_empty() {
+                zone_name.clone()
+            } else {
+                form.dns_srv_target.trim().to_string()
+            };
+            if let (Some(pid), Some(port)) = (pid, port) {
+                if !srv_name.is_empty() && !zone_id.is_empty() {
+                    if let Ok(Some(provider)) = db::dns_get_provider(&state.db, pid).await {
+                        let creds: serde_json::Value = serde_json::from_str(&provider.credentials)
+                            .unwrap_or(serde_json::Value::Object(Default::default()));
+                        if let Ok(client) = dns_lib::DnsClient::from_type(&provider.provider_type, &creds) {
+                            let srv_value = format!("{} {} {}", weight, port, target);
+                            let remote_id = client.create_record(&zone_id, &dns_lib::DnsRecordInput {
+                                record_type: "SRV".to_string(),
+                                name:        srv_name.clone(),
+                                value:       srv_value.clone(),
+                                ttl:         1,
+                                priority,
+                                proxied:     false,
+                            }).await.unwrap_or_default();
+                            let _ = db::dns_add_record(
+                                &state.db, pid,
+                                &zone_id, &zone_name,
+                                "SRV", &srv_name, &srv_value,
+                                1, priority, false, &remote_id,
+                                Some(db_id), false, 300,
+                            ).await;
+                        }
+                    }
+                }
+            }
+        }
         Redirect::to(&format!("/servers/{}/console", db_id)).into_response()
     } else {
         Redirect::to(&format!("/servers/{}/console", short_id)).into_response()

@@ -169,6 +169,28 @@ pub struct CreateServerForm {
     /// Owner user id selected in the form. 0 = assigned server-side (self).
     #[serde(default)]
     pub owner_id: i64,
+    // ── DNS / SRV auto-record ────────────────────────────────────────────────
+    /// "1" to create an SRV record after container is created.
+    #[serde(default)]
+    pub dns_srv_enabled: String,
+    #[serde(default)]
+    pub dns_provider_id: String,
+    #[serde(default)]
+    pub dns_zone_id: String,
+    #[serde(default)]
+    pub dns_zone_name: String,
+    /// Full SRV name, e.g. `_minecraft._tcp`
+    #[serde(default)]
+    pub dns_srv_name: String,
+    #[serde(default)]
+    pub dns_srv_port: String,
+    /// SRV target hostname (leave empty to use zone name)
+    #[serde(default)]
+    pub dns_srv_target: String,
+    #[serde(default)]
+    pub dns_srv_priority: String,
+    #[serde(default)]
+    pub dns_srv_weight: String,
 }
 
 #[derive(Deserialize)]

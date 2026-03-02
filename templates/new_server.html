@@ -404,7 +404,7 @@
     </div>
     {% endif %}
 
-    <form action="/servers/new" method="POST" id="createServerForm">
+    <form action="/servers/new" method="POST" id="createServerForm" onsubmit="prepareSrvHiddenFields();">
     <div class="form-grid">
 
         <!-- ── Left column ─────────────────────────────── -->
@@ -572,6 +572,84 @@
                 </div>
             </div><!-- /Volumes -->
 
+            <!-- ── DNS / SRV Record ── -->
+            <div class="sec-card">
+                <div class="sec-hd" style="cursor:pointer;user-select:none;" onclick="toggleDnsSrv()">
+                    <div class="sec-hd-icon"><i class="bi bi-hdd-network-fill" style="color:#a78bfa;"></i></div>
+                    <div>
+                        <div class="sec-hd-title">DNS / SRV Record</div>
+                        <div class="sec-hd-sub">Auto-create SRV on creation, auto-delete on removal</div>
+                    </div>
+                    <i class="bi bi-chevron-down" id="dns-srv-chevron" style="margin-left:auto;color:var(--muted);transition:transform .2s;"></i>
+                </div>
+                <div class="sec-bd" id="dns-srv-body" style="display:none;padding-top:0;">
+                    <label style="display:flex;align-items:center;gap:.55rem;cursor:pointer;font-size:.86rem;margin-bottom:.9rem;">
+                        <input type="checkbox" id="srv-enable-chk" onchange="onSrvToggle()" style="width:15px;height:15px;">
+                        Enable auto SRV record
+                    </label>
+                    <div id="srv-fields" style="display:none;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.7rem;">
+                            <div>
+                                <label class="field-label">DNS Provider</label>
+                                <select class="form-select" id="srv-provider" onchange="onSrvProviderChange()">
+                                    <option value="">— Select provider —</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="field-label">Zone</label>
+                                <select class="form-select" id="srv-zone">
+                                    <option value="">Select provider first</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr auto 90px;gap:.5rem;align-items:end;margin-bottom:.5rem;">
+                            <div>
+                                <label class="field-label">Service Name</label>
+                                <div style="display:flex;gap:.35rem;">
+                                    <input type="text" class="form-control" id="srv-service" placeholder="minecraft" oninput="updateSrvPreview()">
+                                    <button type="button" style="background:var(--surface3);border:1px solid var(--bdr2);color:var(--txt);border-radius:8px;padding:.3rem .6rem;white-space:nowrap;cursor:pointer;" onclick="randomSrvName()" title="Random name"><i class="bi bi-dice-5"></i></button>
+                                </div>
+                            </div>
+                            <span style="padding-bottom:.55rem;color:var(--muted);font-size:.9rem;">._</span>
+                            <div>
+                                <label class="field-label">Proto</label>
+                                <select class="form-select" id="srv-proto" onchange="updateSrvPreview()">
+                                    <option value="tcp">TCP</option>
+                                    <option value="udp">UDP</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="background:var(--surface3);border:1px solid var(--bdr);border-radius:8px;padding:.35rem .7rem;font-size:.74rem;color:var(--muted);margin-bottom:.75rem;">
+                            Record name: <code id="srv-name-preview" style="color:#a78bfa;">_service._tcp</code>
+                        </div>
+                        <div style="display:grid;grid-template-columns:110px 1fr;gap:.6rem;margin-bottom:.6rem;">
+                            <div>
+                                <label class="field-label">Port</label>
+                                <input type="number" class="form-control" id="srv-port" min="1" max="65535" placeholder="25565">
+                            </div>
+                            <div>
+                                <label class="field-label">Target Host <span style="font-size:.69rem;color:var(--muted);">(blank = zone domain)</span></label>
+                                <input type="text" class="form-control" id="srv-target" placeholder="Leave blank to use zone domain">
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;">
+                            <div>
+                                <label class="field-label">Priority</label>
+                                <input type="number" class="form-control" id="srv-priority" value="0" min="0">
+                            </div>
+                            <div>
+                                <label class="field-label">Weight</label>
+                                <input type="number" class="form-control" id="srv-weight" value="0" min="0">
+                            </div>
+                        </div>
+                        <div style="font-size:.72rem;color:var(--muted);margin-top:.65rem;">
+                            <i class="bi bi-info-circle" style="color:#a78bfa;"></i>
+                            Record is created on Cloudflare when the server saves, and deleted automatically when the server is removed.
+                        </div>
+                    </div>
+                </div>
+            </div><!-- /DNS SRV -->
+
             <!-- ── Actions ── -->
             <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-top:.5rem;">
                 <button type="button" class="btn-cancel" onclick="history.back()"><i class="bi bi-x-lg"></i> Cancel</button>
@@ -604,6 +682,16 @@
 
     </div><!-- /form-grid -->
 
+    <!-- DNS/SRV hidden fields -->
+    <input type="hidden" name="dns_srv_enabled" id="h-dns-srv-enabled" value="0">
+    <input type="hidden" name="dns_provider_id" id="h-dns-provider-id" value="">
+    <input type="hidden" name="dns_zone_id" id="h-dns-zone-id" value="">
+    <input type="hidden" name="dns_zone_name" id="h-dns-zone-name" value="">
+    <input type="hidden" name="dns_srv_name" id="h-dns-srv-name" value="">
+    <input type="hidden" name="dns_srv_port" id="h-dns-srv-port" value="">
+    <input type="hidden" name="dns_srv_target" id="h-dns-srv-target" value="">
+    <input type="hidden" name="dns_srv_priority" id="h-dns-srv-priority" value="0">
+    <input type="hidden" name="dns_srv_weight" id="h-dns-srv-weight" value="0">
     <input type="hidden" id="config" name="config">
     </form>
 
@@ -832,6 +920,86 @@ require(['vs/editor/editor.main'], function () {
     });
     updateYaml();
 });
+
+// ── DNS / SRV ──────────────────────────────────────────────────────────────────
+function toggleDnsSrv() {
+    const body = document.getElementById('dns-srv-body');
+    const chev = document.getElementById('dns-srv-chevron');
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chev.className = open ? 'bi bi-chevron-down' : 'bi bi-chevron-up';
+    if (!open) loadSrvProviders();
+}
+function onSrvToggle() {
+    const on = document.getElementById('srv-enable-chk').checked;
+    document.getElementById('srv-fields').style.display = on ? '' : 'none';
+    if (on) {
+        const hp = document.querySelector('#ports-container .host-input');
+        const sp = document.getElementById('srv-port');
+        if (hp && hp.value && !sp.value) sp.value = hp.value;
+    }
+}
+function loadSrvProviders() {
+    fetch('/api/admin/dns/providers', { credentials: 'same-origin' })
+        .then(r => r.json()).then(d => {
+            const sel = document.getElementById('srv-provider');
+            sel.innerHTML = '<option value="">\u2014 Select provider \u2014</option>';
+            (d.providers || []).forEach(p => {
+                const o = document.createElement('option');
+                o.value = p.id; o.textContent = p.name;
+                sel.appendChild(o);
+            });
+        }).catch(() => {});
+}
+function onSrvProviderChange() {
+    const pid = document.getElementById('srv-provider').value;
+    const sel = document.getElementById('srv-zone');
+    if (!pid) { sel.innerHTML = '<option value="">Select provider first</option>'; return; }
+    sel.innerHTML = '<option value="">Loading\u2026</option>';
+    fetch(`/api/admin/dns/providers/${pid}/zones`, { credentials: 'same-origin' })
+        .then(r => r.json()).then(d => {
+            sel.innerHTML = '<option value="">\u2014 Select zone \u2014</option>';
+            (d.zones || []).forEach(z => {
+                const o = document.createElement('option');
+                o.value = z.id; o.textContent = z.name; o.dataset.name = z.name;
+                sel.appendChild(o);
+            });
+        }).catch(() => { sel.innerHTML = '<option value="">Failed to load</option>'; });
+}
+function updateSrvPreview() {
+    const s = document.getElementById('srv-service').value.trim().toLowerCase() || 'service';
+    const p = document.getElementById('srv-proto').value;
+    document.getElementById('srv-name-preview').textContent = `_${s}._${p}`;
+}
+const _SRV_ADJ  = ['fast','blue','red','cool','big','mini','dark','lite','pro','max'];
+const _SRV_NOUN = ['srv','node','host','gate','core','hub','link','edge','mesh','port'];
+function randomSrvName() {
+    const n = _SRV_ADJ[Math.floor(Math.random()*_SRV_ADJ.length)]
+            + _SRV_NOUN[Math.floor(Math.random()*_SRV_NOUN.length)];
+    document.getElementById('srv-service').value = n;
+    updateSrvPreview();
+}
+function prepareSrvHiddenFields() {
+    const chk = document.getElementById('srv-enable-chk');
+    if (!chk || !chk.checked) { document.getElementById('h-dns-srv-enabled').value = '0'; return; }
+    const pid   = document.getElementById('srv-provider').value;
+    const zSel  = document.getElementById('srv-zone');
+    const zid   = zSel.value;
+    const zname = zSel.options[zSel.selectedIndex]?.dataset?.name || zid;
+    const svc   = document.getElementById('srv-service').value.trim().toLowerCase();
+    const proto = document.getElementById('srv-proto').value;
+    const port  = document.getElementById('srv-port').value;
+    if (!pid || !zid || !svc || !port) { document.getElementById('h-dns-srv-enabled').value = '0'; return; }
+    document.getElementById('h-dns-srv-enabled').value   = '1';
+    document.getElementById('h-dns-provider-id').value   = pid;
+    document.getElementById('h-dns-zone-id').value       = zid;
+    document.getElementById('h-dns-zone-name').value     = zname;
+    document.getElementById('h-dns-srv-name').value      = `_${svc}._${proto}`;
+    document.getElementById('h-dns-srv-port').value      = port;
+    document.getElementById('h-dns-srv-target').value    = document.getElementById('srv-target').value.trim();
+    document.getElementById('h-dns-srv-priority').value  = document.getElementById('srv-priority').value || '0';
+    document.getElementById('h-dns-srv-weight').value    = document.getElementById('srv-weight').value || '0';
+}
 
 </script>
 <script src="/static/js/footer.js"></script>

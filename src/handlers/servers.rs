@@ -5,6 +5,8 @@ use axum::{
 };
 use crate::docker::{self, ContainerInfo};
 use crate::{auth, db};
+use crate::dns as dns_lib;
+use serde_json::Value as JsonValue;
 use axum_extra::extract::cookie::PrivateCookieJar;
 use crate::state::AppState;
 use tracing::error;
@@ -217,6 +219,22 @@ pub async fn delete_server(
         if let Err(e) = tokio::fs::remove_dir_all(&volume_path).await {
             error!("Failed to delete volume directory {}: {}", volume_dir, e);
         }
+    }
+
+    // ── Delete linked DNS records ──────────────────────────────────────────
+    // Best-effort: delete from provider API then from local DB
+    if let Ok(dns_recs) = db::dns_list_records_by_server_id(&state.db, db_id).await {
+        for rec in &dns_recs {
+            if rec.remote_id.is_empty() { continue; }
+            if let Ok(Some(provider)) = db::dns_get_provider(&state.db, rec.provider_id).await {
+                let creds: JsonValue = serde_json::from_str(&provider.credentials)
+                    .unwrap_or(JsonValue::Object(Default::default()));
+                if let Ok(client) = dns_lib::DnsClient::from_type(&provider.provider_type, &creds) {
+                    let _ = client.delete_record(&rec.zone_id, &rec.remote_id).await;
+                }
+            }
+        }
+        let _ = db::dns_delete_records_by_server_id(&state.db, db_id).await;
     }
 
     // Clean up dedicated isolation network and iptables rules BEFORE removing
