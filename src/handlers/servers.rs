@@ -41,8 +41,12 @@ fn err_container(docker_id: String, db_id: i64) -> ContainerInfo {
 
 pub async fn console_page(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let (docker_id, db_name) = match resolve_server(&state, db_id).await {
         Ok(v) => v, Err(e) => return e.into_response(),
     };
@@ -54,8 +58,12 @@ pub async fn console_page(
 
 pub async fn files_page(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let (docker_id, db_name) = match resolve_server(&state, db_id).await {
         Ok(v) => v, Err(e) => return e.into_response(),
     };
@@ -70,6 +78,9 @@ pub async fn settings_page(
     jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let is_admin = auth::is_admin_session(&state, &jar).await;
     let (docker_id, db_name) = match resolve_server(&state, db_id).await {
         Ok(v) => v, Err(e) => return e.into_response(),
@@ -87,6 +98,9 @@ pub async fn start_server(
     jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let is_admin = auth::is_admin_session(&state, &jar).await;
     let (docker_id, db_name) = match resolve_server(&state, db_id).await {
         Ok(v) => v, Err(e) => return e.into_response(),
@@ -108,6 +122,9 @@ pub async fn stop_server(
     jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let is_admin = auth::is_admin_session(&state, &jar).await;
     let (docker_id, db_name) = match resolve_server(&state, db_id).await {
         Ok(v) => v, Err(e) => return e.into_response(),
@@ -126,6 +143,9 @@ pub async fn restart_server(
     jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let is_admin = auth::is_admin_session(&state, &jar).await;
     let (docker_id, db_name) = match resolve_server(&state, db_id).await {
         Ok(v) => v, Err(e) => return e.into_response(),
@@ -147,6 +167,9 @@ pub async fn kill_server(
     jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let is_admin = auth::is_admin_session(&state, &jar).await;
     let (docker_id, db_name) = match resolve_server(&state, db_id).await {
         Ok(v) => v, Err(e) => return e.into_response(),
@@ -166,6 +189,9 @@ pub async fn rename_server(
     Path(db_id): Path<i64>,
     Form(form): Form<RenameServerForm>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let is_admin = auth::is_admin_session(&state, &jar).await;
     let new_name = form.name.trim().to_string();
     if new_name.is_empty() {
@@ -267,8 +293,12 @@ pub struct ServerStatsResponse {
 
 pub async fn get_server_stats(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return Json(ServerStatsResponse { state: "error".into(), status: "Access denied".into(), cpu: 0.0, ram: 0, ram_limit: 0, rx: 0, tx: 0 }).into_response();
+    }
     let (docker_id, _) = match resolve_server(&state, db_id).await {
         Ok(v) => v,
         Err(_) => return Json(ServerStatsResponse { state: "error".into(), status: "Error".into(), cpu: 0.0, ram: 0, ram_limit: 0, rx: 0, tx: 0 }).into_response(),

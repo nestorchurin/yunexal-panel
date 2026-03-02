@@ -2,9 +2,10 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
+use axum_extra::extract::cookie::PrivateCookieJar;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use crate::{db, dns as dns_lib};
+use crate::{auth, db, dns as dns_lib};
 use crate::state::AppState;
 use tracing::error;
 
@@ -589,8 +590,12 @@ pub async fn api_dns_container_records(State(state): State<AppState>) -> Json<Va
 
 pub async fn api_server_dns_list(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(server_id): Path<i64>,
 ) -> Json<Value> {
+    if !auth::can_access_server(&state, &jar, server_id).await {
+        return Json(json!({ "ok": false, "error": "Access denied" }));
+    }
     match db::dns_list_records_by_server_id(&state.db, server_id).await {
         Ok(records) => {
             let list: Vec<Value> = records.iter().map(|r| json!({
@@ -632,9 +637,13 @@ pub struct AddServerDnsBody {
 
 pub async fn api_server_dns_add(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(server_id): Path<i64>,
     Json(body): Json<AddServerDnsBody>,
 ) -> Json<Value> {
+    if !auth::can_access_server(&state, &jar, server_id).await {
+        return Json(json!({ "ok": false, "error": "Access denied" }));
+    }
     let provider = match db::dns_get_provider(&state.db, body.provider_id).await {
         Ok(Some(p)) => p,
         Ok(None)    => return Json(json!({ "ok": false, "error": "Provider not found" })),
@@ -674,8 +683,12 @@ pub async fn api_server_dns_add(
 
 pub async fn api_server_dns_delete(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path((server_id, record_id)): Path<(i64, i64)>,
 ) -> Json<Value> {
+    if !auth::can_access_server(&state, &jar, server_id).await {
+        return Json(json!({ "ok": false, "error": "Access denied" }));
+    }
     // Load record and verify it belongs to this server
     let records = match db::dns_list_records_by_server_id(&state.db, server_id).await {
         Ok(r)  => r,

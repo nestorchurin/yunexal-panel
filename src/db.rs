@@ -444,6 +444,18 @@ pub async fn get_server_owner(pool: &Pool<Sqlite>, container_id: &str) -> Result
     Ok(owner_id)
 }
 
+/// Returns the owner_id for a server by its SQLite id, or None if not found.
+pub async fn get_server_owner_by_db_id(pool: &Pool<Sqlite>, server_id: i64) -> Result<Option<i64>> {
+    let owner_id = sqlx::query_scalar::<_, i64>(
+        "SELECT owner_id FROM servers WHERE id = ?",
+    )
+    .bind(server_id)
+    .fetch_optional(pool)
+    .await
+    .context("get_server_owner_by_db_id")?;
+    Ok(owner_id)
+}
+
 /// Updates the container_id, name, and owner after recreating a container.
 pub async fn update_server(
     pool: &Pool<Sqlite>,

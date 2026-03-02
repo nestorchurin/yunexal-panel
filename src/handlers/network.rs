@@ -16,6 +16,9 @@ pub async fn networking_page(
     jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let is_admin = auth::is_admin_session(&state, &jar).await;
     let (docker_id, db_name) = match db::get_server_info_by_db_id(&state.db, db_id).await.ok().flatten() {
         Some(row) => row,
@@ -62,8 +65,12 @@ pub struct SetBandwidthBody {
 
 pub async fn api_get_bandwidth(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error":"Access denied"}))).into_response();
+    }
     let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
         Some(cid) => cid,
         None => return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"not found"}))).into_response(),
@@ -272,9 +279,13 @@ pub async fn api_remove_port(
 
 pub async fn api_tag_port(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
     Json(body): Json<TagPortBody>,
 ) -> impl IntoResponse {
+    if !auth::is_admin_session(&state, &jar).await {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Only admins can tag ports."}))).into_response();
+    }
     match db::set_port_tag(&state.db, db_id, body.host_port as i64, body.container_port as i64, &body.tag).await {
         Ok(_) => Json(serde_json::json!({"ok": true})).into_response(),
         Err(e) => {
@@ -293,9 +304,13 @@ pub struct TogglePortBody {
 
 pub async fn api_toggle_port(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
     Json(body): Json<TogglePortBody>,
 ) -> impl IntoResponse {
+    if !auth::is_admin_session(&state, &jar).await {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Only admins can toggle ports."}))).into_response();
+    }
     let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
         Some(cid) => cid,
         None => return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"not found"}))).into_response(),

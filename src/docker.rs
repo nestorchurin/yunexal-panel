@@ -607,7 +607,19 @@ pub async fn list_files(_docker: &Docker, id: &str, path: &str) -> Result<Vec<St
     
     // path is relative to the mount point (/app/data), so it should be relative to volume_path
     let rel_path = path.trim_start_matches('/');
-    let target_path = volume_path.join(rel_path);
+    let target_joined = volume_path.join(rel_path);
+    // Normalize ".." to prevent path traversal (defense in depth)
+    let mut target_path = std::path::PathBuf::new();
+    for component in target_joined.components() {
+        match component {
+            std::path::Component::ParentDir => { target_path.pop(); },
+            std::path::Component::CurDir    => {},
+            c => target_path.push(c),
+        }
+    }
+    if !target_path.starts_with(&volume_path) {
+        anyhow::bail!("Access denied: path traversal");
+    }
 
     if !target_path.exists() {
         return Ok(vec![]);

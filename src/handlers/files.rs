@@ -3,7 +3,8 @@ use axum::{
     http::StatusCode,
     response::{Html, IntoResponse, Redirect},
 };
-use crate::{db, docker};
+use axum_extra::extract::cookie::PrivateCookieJar;
+use crate::{auth, db, docker};
 use crate::state::AppState;
 use super::templates::{CopyFileForm, CreateFileForm, DeleteFileQuery, FileContentQuery, FileEditTemplate, FileListQuery, FileUploadQuery, RenameFileForm, SaveFileForm};
 
@@ -63,9 +64,13 @@ fn build_breadcrumb(db_id: i64, path: &str) -> String {
 
 pub async fn list_files_api(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
     Query(query): Query<FileListQuery>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return Html(String::from(r#"<div id="file-browser"><p style="color:var(--err);padding:1rem;">Access denied</p></div>"#)).into_response();
+    }
     let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
         Some(cid) => cid,
         None => return Html(String::from(r#"<div id="file-browser"><p style="color:var(--err);padding:1rem;">Server not found</p></div>"#)).into_response(),
@@ -78,9 +83,7 @@ pub async fn list_files_api(
     // ── Path traversal guard ──
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let volume_path = cwd.join("volumes").join(&volume_dir);
-    let rel_path = path.trim_start_matches('/');
-    let target = volume_path.join(rel_path);
-    if !target.starts_with(&volume_path) {
+    if resolve_path(&volume_path, &path).is_none() {
         return Html(String::from(r#"<div id="file-browser"><p style="color:var(--err);padding:1rem;">Access denied</p></div>"#)).into_response();
     }
 
@@ -158,9 +161,13 @@ pub async fn list_files_api(
 
 pub async fn edit_file_page(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
     Query(query): Query<FileContentQuery>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return Redirect::to("/").into_response();
+    }
     let (docker_id, db_name) = match db::get_server_info_by_db_id(&state.db, db_id).await.ok().flatten() {
         Some(row) => row,
         None => return Redirect::to("/").into_response(),
@@ -170,12 +177,11 @@ pub async fn edit_file_page(
         .unwrap_or_else(|_| docker_id.clone());
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let volume_path = cwd.join("volumes").join(&volume_dir);
-    let rel_path = query.path.trim_start_matches('/');
 
-    let file_path = volume_path.join(rel_path);
-    if !file_path.starts_with(&volume_path) {
-        return Redirect::to(&format!("/servers/{}/files", db_id)).into_response();
-    }
+    let file_path = match resolve_path(&volume_path, &query.path) {
+        Some(p) => p,
+        None => return Redirect::to(&format!("/servers/{}/files", db_id)).into_response(),
+    };
 
     let filename = file_path
         .file_name()
@@ -219,9 +225,13 @@ pub async fn edit_file_page(
 
 pub async fn save_file_content(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
     Form(form): Form<SaveFileForm>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
         Some(cid) => cid,
         None => return (StatusCode::NOT_FOUND, "Server not found").into_response(),
@@ -231,12 +241,14 @@ pub async fn save_file_content(
         .unwrap_or_else(|_| docker_id.clone());
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let volume_path = cwd.join("volumes").join(&volume_dir);
-    let rel_path = form.path.trim_start_matches('/');
 
-    let file_path = volume_path.join(rel_path);
-    if !file_path.starts_with(&volume_path) {
-        return (StatusCode::FORBIDDEN, "Access Denied").into_response();
-    }
+    let file_path = match resolve_path(&volume_path, &form.path) {
+        Some(p) => p,
+        None => return (StatusCode::FORBIDDEN, "Access Denied").into_response(),
+    };
+    let rel_path = file_path.strip_prefix(&volume_path)
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
 
     // Try direct write first.
     match tokio::fs::write(&file_path, form.content.as_bytes()).await {
@@ -277,9 +289,13 @@ pub async fn save_file_content(
 
 pub async fn create_new_file(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
     Form(form): Form<CreateFileForm>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return "Access denied".into_response();
+    }
     let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
         Some(cid) => cid,
         None => return "Server not found".into_response(),
@@ -301,12 +317,10 @@ pub async fn create_new_file(
         if p.is_empty() || p == "/" {
             volume_path.clone()
         } else {
-            let rel = p.trim_start_matches('/');
-            let resolved = volume_path.join(rel);
-            if !resolved.starts_with(&volume_path) {
-                return "Access denied".into_response();
+            match resolve_path(&volume_path, p) {
+                Some(p) => p,
+                None => return "Access denied".into_response(),
             }
-            resolved
         }
     };
     // Create directory via Docker if needed (root-owned volume)
@@ -374,6 +388,8 @@ fn sh_esc(s: &str) -> String {
 }
 
 // ── Helper to resolve and guard a volume-relative path ───────────────────────
+/// Joins `rel` onto `volume_path`, normalizes away any `..`/`.` components, and
+/// verifies the result is still inside `volume_path`.  Returns `None` on traversal.
 fn resolve_path(
     volume_path: &std::path::Path,
     rel: &str,
@@ -382,16 +398,29 @@ fn resolve_path(
     if rel.is_empty() {
         return Some(volume_path.to_path_buf());
     }
-    let resolved = volume_path.join(rel);
-    if resolved.starts_with(volume_path) { Some(resolved) } else { None }
+    let joined = volume_path.join(rel);
+    // Normalize: resolve `.` and `..` without touching the filesystem.
+    let mut normalized = std::path::PathBuf::new();
+    for component in joined.components() {
+        match component {
+            std::path::Component::ParentDir => { normalized.pop(); },
+            std::path::Component::CurDir    => {},
+            c => normalized.push(c),
+        }
+    }
+    if normalized.starts_with(volume_path) { Some(normalized) } else { None }
 }
 
 // ── DELETE a file or directory ────────────────────────────────────────────────
 pub async fn delete_file(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
     Query(query): Query<DeleteFileQuery>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
         Some(cid) => cid,
         None => return (StatusCode::NOT_FOUND, "Server not found").into_response(),
@@ -430,9 +459,13 @@ pub async fn delete_file(
 // ── RENAME a file or directory ────────────────────────────────────────────────
 pub async fn rename_file(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
     Form(form): Form<RenameFileForm>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
         Some(cid) => cid,
         None => return (StatusCode::NOT_FOUND, "Server not found").into_response(),
@@ -475,9 +508,13 @@ pub async fn rename_file(
 // ── COPY a file or directory to a destination directory ──────────────────────
 pub async fn copy_file(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
     Form(form): Form<CopyFileForm>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
         Some(cid) => cid,
         None => return (StatusCode::NOT_FOUND, "Server not found").into_response(),
@@ -552,10 +589,14 @@ pub async fn copy_file(
 // ── UPLOAD files via multipart form ──────────────────────────────────────────
 pub async fn upload_files(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
     Query(query): Query<FileUploadQuery>,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
     let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
         Some(cid) => cid,
         None => return (StatusCode::NOT_FOUND, "Server not found").into_response(),

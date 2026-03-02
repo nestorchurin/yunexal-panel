@@ -5,16 +5,21 @@ use axum::{
     },
     response::IntoResponse,
 };
+use axum_extra::extract::cookie::PrivateCookieJar;
 use futures_util::{SinkExt, StreamExt};
 use tokio::io::AsyncWriteExt;
-use crate::{db, docker};
+use crate::{auth, db, docker};
 use crate::state::AppState;
 
 pub async fn console_ws(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     ws: WebSocketUpgrade,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return axum::http::StatusCode::FORBIDDEN.into_response();
+    }
     let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
         Some(cid) => cid,
         None => return axum::http::StatusCode::NOT_FOUND.into_response(),

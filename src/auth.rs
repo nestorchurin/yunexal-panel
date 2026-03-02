@@ -55,6 +55,21 @@ pub async fn require_auth(
     }
 }
 
+/// Returns true if the session user is admin or owns the server with the given db_id.
+pub async fn can_access_server(state: &AppState, jar: &PrivateCookieJar, db_id: i64) -> bool {
+    if is_admin_session(state, jar).await {
+        return true;
+    }
+    let uid = match session_user_id(state, jar).await {
+        Some(id) => id,
+        None => return false,
+    };
+    matches!(
+        db::get_server_owner_by_db_id(&state.db, db_id).await,
+        Ok(Some(owner_id)) if owner_id == uid
+    )
+}
+
 /// Middleware: redirects to / if not admin, or /login if user was deleted.
 pub async fn require_admin(
     State(state): State<AppState>,
