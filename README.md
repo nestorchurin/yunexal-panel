@@ -13,7 +13,7 @@ Download the latest binary from the [Releases](https://github.com/nestorchurin/y
 
 ```bash
 # 1. Download and extract
-wget https://github.com/nestorchurin/yunexal-panel/releases/download/v0.2.0-beta/yunexal-panel-v0.2.0-beta-linux-x86_64.tar.gz
+wget https://github.com/nestorchurin/yunexal-panel/releases/latest/download/yunexal-panel-v0.2.0-beta-linux-x86_64.tar.gz
 tar -xzf yunexal-panel-v0.2.0-beta-linux-x86_64.tar.gz
 cd yunex-release
 
