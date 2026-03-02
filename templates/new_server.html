@@ -602,52 +602,47 @@
                                 </select>
                             </div>
                         </div>
-                        <div style="display:grid;grid-template-columns:1fr auto 90px;gap:.5rem;align-items:end;margin-bottom:.5rem;">
+                        <div style="display:grid;grid-template-columns:1fr;gap:.5rem;margin-bottom:.5rem;">
                             <div>
                                 <label class="field-label">Service Name</label>
-                                <div style="display:flex;gap:.35rem;">
-                                    <input type="text" class="form-control" id="srv-service" placeholder="minecraft" oninput="updateSrvPreview()">
-                                    <button type="button" style="background:var(--surface3);border:1px solid var(--bdr2);color:var(--txt);border-radius:8px;padding:.3rem .6rem;white-space:nowrap;cursor:pointer;" onclick="randomSrvName()" title="Random name"><i class="bi bi-dice-5"></i></button>
-                                </div>
-                            </div>
-                            <span style="padding-bottom:.55rem;color:var(--muted);font-size:.9rem;">._</span>
-                            <div>
-                                <label class="field-label">Proto</label>
-                                <select class="form-select" id="srv-proto" onchange="updateSrvPreview()">
-                                    <option value="tcp">TCP</option>
-                                    <option value="udp">UDP</option>
-                                </select>
+                                <input type="text" class="form-control" id="srv-service"
+                                    list="srv-service-list" placeholder="minecraft, ssh, ftp…" autocomplete="off"
+                                    oninput="updateSrvPreview()">
                             </div>
                         </div>
                         <div style="background:var(--surface3);border:1px solid var(--bdr);border-radius:8px;padding:.35rem .7rem;font-size:.74rem;color:var(--muted);margin-bottom:.75rem;">
-                            Record name: <code id="srv-name-preview" style="color:#a78bfa;">_service._tcp</code>
+                            Records: <code id="srv-name-preview" style="color:#a78bfa;">_service._tcp + _service._udp</code>
+                            <span style="float:right;font-size:.68rem;color:var(--muted);">TCP + UDP ✅</span>
                         </div>
                         <!-- A record: subdomain + IP ──────────────── -->
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.6rem;">
                             <div>
-                                <label class="field-label">Subdomain <span style="font-size:.69rem;color:var(--muted);">(створюється A-запис)</span></label>
-                                <div style="display:flex;align-items:center;gap:.4rem;">
-                                    <input type="text" class="form-control" id="srv-a-subdomain" placeholder="mc" oninput="updateSrvTargetPreview()">
-                                    <span id="srv-zone-suffix" style="font-size:.76rem;color:var(--muted);white-space:nowrap;"></span>
+                                <label class="field-label">Subdomain <span style="font-size:.69rem;color:var(--muted);">(A-record)</span></label>
+                                <div style="display:flex;align-items:center;gap:.35rem;">
+                                    <input type="text" class="form-control" id="srv-a-subdomain" placeholder="mcxyz" oninput="updateSrvTargetPreview()" style="font-family:monospace;letter-spacing:.04em;">
+                                    <button type="button" style="background:var(--surface3);border:1px solid var(--bdr2);color:var(--txt);border-radius:8px;padding:.3rem .55rem;cursor:pointer;flex-shrink:0;" onclick="rollSrvSubdomain()" title="Generate random subdomain"><i class="bi bi-shuffle"></i></button>
+                                    <span id="srv-zone-suffix" style="font-size:.72rem;color:var(--muted);white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;"></span>
                                 </div>
                             </div>
                             <div>
                                 <label class="field-label">IP for A record</label>
                                 <div style="display:flex;gap:.35rem;">
-                                    <input type="text" class="form-control" id="srv-a-ip" placeholder="1.2.3.4">
-                                    <button type="button" style="background:var(--surface3);border:1px solid var(--bdr2);color:var(--txt);border-radius:8px;padding:.3rem .6rem;white-space:nowrap;cursor:pointer;" onclick="fetchPublicIpForSrv()" title="Fetch public IP"><i class="bi bi-cloud-arrow-down"></i></button>
+                                    <input type="text" class="form-control" id="srv-a-ip" placeholder="auto-fetched">
+                                    <button type="button" style="background:var(--surface3);border:1px solid var(--bdr2);color:var(--txt);border-radius:8px;padding:.3rem .6rem;white-space:nowrap;cursor:pointer;" onclick="fetchPublicIpForSrv(event)" title="Fetch public IP"><i class="bi bi-cloud-arrow-down"></i></button>
                                 </div>
                             </div>
                         </div>
-                        <!-- SRV target preview (auto-computed) -->
+                        <!-- SRV target preview -->
                         <div style="background:var(--surface3);border:1px solid var(--bdr);border-radius:8px;padding:.35rem .7rem;font-size:.74rem;color:var(--muted);margin-bottom:.75rem;">
-                            SRV target → <code id="srv-target-preview" style="color:#a78bfa;">— filling zone domain —</code>
+                            SRV target → <code id="srv-target-preview" style="color:#a78bfa;">— select zone —</code>
                         </div>
                         <!-- Port / Priority / Weight -->
-                        <div style="display:grid;grid-template-columns:110px 1fr 1fr;gap:.6rem;">
+                        <!-- Port datalist is populated dynamically from port bindings -->
+                        <datalist id="srv-port-list"></datalist>
+                        <div style="display:grid;grid-template-columns:1fr 80px 80px;gap:.6rem;">
                             <div>
-                                <label class="field-label">Port</label>
-                                <input type="number" class="form-control" id="srv-port" min="1" max="65535" placeholder="25565">
+                                <label class="field-label">Port <span style="font-size:.69rem;color:var(--muted);">from Port Bindings</span></label>
+                                <input type="number" class="form-control" id="srv-port" list="srv-port-list" min="1" max="65535" placeholder="select or type">
                             </div>
                             <div>
                                 <label class="field-label">Priority</label>
@@ -699,6 +694,29 @@
     </div><!-- /form-grid -->
 
     <!-- DNS/SRV hidden fields -->
+    <!-- datalists referenced by the DNS section inputs -->
+    <datalist id="srv-service-list">
+        <option value="minecraft">Minecraft Java</option>
+        <option value="minecraft-bedrock">Minecraft Bedrock</option>
+        <option value="terraria">Terraria</option>
+        <option value="valheim">Valheim</option>
+        <option value="factorio">Factorio</option>
+        <option value="ark">ARK: Survival</option>
+        <option value="rust">Rust (game)</option>
+        <option value="csgo">CS2 / CS:GO</option>
+        <option value="garrysmod">Garry's Mod</option>
+        <option value="teamspeak">TeamSpeak 3</option>
+        <option value="mumble">Mumble</option>
+        <option value="ftp">FTP</option>
+        <option value="ssh">SSH</option>
+        <option value="http">HTTP</option>
+        <option value="https">HTTPS</option>
+        <option value="smtp">SMTP</option>
+        <option value="imap">IMAP</option>
+        <option value="xmpp">XMPP</option>
+        <option value="sip">SIP</option>
+        <option value="nfs">NFS</option>
+    </datalist>
     <input type="hidden" name="dns_srv_enabled" id="h-dns-srv-enabled" value="0">
     <input type="hidden" name="dns_provider_id" id="h-dns-provider-id" value="">
     <input type="hidden" name="dns_zone_id" id="h-dns-zone-id" value="">
@@ -708,6 +726,7 @@
     <input type="hidden" name="dns_srv_target" id="h-dns-srv-target" value="">
     <input type="hidden" name="dns_srv_priority" id="h-dns-srv-priority" value="0">
     <input type="hidden" name="dns_srv_weight" id="h-dns-srv-weight" value="0">
+    <input type="hidden" name="dns_srv_both_protos" id="h-dns-srv-both-protos" value="1">
     <input type="hidden" name="dns_a_subdomain" id="h-dns-a-subdomain" value="">
     <input type="hidden" name="dns_a_ip" id="h-dns-a-ip" value="">
     <input type="hidden" id="config" name="config">
@@ -952,11 +971,41 @@ function onSrvToggle() {
     const on = document.getElementById('srv-enable-chk').checked;
     document.getElementById('srv-fields').style.display = on ? '' : 'none';
     if (on) {
-        const hp = document.querySelector('#ports-container .host-input');
+        // Auto-generate subdomain if empty
+        if (!document.getElementById('srv-a-subdomain').value)
+            rollSrvSubdomain();
+        // Populate port datalist from port bindings
+        populateSrvPortList();
+        // Auto-select first port if port field is empty
         const sp = document.getElementById('srv-port');
-        if (hp && hp.value && !sp.value) sp.value = hp.value;
+        if (!sp.value) {
+            const hp = document.querySelector('#ports-container .host-input');
+            if (hp && hp.value) sp.value = hp.value;
+        }
         updateSrvTargetPreview();
     }
+}
+function rollSrvSubdomain() {
+    const len = 8 + Math.floor(Math.random() * 9); // 8-16
+    const chars = 'abcdefghijklmnopqrstuvwxyz';
+    let s = '';
+    for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    document.getElementById('srv-a-subdomain').value = s;
+    updateSrvTargetPreview();
+}
+function populateSrvPortList() {
+    const dl = document.getElementById('srv-port-list');
+    if (!dl) return;
+    dl.innerHTML = '';
+    const seen = new Set();
+    document.querySelectorAll('#ports-container .host-input').forEach(inp => {
+        const v = inp.value.trim();
+        if (v && !seen.has(v)) {
+            seen.add(v);
+            const o = document.createElement('option');
+            o.value = v; dl.appendChild(o);
+        }
+    });
 }
 function loadSrvProviders() {
     fetch('/api/admin/dns/providers', { credentials: 'same-origin' })
@@ -1002,20 +1051,19 @@ function updateSrvTargetPreview() {
     else if (zone)    { prev.textContent = zone + ' (zone root)'; }
     else              { prev.textContent = '\u2014 select zone first \u2014'; }
 }
-function fetchPublicIpForSrv() {
-    const btn = event.currentTarget;
-    const icon = btn.querySelector('i');
-    icon.className = 'bi bi-arrow-repeat';
+function fetchPublicIpForSrv(ev) {
+    const btn = ev ? ev.currentTarget : null;
+    const icon = btn ? btn.querySelector('i') : null;
+    if (icon) icon.className = 'bi bi-arrow-repeat';
     fetch('/api/admin/dns/public-ip', { credentials: 'same-origin' })
         .then(r => r.json())
         .then(d => { if (d.ip) document.getElementById('srv-a-ip').value = d.ip; })
         .catch(() => {})
-        .finally(() => { icon.className = 'bi bi-cloud-arrow-down'; });
+        .finally(() => { if (icon) icon.className = 'bi bi-cloud-arrow-down'; });
 }
 function updateSrvPreview() {
     const s = document.getElementById('srv-service').value.trim().toLowerCase() || 'service';
-    const p = document.getElementById('srv-proto').value;
-    document.getElementById('srv-name-preview').textContent = `_${s}._${p}`;
+    document.getElementById('srv-name-preview').textContent = `_${s}._tcp + _${s}._udp`;
 }
 const _SRV_ADJ  = ['fast','blue','red','cool','big','mini','dark','lite','pro','max'];
 const _SRV_NOUN = ['srv','node','host','gate','core','hub','link','edge','mesh','port'];
@@ -1033,23 +1081,24 @@ function prepareSrvHiddenFields() {
     const zid   = zSel.value;
     const zname = zSel.options[zSel.selectedIndex]?.dataset?.name || zid;
     const svc   = document.getElementById('srv-service').value.trim().toLowerCase();
-    const proto = document.getElementById('srv-proto').value;
     const port  = document.getElementById('srv-port').value;
     const aSub  = document.getElementById('srv-a-subdomain').value.trim();
     const aIp   = document.getElementById('srv-a-ip').value.trim();
     if (!pid || !zid || !svc || !port) { document.getElementById('h-dns-srv-enabled').value = '0'; return; }
     const computedTarget = aSub && zname ? `${aSub}.${zname}` : '';
-    document.getElementById('h-dns-srv-enabled').value   = '1';
-    document.getElementById('h-dns-provider-id').value   = pid;
-    document.getElementById('h-dns-zone-id').value       = zid;
-    document.getElementById('h-dns-zone-name').value     = zname;
-    document.getElementById('h-dns-srv-name').value      = `_${svc}._${proto}`;
-    document.getElementById('h-dns-srv-port').value      = port;
-    document.getElementById('h-dns-srv-target').value    = computedTarget;
-    document.getElementById('h-dns-srv-priority').value  = document.getElementById('srv-priority').value || '0';
-    document.getElementById('h-dns-srv-weight').value    = document.getElementById('srv-weight').value || '0';
-    document.getElementById('h-dns-a-subdomain').value   = aSub;
-    document.getElementById('h-dns-a-ip').value          = aIp;
+    document.getElementById('h-dns-srv-enabled').value    = '1';
+    document.getElementById('h-dns-srv-both-protos').value = '1';
+    document.getElementById('h-dns-provider-id').value    = pid;
+    document.getElementById('h-dns-zone-id').value        = zid;
+    document.getElementById('h-dns-zone-name').value      = zname;
+    // Base name without protocol — backend appends ._tcp / ._udp
+    document.getElementById('h-dns-srv-name').value       = `_${svc}`;
+    document.getElementById('h-dns-srv-port').value       = port;
+    document.getElementById('h-dns-srv-target').value     = computedTarget;
+    document.getElementById('h-dns-srv-priority').value   = document.getElementById('srv-priority').value || '0';
+    document.getElementById('h-dns-srv-weight').value     = document.getElementById('srv-weight').value || '0';
+    document.getElementById('h-dns-a-subdomain').value    = aSub;
+    document.getElementById('h-dns-a-ip').value           = aIp;
 }
 
 </script>

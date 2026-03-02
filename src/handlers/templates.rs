@@ -191,6 +191,9 @@ pub struct CreateServerForm {
     pub dns_srv_priority: String,
     #[serde(default)]
     pub dns_srv_weight: String,
+    /// "1" = create both _tcp and _udp SRV records (default behaviour)
+    #[serde(default)]
+    pub dns_srv_both_protos: String,
     // ── A record (created before SRV so its FQDN is the SRV target) ──────────
     /// Subdomain for the auto-created A record (e.g. "mc" → mc.example.com)
     #[serde(default)]

@@ -337,23 +337,35 @@ pub async fn create_server(
                                 zone_name.clone()
                             };
 
-                            // Step 2 – SRV record
-                            let srv_value = format!("{} {} {}", weight, port, target);
-                            let srv_remote_id = client.create_record(&zone_id, &dns_lib::DnsRecordInput {
-                                record_type: "SRV".to_string(),
-                                name:        srv_name.clone(),
-                                value:       srv_value.clone(),
-                                ttl:         1,
-                                priority,
-                                proxied:     false,
-                            }).await.unwrap_or_default();
-                            let _ = db::dns_add_record(
-                                &state.db, pid,
-                                &zone_id, &zone_name,
-                                "SRV", &srv_name, &srv_value,
-                                1, priority, false, &srv_remote_id,
-                                Some(db_id), false, 300,
-                            ).await;
+                            // Step 2 – SRV record(s): base name without protocol
+                            // If both_protos, create _tcp AND _udp; otherwise use dns_srv_name as-is
+                            let base_name = {
+                                let n = form.dns_srv_name.trim();
+                                // Strip any trailing ._tcp / ._udp to get the bare _service
+                                let stripped = n.trim_end_matches("._tcp").trim_end_matches("._udp");
+                                stripped.to_string()
+                            };
+                            let both = form.dns_srv_both_protos.trim() == "1";
+                            let protos: &[&str] = if both { &["tcp", "udp"] } else { &["tcp"] };
+                            for proto in protos {
+                                let full_name = format!("{}._", base_name) + proto;
+                                let srv_value = format!("{} {} {}", weight, port, target);
+                                let srv_remote_id = client.create_record(&zone_id, &dns_lib::DnsRecordInput {
+                                    record_type: "SRV".to_string(),
+                                    name:        full_name.clone(),
+                                    value:       srv_value.clone(),
+                                    ttl:         1,
+                                    priority,
+                                    proxied:     false,
+                                }).await.unwrap_or_default();
+                                let _ = db::dns_add_record(
+                                    &state.db, pid,
+                                    &zone_id, &zone_name,
+                                    "SRV", &full_name, &srv_value,
+                                    1, priority, false, &srv_remote_id,
+                                    Some(db_id), false, 300,
+                                ).await;
+                            }
                         }
                     }
                 }
