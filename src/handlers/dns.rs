@@ -48,7 +48,7 @@ pub async fn api_dns_list_providers(State(state): State<AppState>) -> Json<Value
                 "enabled":       p.enabled,
                 "credentials":   redact_credentials(&p.credentials),
                 "created_at":    p.created_at,
-            })).collect();
+            })).collect();  
             Json(json!({ "ok": true, "providers": list }))
         }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
@@ -321,13 +321,6 @@ pub async fn api_dns_update_record(
     let ddns     = body.ddns_enabled.unwrap_or(false);
     let interval = body.ddns_interval.unwrap_or(300);
     let push     = body.push_to_provider.unwrap_or(false);
-
-    // Fetch the current record to get remote_id + provider
-    let records = match db::dns_list_records(&state.db, 0).await {
-        Ok(_) => (), // just checking — we'll get the provider separately
-        Err(_) => (),
-    };
-    let _ = records;
 
     // Push to provider if requested
     if push {

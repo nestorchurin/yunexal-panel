@@ -614,22 +614,13 @@
                             Records: <code id="srv-name-preview" style="color:#a78bfa;">_service._tcp + _service._udp</code>
                             <span style="float:right;font-size:.68rem;color:var(--muted);">TCP + UDP ✅</span>
                         </div>
-                        <!-- A record: subdomain + IP ──────────────── -->
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.6rem;">
-                            <div>
-                                <label class="field-label">Subdomain <span style="font-size:.69rem;color:var(--muted);">(A-record)</span></label>
-                                <div style="display:flex;align-items:center;gap:.35rem;">
-                                    <input type="text" class="form-control" id="srv-a-subdomain" placeholder="mcxyz" oninput="updateSrvTargetPreview()" style="font-family:monospace;letter-spacing:.04em;">
-                                    <button type="button" style="background:var(--surface3);border:1px solid var(--bdr2);color:var(--txt);border-radius:8px;padding:.3rem .55rem;cursor:pointer;flex-shrink:0;" onclick="rollSrvSubdomain()" title="Generate random subdomain"><i class="bi bi-shuffle"></i></button>
-                                    <span id="srv-zone-suffix" style="font-size:.72rem;color:var(--muted);white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;"></span>
-                                </div>
-                            </div>
-                            <div>
-                                <label class="field-label">IP for A record</label>
-                                <div style="display:flex;gap:.35rem;">
-                                    <input type="text" class="form-control" id="srv-a-ip" placeholder="auto-fetched">
-                                    <button type="button" style="background:var(--surface3);border:1px solid var(--bdr2);color:var(--txt);border-radius:8px;padding:.3rem .6rem;white-space:nowrap;cursor:pointer;" onclick="fetchPublicIpForSrv(event)" title="Fetch public IP"><i class="bi bi-cloud-arrow-down"></i></button>
-                                </div>
+                        <!-- A record: subdomain ──────────────── -->
+                        <div style="margin-bottom:.6rem;">
+                            <label class="field-label">Subdomain <span style="font-size:.69rem;color:var(--muted);">(A-record, IP auto-detected)</span></label>
+                            <div style="display:flex;align-items:center;gap:.35rem;">
+                                <input type="text" class="form-control" id="srv-a-subdomain" placeholder="mcxyz" oninput="updateSrvTargetPreview()" style="font-family:monospace;letter-spacing:.04em;">
+                                <button type="button" style="background:var(--surface3);border:1px solid var(--bdr2);color:var(--txt);border-radius:8px;padding:.3rem .55rem;cursor:pointer;flex-shrink:0;" onclick="rollSrvSubdomain()" title="Generate random subdomain"><i class="bi bi-shuffle"></i></button>
+                                <span id="srv-zone-suffix" style="font-size:.72rem;color:var(--muted);white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis;"></span>
                             </div>
                         </div>
                         <!-- SRV target preview -->
@@ -1032,7 +1023,7 @@ function onSrvProviderChange() {
                 o.value = z.id; o.textContent = z.name; o.dataset.name = z.name;
                 sel.appendChild(o);
             });
-            sel.onchange = () => updateSrvTargetPreview();
+            sel.onchange = () => { updateSrvTargetPreview(); _autoFetchIp(); };
         }).catch(() => { sel.innerHTML = '<option value="">Failed to load</option>'; });
 }
 function _getSrvZoneName() {
@@ -1051,28 +1042,18 @@ function updateSrvTargetPreview() {
     else if (zone)    { prev.textContent = zone + ' (zone root)'; }
     else              { prev.textContent = '\u2014 select zone first \u2014'; }
 }
-function fetchPublicIpForSrv(ev) {
-    const btn = ev ? ev.currentTarget : null;
-    const icon = btn ? btn.querySelector('i') : null;
-    if (icon) icon.className = 'bi bi-arrow-repeat';
+// Fetch public IP and store directly in the hidden field.
+function _autoFetchIp() {
     fetch('/api/admin/dns/public-ip', { credentials: 'same-origin' })
         .then(r => r.json())
-        .then(d => { if (d.ip) document.getElementById('srv-a-ip').value = d.ip; })
-        .catch(() => {})
-        .finally(() => { if (icon) icon.className = 'bi bi-cloud-arrow-down'; });
+        .then(d => { if (d.ip) document.getElementById('h-dns-a-ip').value = d.ip; })
+        .catch(() => {});
 }
 function updateSrvPreview() {
     const s = document.getElementById('srv-service').value.trim().toLowerCase() || 'service';
     document.getElementById('srv-name-preview').textContent = `_${s}._tcp + _${s}._udp`;
 }
-const _SRV_ADJ  = ['fast','blue','red','cool','big','mini','dark','lite','pro','max'];
-const _SRV_NOUN = ['srv','node','host','gate','core','hub','link','edge','mesh','port'];
-function randomSrvName() {
-    const n = _SRV_ADJ[Math.floor(Math.random()*_SRV_ADJ.length)]
-            + _SRV_NOUN[Math.floor(Math.random()*_SRV_NOUN.length)];
-    document.getElementById('srv-service').value = n;
-    updateSrvPreview();
-}
+
 function prepareSrvHiddenFields() {
     const chk = document.getElementById('srv-enable-chk');
     if (!chk || !chk.checked) { document.getElementById('h-dns-srv-enabled').value = '0'; return; }
@@ -1083,7 +1064,6 @@ function prepareSrvHiddenFields() {
     const svc   = document.getElementById('srv-service').value.trim().toLowerCase();
     const port  = document.getElementById('srv-port').value;
     const aSub  = document.getElementById('srv-a-subdomain').value.trim();
-    const aIp   = document.getElementById('srv-a-ip').value.trim();
     if (!pid || !zid || !svc || !port) { document.getElementById('h-dns-srv-enabled').value = '0'; return; }
     const computedTarget = aSub && zname ? `${aSub}.${zname}` : '';
     document.getElementById('h-dns-srv-enabled').value    = '1';
@@ -1091,14 +1071,13 @@ function prepareSrvHiddenFields() {
     document.getElementById('h-dns-provider-id').value    = pid;
     document.getElementById('h-dns-zone-id').value        = zid;
     document.getElementById('h-dns-zone-name').value      = zname;
-    // Base name without protocol — backend appends ._tcp / ._udp
     document.getElementById('h-dns-srv-name').value       = `_${svc}`;
     document.getElementById('h-dns-srv-port').value       = port;
     document.getElementById('h-dns-srv-target').value     = computedTarget;
     document.getElementById('h-dns-srv-priority').value   = document.getElementById('srv-priority').value || '0';
     document.getElementById('h-dns-srv-weight').value     = document.getElementById('srv-weight').value || '0';
     document.getElementById('h-dns-a-subdomain').value    = aSub;
-    document.getElementById('h-dns-a-ip').value           = aIp;
+    // h-dns-a-ip is already populated by _autoFetchIp() on zone selection
 }
 
 </script>
