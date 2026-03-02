@@ -42,7 +42,7 @@ pub struct DnsRecordInput {
 /// Construct per-provider credential fields from a provider_type string + JSON credentials.
 pub enum DnsClient {
     Cloudflare { token: String },
-    DuckDns    { token: String },
+    DuckDns    { token: String, domain: String },
     GoDaddy    { api_key: String, api_secret: String },
     Namecheap  { api_key: String, #[allow(dead_code)] api_user: String, #[allow(dead_code)] username: String },
     Generic    { update_url: String, method: String },
@@ -53,7 +53,7 @@ impl DnsClient {
         let s = |key: &str| creds[key].as_str().unwrap_or("").to_string();
         match provider_type {
             "cloudflare" => Ok(Self::Cloudflare { token: s("api_token") }),
-            "duckdns"    => Ok(Self::DuckDns   { token: s("token") }),
+            "duckdns"    => Ok(Self::DuckDns   { token: s("token"), domain: s("domain") }),
             "godaddy"    => Ok(Self::GoDaddy   { api_key: s("api_key"), api_secret: s("api_secret") }),
             "namecheap"  => Ok(Self::Namecheap { api_key: s("api_key"), api_user: s("api_user"), username: s("username") }),
             "generic"    => Ok(Self::Generic   { update_url: s("update_url"), method: s("method").to_uppercase() }),
@@ -95,7 +95,7 @@ impl DnsClient {
                     Some(DnsZone { id: name.clone(), name })
                 }).collect()).unwrap_or_default())
             }
-            Self::DuckDns { .. } => {
+            Self::DuckDns { token: _, domain: _ } => {
                 // DuckDNS has no zone list; domain(s) come from credentials
                 Ok(vec![DnsZone { id: "duckdns".to_string(), name: "duckdns.org".to_string() }])
             }
@@ -297,12 +297,12 @@ impl DnsClient {
                     .filter(|r| r.record_type == "A" && r.name == name)
                     .collect();
                 if matched.is_empty() {
-                    // Create new A record
+                    // Create new A record with TTL=1 (auto)
                     self.create_record(zone_id, &DnsRecordInput {
                         record_type: "A".to_string(),
                         name: name.to_string(),
                         value: ip.to_string(),
-                        ttl: 60,
+                        ttl: 1,
                         priority: 0,
                         proxied: false,
                     }).await?;
@@ -322,14 +322,18 @@ impl DnsClient {
                 }
                 Ok(())
             }
-            Self::DuckDns { token } => {
+            Self::DuckDns { token, .. } => {
+                // Strip .duckdns.org suffix if the name was stored as FQDN
+                let subdomain = name
+                    .trim_end_matches('.')
+                    .trim_end_matches(".duckdns.org");
                 let url = format!(
-                    "https://www.duckdns.org/update?domains={}&token={}&ip={}",
-                    name, token, ip
+                    "https://www.duckdns.org/update?domains={}&token={}&ip={}&verbose=true",
+                    subdomain, token, ip
                 );
                 let text = Self::http().get(&url).send().await?.text().await?;
-                if text.trim().starts_with("OK") { Ok(()) }
-                else { Err(anyhow!("DuckDNS update failed: {}", text.trim())) }
+                if text.trim_start().starts_with("OK") { Ok(()) }
+                else { Err(anyhow!("DuckDNS update failed: {}", text.lines().next().unwrap_or("KO"))) }
             }
             Self::GoDaddy { api_key, api_secret } => {
                 let body = serde_json::json!([{ "data": ip, "ttl": 600 }]);
@@ -382,15 +386,24 @@ impl DnsClient {
                     Err(anyhow!("Cloudflare token invalid: {}", resp["errors"]))
                 }
             }
-            Self::DuckDns { token } => {
-                // DuckDNS ping
-                let text = Self::http()
-                    .get(format!("https://www.duckdns.org/update?domains=test&token={}&ip=", token))
-                    .send().await?.text().await?;
-                if text.trim().starts_with("OK") {
-                    Ok("DuckDNS token valid".to_string())
+            Self::DuckDns { token, domain } => {
+                // Use the stored test domain; fall back to a no-op probe if blank
+                let subdomain = if domain.is_empty() {
+                    return Ok("DuckDNS token saved — add a 'domain' credential to verify it".to_string());
                 } else {
-                    Err(anyhow!("DuckDNS token invalid (response: {})", text.trim()))
+                    domain.trim_end_matches('.').trim_end_matches(".duckdns.org")
+                };
+                let text = Self::http()
+                    .get(format!(
+                        "https://www.duckdns.org/update?domains={}&token={}&ip=&verbose=true",
+                        subdomain, token
+                    ))
+                    .send().await?.text().await?;
+                if text.trim_start().starts_with("OK") {
+                    let status = text.lines().nth(3).unwrap_or("NOCHANGE");
+                    Ok(format!("DuckDNS token valid — {}", status))
+                } else {
+                    Err(anyhow!("DuckDNS token invalid or domain not owned (response: {})", text.lines().next().unwrap_or("KO")))
                 }
             }
             Self::GoDaddy { api_key, api_secret } => {

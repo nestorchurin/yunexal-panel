@@ -574,9 +574,11 @@
                 <div class="row g-3">
                     <div class="col-6">
                         <label class="yu-label">Record Type</label>
-                        <select class="yu-input" id="drm-type" style="cursor:pointer;">
+                        <select class="yu-input" id="drm-type" onchange="dnsOnModalTypeChange()" style="cursor:pointer;">
                             <option>A</option><option>AAAA</option><option>CNAME</option>
-                            <option>TXT</option><option>MX</option><option>NS</option><option>SRV</option>
+                            <option>TXT</option><option>MX</option><option>NS</option>
+                            <option>SRV</option><option>CAA</option><option>HTTPS</option>
+                            <option>PTR</option><option>CERT</option><option>TLSA</option>
                         </select>
                     </div>
                     <div class="col-6">
@@ -604,15 +606,15 @@
                         </select>
                         <input type="number" class="yu-input mt-1" id="drm-ttl-custom" placeholder="seconds" min="60" style="display:none;">
                     </div>
-                    <div class="col-4">
+                    <div class="col-4" id="drm-priority-wrap">
                         <label class="yu-label">Priority</label>
                         <input type="number" class="yu-input" id="drm-priority" value="0" min="0">
                     </div>
                     <div class="col-4" id="drm-proxied-wrap">
                         <label class="yu-label">Cloudflare Proxy</label>
                         <select class="yu-input" id="drm-proxied" style="cursor:pointer;">
-                            <option value="false">DNS only</option>
-                            <option value="true">Proxied (orange cloud)</option>
+                            <option value="false">DNS only ☁</option>
+                            <option value="true">Proxied 🟠 (orange cloud)</option>
                         </select>
                     </div>
                     <div class="col-12">
@@ -987,7 +989,7 @@
 
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/admin.js?v=7"></script>
+    <script src="/static/js/admin.js?v=8"></script>
     <script src="/static/js/footer.js"></script>
 </body>
 </html>

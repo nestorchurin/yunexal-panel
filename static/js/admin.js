@@ -546,6 +546,7 @@ let _dnsCurrentProviderId = null;
 let _dnsCurrentZoneId     = '';
 let _dnsCurrentZoneName   = '';
 let _dnsTypeFilter        = '';
+let _dnsCurrentProviderType = '';
 
 // ── Type badge helper ─────────────────────────────────────────────────────────
 
@@ -554,7 +555,20 @@ function _dnsTypeBadge(type) {
     return `<span class="dns-type-badge ${cls}">${escHtml(type)}</span>`;
 }
 
+// Proxy indicator — Cloudflare orange cloud / DNS-only / N/A for other providers
+function _dnsProxyBadge(proxied, providerType) {
+    if (providerType !== 'cloudflare') return '<span style="color:var(--muted);font-size:.75rem;">—</span>';
+    return proxied
+        ? `<span title="Proxied (Cloudflare)" style="color:#f97316;font-size:1rem;"><i class="bi bi-cloud-fill"></i></span>`
+        : `<span title="DNS only" style="color:var(--muted);font-size:1rem;"><i class="bi bi-cloud"></i></span>`;
+}
+
 // ── Search / filter ───────────────────────────────────────────────────────────
+
+// Types where Cloudflare proxying is allowed
+const _CF_PROXIABLE = new Set(['A', 'AAAA', 'CNAME']);
+// Types that use the Priority field
+const _DNS_HAS_PRIORITY = new Set(['MX', 'SRV', 'NAPTR', 'URI']);
 
 function dnsSetTypeFilter(type, btn) {
     _dnsTypeFilter = type;
@@ -577,6 +591,36 @@ function dnsFilterRecords() {
     });
 }
 
+// Show/hide proxy and priority fields based on record type + provider
+function dnsOnModalTypeChange() {
+    const type         = (document.getElementById('drm-type')?.value || '').toUpperCase();
+    const proxiedWrap  = document.getElementById('drm-proxied-wrap');
+    const priorityWrap = document.getElementById('drm-priority-wrap');
+    if (proxiedWrap) {
+        const canProxy = _dnsCurrentProviderType === 'cloudflare' && _CF_PROXIABLE.has(type);
+        proxiedWrap.style.display = canProxy ? '' : 'none';
+    }
+    if (priorityWrap) {
+        priorityWrap.style.display = _DNS_HAS_PRIORITY.has(type) ? '' : 'none';
+    }
+    // Update value placeholder hint
+    const valInput = document.getElementById('drm-value');
+    if (valInput) {
+        const hints = {
+            A: '1.2.3.4',
+            AAAA: '2001:db8::1',
+            CNAME: 'target.example.com',
+            MX: 'mail.example.com',
+            TXT: 'v=spf1 include:example.com ~all',
+            NS: 'ns1.example.com',
+            SRV: '10 20 5060 sip.example.com',
+            CAA: '0 issue "letsencrypt.org"',
+            PTR: 'hostname.example.com',
+        };
+        valInput.placeholder = hints[type] || 'record value';
+    }
+}
+
 function dnsSwitchTab(tab, btn) {
     document.querySelectorAll('.dns-subtab').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.yu-inner-tab').forEach(el => el.classList.remove('active'));
@@ -595,7 +639,8 @@ const _DNS_CRED_FIELDS = {
         { key: 'api_token', label: 'API Token', placeholder: 'Your Cloudflare API token', type: 'password' },
     ],
     duckdns: [
-        { key: 'token',  label: 'Token',   placeholder: 'DuckDNS token', type: 'password' },
+        { key: 'token',  label: 'Token',   placeholder: 'DuckDNS account token', type: 'password' },
+        { key: 'domain', label: 'Test Domain', placeholder: 'mysubdomain (without .duckdns.org) — for credential test', type: 'text' },
     ],
     godaddy: [
         { key: 'api_key',    label: 'API Key',    placeholder: 'GoDaddy API key',    type: 'text' },
@@ -798,6 +843,9 @@ function dnsLoadRemoteRecords() {
     _dnsCurrentProviderId = pid ? parseInt(pid) : null;
     _dnsCurrentZoneId     = zid;
     _dnsCurrentZoneName   = opt ? (opt.dataset.zoneName || zid) : zid;
+    // Track provider type for proxy/feature toggles
+    const providerObj = _dnsProviders.find(p => p.id === _dnsCurrentProviderId);
+    _dnsCurrentProviderType = providerObj ? providerObj.provider_type : '';
 
     const tbody = document.getElementById('dns-records-tbody');
     if (!pid || !zid) {
@@ -839,7 +887,7 @@ function dnsLoadRemoteRecords() {
                     <td>${_dnsTypeBadge(r.record_type)}</td>
                     <td class="mono" style="font-size:.75rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(r.value)}</td>
                     <td style="font-size:.8rem;">${r.ttl === 1 ? 'Auto' : r.ttl + 's'}</td>
-                    <td>${r.proxied ? '<span class="pill pill-run" style="font-size:.65rem;"><i class="bi bi-cloud-fill"></i> On</span>' : '<span style="color:var(--muted);font-size:.8rem;">—</span>'}</td>
+                    <td>${_dnsProxyBadge(r.proxied, _dnsCurrentProviderType)}</td>
                     <td><span style="color:var(--muted);font-size:.8rem;">—</span></td>
                     <td style="text-align:center;">${managedBadge}</td>
                     <td style="text-align:right;">${actionBtn}</td>
@@ -944,6 +992,7 @@ function dnsEditRecord(rec) {
     _dnsSetTtl(rec.ttl || 1);
     document.getElementById('drm-priority').value = rec.priority || 0;
     document.getElementById('drm-proxied').value  = rec.proxied ? 'true' : 'false';
+    dnsOnModalTypeChange();
     const ddnsChk = document.getElementById('drm-ddns');
     ddnsChk.checked = !!rec.ddns_enabled;
     document.getElementById('drm-interval-wrap').style.display = rec.ddns_enabled ? '' : 'none';
@@ -967,6 +1016,7 @@ function dnsOpenAddRecordModal() {
     document.getElementById('drm-value').value   = '';
     _dnsSetTtl(1);
     document.getElementById('drm-priority').value = '0';
+    dnsOnModalTypeChange();
     document.getElementById('drm-proxied').value = 'false';
     document.getElementById('drm-ddns').checked  = false;
     document.getElementById('drm-push').checked  = true;
