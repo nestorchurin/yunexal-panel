@@ -545,8 +545,37 @@ let _dnsEditRecordId      = null;
 let _dnsCurrentProviderId = null;
 let _dnsCurrentZoneId     = '';
 let _dnsCurrentZoneName   = '';
+let _dnsTypeFilter        = '';
 
-// ── Sub-tab switching ────────────────────────────────────────────────────────
+// ── Type badge helper ─────────────────────────────────────────────────────────
+
+function _dnsTypeBadge(type) {
+    const cls = 'dns-type-' + (type || 'unknown').toLowerCase();
+    return `<span class="dns-type-badge ${cls}">${escHtml(type)}</span>`;
+}
+
+// ── Search / filter ───────────────────────────────────────────────────────────
+
+function dnsSetTypeFilter(type, btn) {
+    _dnsTypeFilter = type;
+    document.querySelectorAll('.dns-filter-chips .dns-chip').forEach(c => c.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    dnsFilterRecords();
+}
+
+function dnsFilterRecords() {
+    const q    = (document.getElementById('dns-rec-search')?.value || '').toLowerCase();
+    const type = _dnsTypeFilter.toUpperCase();
+    ['dns-local-tbody', 'dns-records-tbody'].forEach(id => {
+        const tbody = document.getElementById(id);
+        if (!tbody) return;
+        tbody.querySelectorAll('tr[data-rec-type]').forEach(row => {
+            const matchType = !type || row.dataset.recType === type;
+            const matchQ    = !q    || row.textContent.toLowerCase().includes(q);
+            row.style.display = (matchType && matchQ) ? '' : 'none';
+        });
+    });
+}
 
 function dnsSwitchTab(tab, btn) {
     document.querySelectorAll('.dns-subtab').forEach(el => el.classList.remove('active'));
@@ -805,9 +834,9 @@ function dnsLoadRemoteRecords() {
                     ? `<span style="font-size:.75rem;color:var(--muted);">tracked</span>`
                     : `<button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsImportRecord(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="Track in panel"><i class="bi bi-download"></i></button>`;
                 return `
-                <tr>
+                <tr data-rec-type="${escHtml(r.record_type)}">
                     <td class="mono" style="font-size:.78rem;">${escHtml(r.name)}</td>
-                    <td><span class="dns-type-badge">${escHtml(r.record_type)}</span></td>
+                    <td>${_dnsTypeBadge(r.record_type)}</td>
                     <td class="mono" style="font-size:.75rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(r.value)}</td>
                     <td style="font-size:.8rem;">${r.ttl === 1 ? 'Auto' : r.ttl + 's'}</td>
                     <td>${r.proxied ? '<span class="pill pill-run" style="font-size:.65rem;"><i class="bi bi-cloud-fill"></i> On</span>' : '<span style="color:var(--muted);font-size:.8rem;">—</span>'}</td>
@@ -855,9 +884,9 @@ function dnsLoadLocalRecords() {
                     ? `<span class="mono" style="font-size:.7rem;color:var(--muted);" title="${escHtml(r.remote_id)}">${escHtml(r.remote_id.substring(0,12))}…</span>`
                     : `<span style="color:var(--muted);font-size:.75rem;">—</span>`;
                 return `
-                <tr data-record-id="${r.id}" data-remote-id="${escHtml(r.remote_id || '')}">
+                <tr data-record-id="${r.id}" data-remote-id="${escHtml(r.remote_id || '')}" data-rec-type="${escHtml(r.record_type)}">
                     <td class="mono" style="font-size:.78rem;">${escHtml(r.name)}</td>
-                    <td><span class="dns-type-badge">${escHtml(r.record_type)}</span></td>
+                    <td>${_dnsTypeBadge(r.record_type)}</td>
                     <td class="mono" style="font-size:.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(r.value)}</td>
                     <td style="font-size:.8rem;">${r.ttl === 1 ? 'Auto' : r.ttl + 's'}</td>
                     <td>${ddnsBadge}</td>

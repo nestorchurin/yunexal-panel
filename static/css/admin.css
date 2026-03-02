@@ -252,3 +252,31 @@ body { overflow: hidden; }
     color: #a78bfa;
     border: 1px solid rgba(124,58,237,.2);
 }
+/* Per-type colors */
+.dns-type-a     { background:rgba(34,197,94,.13);  color:#4ade80; border-color:rgba(34,197,94,.25); }
+.dns-type-aaaa  { background:rgba(6,182,212,.13);  color:#22d3ee; border-color:rgba(6,182,212,.25); }
+.dns-type-cname { background:rgba(249,115,22,.13); color:#fb923c; border-color:rgba(249,115,22,.25); }
+.dns-type-txt   { background:rgba(234,179,8,.13);  color:#facc15; border-color:rgba(234,179,8,.25); }
+.dns-type-mx    { background:rgba(236,72,153,.13); color:#f472b6; border-color:rgba(236,72,153,.25); }
+.dns-type-ns    { background:rgba(99,102,241,.13); color:#818cf8; border-color:rgba(99,102,241,.25); }
+.dns-type-srv   { background:rgba(239,68,68,.13);  color:#f87171; border-color:rgba(239,68,68,.25); }
+.dns-type-caa   { background:rgba(168,85,247,.13); color:#c084fc; border-color:rgba(168,85,247,.25); }
+.dns-type-soa   { background:rgba(148,163,184,.13);color:#94a3b8; border-color:rgba(148,163,184,.2); }
+/* Filter chips */
+.dns-filter-chips { display:flex; flex-wrap:wrap; gap:.35rem; align-items:center; }
+.dns-chip {
+    font-size:.65rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    padding:.2rem .55rem; border-radius:5px; cursor:pointer; border:1px solid rgba(255,255,255,.1);
+    background:transparent; color:var(--muted); transition:all .15s;
+}
+.dns-chip:hover { color:var(--txt); border-color:rgba(255,255,255,.25); }
+.dns-chip.active { color:#fff; border-color:transparent; }
+.dns-chip-all.active         { background:rgba(124,58,237,.45); }
+.dns-chip-a.active     { background:rgba(34,197,94,.35);  color:#4ade80; }
+.dns-chip-aaaa.active  { background:rgba(6,182,212,.35);  color:#22d3ee; }
+.dns-chip-cname.active { background:rgba(249,115,22,.35); color:#fb923c; }
+.dns-chip-txt.active   { background:rgba(234,179,8,.35);  color:#facc15; }
+.dns-chip-mx.active    { background:rgba(236,72,153,.35); color:#f472b6; }
+.dns-chip-ns.active    { background:rgba(99,102,241,.35); color:#818cf8; }
+.dns-chip-srv.active   { background:rgba(239,68,68,.35);  color:#f87171; }
+.dns-chip-caa.active   { background:rgba(168,85,247,.35); color:#c084fc; }

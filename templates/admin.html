@@ -9,7 +9,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="/static/css/base.css?v=2" rel="stylesheet">
-    <link href="/static/css/admin.css?v=2" rel="stylesheet">
+    <link href="/static/css/admin.css?v=3" rel="stylesheet">
 </head>
 <body>
     <!-- Mobile sidebar overlay -->
@@ -456,6 +456,23 @@
                         </div>
                         <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsLoadRemoteRecords()" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
                         <button class="btn-yu btn-primary-yu btn-sm-yu" onclick="dnsOpenAddRecordModal()"><i class="bi bi-plus-lg"></i> Add Record</button>
+                    </div>
+                    <div class="yu-card-bd" style="border-top:1px solid var(--bdr);display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;">
+                        <div style="position:relative;flex:1;min-width:180px;">
+                            <i class="bi bi-search" style="position:absolute;left:.75rem;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.8rem;pointer-events:none;"></i>
+                            <input type="text" class="yu-input" id="dns-rec-search" placeholder="Search name or value…" oninput="dnsFilterRecords()" style="padding-left:2.2rem;">
+                        </div>
+                        <div class="dns-filter-chips">
+                            <button class="dns-chip dns-chip-all active" onclick="dnsSetTypeFilter('',this)">All</button>
+                            <button class="dns-chip dns-chip-a"     onclick="dnsSetTypeFilter('A',this)">A</button>
+                            <button class="dns-chip dns-chip-aaaa"  onclick="dnsSetTypeFilter('AAAA',this)">AAAA</button>
+                            <button class="dns-chip dns-chip-cname" onclick="dnsSetTypeFilter('CNAME',this)">CNAME</button>
+                            <button class="dns-chip dns-chip-txt"   onclick="dnsSetTypeFilter('TXT',this)">TXT</button>
+                            <button class="dns-chip dns-chip-mx"    onclick="dnsSetTypeFilter('MX',this)">MX</button>
+                            <button class="dns-chip dns-chip-ns"    onclick="dnsSetTypeFilter('NS',this)">NS</button>
+                            <button class="dns-chip dns-chip-srv"   onclick="dnsSetTypeFilter('SRV',this)">SRV</button>
+                            <button class="dns-chip dns-chip-caa"   onclick="dnsSetTypeFilter('CAA',this)">CAA</button>
+                        </div>
                     </div>
                 </div>
                 <!-- Panel-tracked records -->
@@ -970,7 +987,7 @@
 
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/admin.js?v=6"></script>
+    <script src="/static/js/admin.js?v=7"></script>
     <script src="/static/js/footer.js"></script>
 </body>
 </html>
