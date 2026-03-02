@@ -1,34 +1,20 @@
-# Yunexal Panel — `unstable`
+# Yunexal Panel
 
-> ⚠️ **This is the `unstable` branch** — features here are in active development and may be broken or incomplete.  
-> For the latest stable release see the [`main`](https://github.com/nestorchurin/yunexal-panel/tree/main) branch.
+> **v0.2.0-beta** — Self-hosted web panel for managing Docker game-server containers.
 
-> **v0.2.0-dev** — Unstable  
-> A self-hosted web panel for managing Docker game-server containers.
-
-Built with **Rust + Axum**, **SQLite**, and **Bollard** (Docker SDK).
+Built with **Rust + Axum**, **SQLite**, and **Bollard** (Docker SDK).  
+Templates and static assets are embedded into a single binary — no external files needed.
 
 ---
 
-### What's new in this branch (unreleased)
-
-- **In-place dashboard** — server cards update without DOM re-creation (no animation flicker, live CPU/RAM via 1 s polling)
-- **In-place admin panel** — containers, images, and overview all update in-place
-- **AMOLED mode** — pure-black theme for mobile OLED screens, auto-enables fullscreen
-- **Mobile fixes** — `visibilitychange` polling resume, 7-day session cookie, 300 ms tap-delay removed
-- **Admin images** — in-place refresh, pull, delete, ENV override editor, duplicate
-- All `fetch` calls hardened with `credentials: 'same-origin'`
-
----
-
-## Installation (pre-built binary)
+## Installation
 
 Download the latest binary from the [Releases](https://github.com/nestorchurin/yunexal-panel/releases) page.
 
 ```bash
 # 1. Download and extract
-wget https://github.com/nestorchurin/yunexal-panel/releases/download/v0.1.0/yunexal-panel-v0.1.0-linux-x86_64.tar.gz
-tar -xzf yunexal-panel-v0.1.0-linux-x86_64.tar.gz
+wget https://github.com/nestorchurin/yunexal-panel/releases/download/v0.2.0-beta/yunexal-panel-v0.2.0-beta-linux-x86_64.tar.gz
+tar -xzf yunexal-panel-v0.2.0-beta-linux-x86_64.tar.gz
 cd yunex-release
 
 # 2. Generate .env (interactive — sets admin credentials + cookie secret)
@@ -38,7 +24,7 @@ cd yunex-release
 ./yunexal-panel
 ```
 
-That's it. No Rust, no Cargo, no extra files needed — templates and static assets are embedded in the binary. The SQLite database and volume directories are created automatically on first run.
+The SQLite database and volume directories are created automatically on first run.
 
 ---
 
@@ -49,7 +35,7 @@ That's it. No Rust, no Cargo, no extra files needed — templates and static ass
 | **Docker Engine** 24.0+ | Must be running |
 | **Docker image `alpine`** | Pulled automatically by `setup.sh` |
 | **OS** | Linux x86_64 |
-| **RAM** | 256 MB for the panel process |
+| **RAM** | ~256 MB for the panel process |
 
 > **Docker socket access** — add your user to the `docker` group:
 > ```bash
@@ -64,21 +50,22 @@ All configuration is done via `.env` in the **same directory as the binary**.
 Use `setup.sh` to generate it, or create it manually:
 
 ```dotenv
-# Admin credentials — applied to the DB on every startup
-PANEL_USERNAME=admin
-PANEL_PASSWORD=your_secure_password
+# Panel port (default: 3000)
+PANEL_PORT=3000
 
 # 128-char hex string (64 random bytes) — signs session cookies.
 # Generate with:  openssl rand -hex 64
 COOKIE_SECRET=<128 hex chars>
 ```
 
-> Changing `PANEL_PASSWORD` takes effect on next restart.  
 > Changing `COOKIE_SECRET` invalidates all active sessions.
+
+Initial admin credentials are set interactively by `setup.sh` (via `--seed`).  
+Additional users are created from the Admin Panel.
 
 Alternatively pass values as environment variables without a `.env` file:
 ```bash
-PANEL_USERNAME=admin PANEL_PASSWORD=secret COOKIE_SECRET=<128hex> ./yunexal-panel
+PANEL_PORT=3000 COOKIE_SECRET=<128hex> ./yunexal-panel
 ```
 
 ---
@@ -86,53 +73,107 @@ PANEL_USERNAME=admin PANEL_PASSWORD=secret COOKIE_SECRET=<128hex> ./yunexal-pane
 ## Features
 
 ### Dashboard
-- Live list of all registered containers with CPU, RAM, and uptime stats
-- Auto-refreshing server cards (polled every 5 s)
-- Quick status badge: Running / Stopped / Error
+- Live list of all managed containers with CPU, RAM, network I/O, and uptime
+- **In-place updates** — server cards refresh without DOM re-creation (no animation flicker)
+- Auto-polling every 5 s; quick status badge: Running / Stopped / Error
+- Change own password from the dashboard
 
 ### Server Management
 - **Start / Stop / Restart / Kill** containers via Docker API
 - **Rename** a server (updates SQLite + display name)
-- **Delete** a server — stops the container, wipes the volume directory (via Alpine helper container), and removes the DB record
+- **Delete** a server — stops the container, wipes the volume directory (via Alpine helper), removes the DB record
+- Only the server owner (or admin) can manage a server — enforced both on backend and frontend
 
 ### Real-time Console
-- WebSocket terminal attached directly to the Docker container TTY
-- Live log streaming with ANSI colour support
+- WebSocket terminal attached directly to the Docker container TTY (xterm.js)
+- Live log streaming with full ANSI colour support
 - Send commands to `stdin` from the browser
+- Live CPU / RAM / Network charts (Chart.js, 1 s polling)
+- **Per-server DNS panel** — view and manage DNS records linked to this server
 
 ### File Manager
 - Browse volume directories with folder/file icons and a breadcrumb bar
-- **Edit** text files in a full-screen code editor
-- **Create** new files and directories from the browser
+- **Edit** text files in a full-screen code editor (Ace editor)
+- **Create** new files and directories
 - **Rename** files and directories (right-click context menu)
 - **Copy / Paste** files and directories
 - **Delete** files and directories (with confirmation)
-- **Drag-and-drop upload** with per-file progress bar (supports large files, streamed directly to disk)
-- All write operations use an Alpine Docker helper container to bypass root-owned volume permissions
+- **Drag-and-drop upload** with per-file progress bar (supports large files, streamed to disk)
+- All write operations use an Alpine Docker helper container to handle root-owned volume permissions
+- Path traversal protection — validated on the backend
 
 ### Networking
-- View all port bindings (host ↔ container)
-- **Add / remove** port mappings (admin only)
+- View all port bindings (host ↔ container) with protocol (TCP / UDP / TCP+UDP)
+- **Add / Remove** port mappings (admin only) with port conflict pre-check
 - **Tag** ports with a friendly label (e.g. `Minecraft`, `RCON`)
-- **Enable / disable** individual port mappings
-- **Bandwidth limiting** via `tc` inside the container (admin only, set in Mbit/s)
+- **Enable / Disable** individual port mappings
+- **Bandwidth limiting** via Linux `tc` TBF qdisc (admin only, set in Mbit/s) — persisted and reapplied on restart
 
-### Server Creation
-- Create a new Docker container from a Docker Hub image name
-- Optional Docker Compose-style YAML config (image, ports, environment, restart policy, CPU/RAM limits)
-- Auto-detects environment variables declared in the image (`EULA`, `MEMORY`, etc.)
-- Assign an owner user to the server
+### Server Creation (admin only)
+- Create a new Docker container from any Docker Hub or local image
+- **Local images datalist** — autocomplete from locally available images
+- Full **Docker Compose-style YAML** config via Monaco editor (live GUI ↔ YAML sync):
+  - `image`, `ports`, `environment`, `volumes`, `restart`
+  - `cpus` (fractional cores), `mem_limit` (MB/GB), `disk_limit` (GB)
+- **Port bindings**: dynamic rows with host/container port and protocol selector (TCP / UDP / TCP+UDP)
+- **"Fetch ENV"** — auto-detects environment variables from Docker image metadata
+- **Image ENV overrides** — admin-configured DB defaults applied on top of image defaults
+- **Port conflict detection** — pre-flight TCP/UDP bind check before creation
+- **Duplicate name check** — unique server names enforced
+- **Owner assignment** — assign container to any user
+- **DNS/SRV auto-record** — optionally auto-create an SRV record on container creation (and auto-delete on removal)
+
+### DNS Management (admin only)
+
+Full multi-provider DNS management with 5 supported providers:
+
+| Provider | Zones | Record CRUD | DDNS | Proxy toggle |
+|---|---|---|---|---|
+| **Cloudflare** | Full API zone list | Full (all types) | Yes | Yes (orange cloud) |
+| **GoDaddy** | Active domains | Full | Yes | — |
+| **DuckDNS** | Single domain | — | Yes | — |
+| **Namecheap** | Single domain | — | Yes | — |
+| **Generic** | Single domain | — | Yes (templated URL) | — |
+
+- **Record types**: A, AAAA, CNAME, MX, TXT, SRV, NS, CAA, and more
+- **A + SRV auto-records** — auto-create DNS records when a server is created, auto-delete on removal
+- **DDNS** — per-record toggle with configurable interval; auto-updates A records with the server's public IP
+- **Provider sync** — pull live records from the provider API and update local DB
+- **Public IP detection** — cascading fallback: `api.ipify.org` → `api4.my-ip.io` → `checkip.amazonaws.com`
+- **Cloudflare proxy toggle** — one-click orange cloud on/off
+- **`yunexal.managed=true` tag** — marks records managed by the panel on the provider side
+- **Provider test** — per-provider connectivity verification
+- **Credential redaction** — API keys shown as `••••` in the UI; partial updates merge with stored values
+- **Container-linked records** — records can be bound to a specific server, visible in the console DNS panel
+- **TTL presets** — Auto / 1 min / 5 min / 1 hour / 1 day / Custom
+- **Type-coloured badges** + search + filter chips in the admin DNS table
 
 ### Admin Panel
+- **Tabs**: Overview, Containers, Images, Users, DNS
 - **User management**: create users, set passwords, delete users
 - **Role-based access**: `admin` vs `user` roles
-- Admins can edit any container (image, name, owner) after creation
-- **Stop all** containers at once
+- **Container management**: edit any container (image, name, owner); stop all at once
+- **Image management**: in-place refresh, pull, delete, duplicate, ENV override editor
+- **DNS management**: providers, records, sync, DDNS (see above)
+- **In-place updates** — all admin tabs poll and update without full page reload
 - **Change own password**
 
-### Authentication
-- Session-based login with encrypted private cookies (Argon2 password hashing)
+### Authentication & Security
+- Session-based login with encrypted private cookies
+- **Argon2id** password hashing with random salt
 - Route-level middleware: unauthenticated → redirect to `/login`; non-admin on admin routes → 403
+- Ownership checks on all server operations (backend-enforced)
+- Path traversal protection on file manager endpoints
+- Admin-only access for port manipulation and bandwidth control
+- XSS protection: Askama auto-escaping in templates + `escHtml()` / `escAttr()` in JavaScript
+- All `fetch` calls hardened with `credentials: 'same-origin'`
+
+### UI / UX
+- Responsive **Bootstrap 5** layout — works on desktop and mobile
+- **AMOLED mode** — pure-black theme for mobile OLED screens, auto-enables fullscreen
+- **Mobile optimizations**: `visibilitychange` polling resume, 7-day session cookie, tap-delay removed
+- **PWA support** — `manifest.json` + service worker for installable web app
+- **HTMX** for partial page updates without full reloads
 
 ---
 
@@ -141,12 +182,12 @@ PANEL_USERNAME=admin PANEL_PASSWORD=secret COOKIE_SECRET=<128hex> ./yunexal-pane
 ```bash
 git clone https://github.com/nestorchurin/yunexal-panel.git
 cd yunexal-panel
-./setup.sh          # generate .env
+./setup.sh          # generate .env + seed admin user
 cargo build --release
 ./target/release/yunexal-panel
 ```
 
-Requires Rust 1.78+ — install via [rustup.rs](https://rustup.rs).
+Requires **Rust 1.78+** — install via [rustup.rs](https://rustup.rs).
 
 ---
 
@@ -154,12 +195,14 @@ Requires Rust 1.78+ — install via [rustup.rs](https://rustup.rs).
 
 ```
 src/
-├── main.rs               # Entry point, router setup
+├── main.rs               # Entry point, router, config
 ├── state.rs              # AppState (DB pool, Docker client, cookie key)
-├── auth.rs               # Session middleware, admin helpers
+├── auth.rs               # Session middleware, admin guard
 ├── db.rs                 # SQLite schema & queries
-├── docker.rs             # Bollard wrappers (start/stop/stats/volumes/bandwidth)
+├── docker.rs             # Bollard wrappers (lifecycle, stats, volumes, bandwidth)
+├── dns.rs                # DNS provider API clients (Cloudflare, GoDaddy, DuckDNS, Namecheap, Generic)
 ├── compose.rs            # Docker Compose YAML parser
+├── password.rs           # Argon2id hash / verify
 └── handlers/
     ├── mod.rs            # Router (public / protected / admin_only), embedded assets
     ├── auth.rs           # Login / logout
@@ -168,12 +211,13 @@ src/
     ├── files.rs          # File manager API
     ├── network.rs        # Networking + port/bandwidth API
     ├── create.rs         # New server creation
-    ├── admin.rs          # Admin panel
+    ├── admin.rs          # Admin panel (users, images, containers)
+    ├── dns.rs            # DNS management API (providers, records, DDNS, sync)
     ├── ws.rs             # WebSocket console
     └── templates.rs      # Askama template structs
 templates/                # Embedded at compile time (Askama)
 static/                   # Embedded at compile time (rust-embed)
-setup.sh                  # Interactive .env generator
+setup.sh                  # Interactive .env generator + DB seeder
 ```
 
 ---
@@ -185,11 +229,16 @@ setup.sh                  # Interactive .env generator
 | Web framework | [Axum](https://github.com/tokio-rs/axum) 0.8 |
 | Async runtime | [Tokio](https://tokio.rs) |
 | Docker SDK | [Bollard](https://github.com/fussybeaver/bollard) |
-| Database | SQLite via [SQLx](https://github.com/launchbadge/sqlx) |
+| Database | SQLite via [SQLx](https://github.com/launchbadge/sqlx) (WAL mode) |
+| DNS client | [reqwest](https://github.com/seanmonstar/reqwest) (Cloudflare, GoDaddy, DuckDNS, Namecheap APIs) |
 | Templates | [Askama](https://github.com/djc/askama) — compiled into binary |
 | Static assets | [rust-embed](https://github.com/pyros2097/rust-embed) — compiled into binary |
-| Frontend | [HTMX](https://htmx.org) + Bootstrap 5 + vanilla JS |
-| Auth / cookies | [axum-extra](https://docs.rs/axum-extra) private cookies + Argon2 |
+| Password hashing | [Argon2](https://github.com/RustCrypto/password-hashes) (Argon2id) |
+| Frontend | Bootstrap 5 + [HTMX](https://htmx.org) + vanilla JS |
+| Terminal | [xterm.js](https://xtermjs.org) |
+| Charts | [Chart.js](https://www.chartjs.org) |
+| Code editors | [Ace](https://ace.c9.io) (file editor) · [Monaco](https://microsoft.github.io/monaco-editor/) (server creation YAML) |
+| Auth / cookies | [axum-extra](https://docs.rs/axum-extra) private cookies |
 
 ---
 
