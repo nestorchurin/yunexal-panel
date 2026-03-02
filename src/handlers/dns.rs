@@ -220,7 +220,9 @@ pub struct AddRecordBody {
     pub ddns_enabled:  Option<bool>,
     pub ddns_interval: Option<i64>,
     pub container_id:  Option<i64>,
-    pub push_to_provider: Option<bool>, // if true, also create in provider
+    pub push_to_provider: Option<bool>, // if true, create new record in provider
+    pub remote_id:        Option<String>, // existing remote record ID (for import)
+    pub tag_on_provider:  Option<bool>,   // if true + remote_id set, update comment on provider
 }
 
 pub async fn api_dns_add_record(
@@ -239,8 +241,14 @@ pub async fn api_dns_add_record(
     let ddns       = body.ddns_enabled.unwrap_or(false);
     let interval   = body.ddns_interval.unwrap_or(300);
     let push       = body.push_to_provider.unwrap_or(false);
+    let tag        = body.tag_on_provider.unwrap_or(false);
+    let given_rid  = body.remote_id.clone().unwrap_or_default();
 
-    // Optionally push to provider API
+    // Determine the remote_id to store:
+    // 1. push_to_provider=true  → create new record, use returned ID
+    // 2. tag_on_provider=true   → record already exists; call update_record to write
+    //                             yunexal.managed=true comment, keep the given remote_id
+    // 3. neither                → store empty remote_id
     let remote_id = if push {
         match dns_client(&provider) {
             Ok(client) => {
@@ -256,6 +264,24 @@ pub async fn api_dns_add_record(
             }
             Err(e) => return Json(json!({ "ok": false, "error": e.to_string() })),
         }
+    } else if tag && !given_rid.is_empty() {
+        // Update the existing record on the provider to stamp yunexal.managed=true
+        match dns_client(&provider) {
+            Ok(client) => {
+                // Best-effort: ignore errors (record gets tracked even if comment fails)
+                let _ = client.update_record(&body.zone_id, &given_rid, &dns_lib::DnsRecordInput {
+                    record_type: body.record_type.clone(),
+                    name:        body.name.clone(),
+                    value:       body.value.clone(),
+                    ttl, priority, proxied,
+                }).await;
+            }
+            Err(_) => {}
+        }
+        given_rid.clone()
+    } else if !given_rid.is_empty() {
+        // Import without tagging — just store the remote_id as reference
+        given_rid.clone()
     } else { String::new() };
 
     match db::dns_add_record(

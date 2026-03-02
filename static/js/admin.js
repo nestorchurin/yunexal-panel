@@ -1043,19 +1043,21 @@ function dnsImportRecord(r) {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            provider_id: _dnsCurrentProviderId,
-            zone_id:     _dnsCurrentZoneId,
-            zone_name:   _dnsCurrentZoneName,
-            record_type: r.record_type,
-            name:        r.name,
-            value:       r.value,
-            ttl:         r.ttl,
-            priority:    r.priority,
-            proxied:     r.proxied,
+            provider_id:     _dnsCurrentProviderId,
+            zone_id:         _dnsCurrentZoneId,
+            zone_name:       _dnsCurrentZoneName,
+            record_type:     r.record_type,
+            name:            r.name,
+            value:           r.value,
+            ttl:             r.ttl,
+            priority:        r.priority,
+            proxied:         r.proxied,
+            remote_id:       r.id,       // keep link to existing provider record
+            tag_on_provider: true,       // write yunexal.managed=true comment on Cloudflare
             push_to_provider: false,
         }),
     }).then(res => res.json()).then(d => {
-        if (d.ok) { alert('Record imported into panel.'); }
+        if (d.ok) { dnsLoadLocalRecords(); dnsLoadRemoteRecords(); }
         else { alert('Import failed: ' + (d.error || 'unknown error')); }
     }).catch(() => alert('Network error.'));
 }
