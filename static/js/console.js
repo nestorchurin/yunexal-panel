@@ -1,6 +1,10 @@
 // Console page: terminal, WebSocket, controls, metrics charts
 // Requires YU_SERVER_ID to be set inline in the template before this script loads.
 
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // ── Sidebar toggle (mobile) ──────────────────────────────────────────────────
 function openSidebar() {
     document.getElementById('sidebar').classList.add('open');
@@ -168,10 +172,10 @@ function consoleDnsLoad() {
             wrap.innerHTML = recs.map(r => `
 <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--bdr);gap:.4rem;">
   <div style="min-width:0;flex:1;">
-    <span style="font-size:.68rem;font-weight:600;color:var(--muted);margin-right:.3rem;">${r.record_type}</span><span style="font-size:.78rem;font-family:monospace;word-break:break-all;">${r.name}</span>
-    <div style="font-size:.7rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.value}">\u2192 ${r.value}</div>
+    <span style="font-size:.68rem;font-weight:600;color:var(--muted);margin-right:.3rem;">${escHtml(r.record_type)}</span><span style="font-size:.78rem;font-family:monospace;word-break:break-all;">${escHtml(r.name)}</span>
+    <div style="font-size:.7rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(r.value)}">\u2192 ${escHtml(r.value)}</div>
   </div>
-  <button style="background:none;border:none;color:#6b7280;cursor:pointer;padding:.1rem .35rem;font-size:.9rem;flex-shrink:0;" onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#6b7280'" onclick="consoleDnsDelete(${r.id})" title="Delete"><i class="bi bi-trash3"></i></button>
+  <button style="background:none;border:none;color:#6b7280;cursor:pointer;padding:.1rem .35rem;font-size:.9rem;flex-shrink:0;" onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#6b7280'" onclick="consoleDnsDelete(${parseInt(r.id) || 0})" title="Delete"><i class="bi bi-trash3"></i></button>
 </div>`).join('');
         })
         .catch(() => {

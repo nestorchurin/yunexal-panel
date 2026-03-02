@@ -84,7 +84,7 @@
                 Change Password
             </div>
             <div style="font-size:.825rem;color:var(--muted);margin-bottom:1.75rem;">Enter your current and new password.</div>
-            <div id="dashPwAlert" style="display:none;border-radius:9px;padding:.65rem 1rem;font-size:.825rem;margin-bottom:1.25rem;display:none;align-items:center;gap:.5rem;"></div>
+            <div id="dashPwAlert" style="display:none;border-radius:9px;padding:.65rem 1rem;font-size:.825rem;margin-bottom:1.25rem;align-items:center;gap:.5rem;"></div>
             <div style="margin-bottom:1.1rem;">
                 <label style="font-size:.8rem;font-weight:500;color:var(--muted);display:block;margin-bottom:.4rem;">Current Password</label>
                 <input type="password" id="dashPwCurrent" placeholder="••••••••" style="background:var(--surface2);border:1px solid rgba(255,255,255,.1);color:var(--txt);padding:.65rem 1rem;border-radius:9px;font-size:.875rem;width:100%;outline:none;font-family:'Inter',sans-serif;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='rgba(124,58,237,.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,.12)'" onblur="this.style.borderColor='rgba(255,255,255,.1)';this.style.boxShadow='none'">
@@ -123,7 +123,7 @@
         const alert = document.getElementById('dashPwAlert');
         const show = (msg, ok) => {
             alert.textContent = msg;
-            alert.style.display = 'block';
+            alert.style.display = 'flex';
             alert.style.background = ok ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)';
             alert.style.color = ok ? '#10b981' : '#ef4444';
             alert.style.border = ok ? '1px solid rgba(16,185,129,.25)' : '1px solid rgba(239,68,68,.25)';

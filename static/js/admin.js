@@ -110,7 +110,7 @@ function changePassword() {
 
     const show = (ok, msg) => {
         alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
-        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${msg}`;
+        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${escHtml(msg)}`;
         alertEl.style.display = 'flex';
     };
 
@@ -181,7 +181,7 @@ function createUser() {
 
     const show = (ok, msg) => {
         alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
-        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${msg}`;
+        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${escHtml(msg)}`;
         alertEl.style.display = 'flex';
     };
 
@@ -253,7 +253,7 @@ function submitSetPw() {
 
     const show = (ok, msg) => {
         alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
-        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${msg}`;
+        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${escHtml(msg)}`;
         alertEl.style.display = 'flex';
     };
 
@@ -396,7 +396,7 @@ function submitPull() {
     const btn = document.getElementById('imgPullBtn');
     const show = (ok, msg) => {
         alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
-        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${msg}`;
+        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${escHtml(msg)}`;
         alertEl.style.display = 'flex';
     };
     if (!image) return show(false, 'Image reference is required.');
@@ -498,7 +498,7 @@ function submitEnv() {
     const alertEl = document.getElementById('imgEnvAlert');
     const show = (ok, msg) => {
         alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
-        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${msg}`;
+        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${escHtml(msg)}`;
         alertEl.style.display = 'flex';
     };
     const encoded = encodeURIComponent(_envImageRef);
@@ -730,7 +730,7 @@ function dnsAddProvider() {
     const alertEl = document.getElementById('dns-add-alert');
     const show = (ok, msg) => {
         alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
-        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${msg}`;
+        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${escHtml(msg)}`;
         alertEl.style.display = 'flex';
     };
     if (!name) return show(false, 'Display name is required.');
@@ -769,7 +769,7 @@ function dnsSaveProvider() {
     const alertEl = document.getElementById('dns-ep-alert');
     const show = (ok, msg) => {
         alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
-        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${msg}`;
+        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${escHtml(msg)}`;
         alertEl.style.display = 'flex';
     };
     if (!name) return show(false, 'Name required.');
@@ -1168,7 +1168,7 @@ function dnsSaveRecord() {
     const alertEl = document.getElementById('dns-rec-alert');
     const show = (ok, msg) => {
         alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
-        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${msg}`;
+        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${escHtml(msg)}`;
         alertEl.style.display = 'flex';
     };
     const name     = document.getElementById('drm-name').value.trim();
@@ -1290,7 +1290,11 @@ function dnsLoadContainerRecords() {
 async function dnsDeleteContainerRecord(id) {
     if (!confirm('Delete this DNS record from the provider and the panel?')) return;
     try {
-        const d = await fetch(`/api/admin/dns/records/${id}/delete`, { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
+        const d = await fetch(`/api/admin/dns/records/${id}/delete`, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ remove_from_provider: true }),
+        }).then(r => r.json());
         if (d.ok) { dnsLoadContainerRecords(); }
         else      { alert('Delete failed: ' + (d.error || '?')); }
     } catch (e) { alert('Network error'); }
@@ -1360,7 +1364,7 @@ function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function escAttr(s) {
-    return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return String(s).replace(/&/g,'&amp;').replace(/'/g,"\\'").replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // Auto-load images if already on images tab (e.g. direct URL /admin/images)
