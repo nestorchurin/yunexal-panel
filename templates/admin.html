@@ -458,30 +458,8 @@
                         <button class="btn-yu btn-primary-yu btn-sm-yu" onclick="dnsOpenAddRecordModal()"><i class="bi bi-plus-lg"></i> Add Record</button>
                     </div>
                 </div>
-                <div class="yu-card">
-                    <div style="overflow-x:auto;">
-                        <table class="yu-table">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Type</th>
-                                    <th>Value / Target</th>
-                                    <th>TTL</th>
-                                    <th>Proxy</th>
-                                    <th>DDNS</th>
-                                    <th><i class="bi bi-patch-check-fill" style="color:var(--primary);" title="Panel-managed"></i></th>
-                                    <th style="text-align:right;">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="dns-records-tbody">
-                                <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view records.</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
                 <!-- Panel-tracked records -->
-                <div class="yu-card mt-3">
+                <div class="yu-card mb-3">
                     <div class="yu-card-hd">
                         <span><i class="bi bi-patch-check-fill me-2" style="color:var(--primary);"></i>Panel-tracked records</span>
                         <span id="dns-local-count" style="font-size:.75rem;color:var(--muted);"></span>
@@ -501,6 +479,32 @@
                             </thead>
                             <tbody id="dns-local-tbody">
                                 <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view tracked records.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- All provider records -->
+                <div class="yu-card">
+                    <div class="yu-card-hd">
+                        <span><i class="bi bi-cloud me-2 text-muted"></i>All provider records</span>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="yu-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Value / Target</th>
+                                    <th>TTL</th>
+                                    <th>Proxy</th>
+                                    <th>DDNS</th>
+                                    <th><i class="bi bi-patch-check-fill" style="color:var(--primary);" title="Panel-managed"></i></th>
+                                    <th style="text-align:right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dns-records-tbody">
+                                <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view records.</td></tr>
                             </tbody>
                         </table>
                     </div>
