@@ -859,7 +859,7 @@ function dnsLoadLocalRecords() {
                     <td class="mono" style="font-size:.78rem;">${escHtml(r.name)}</td>
                     <td><span class="dns-type-badge">${escHtml(r.record_type)}</span></td>
                     <td class="mono" style="font-size:.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(r.value)}</td>
-                    <td style="font-size:.8rem;">${r.ttl}s</td>
+                    <td style="font-size:.8rem;">${r.ttl === 1 ? 'Auto' : r.ttl + 's'}</td>
                     <td>${ddnsBadge}</td>
                     <td>${remoteLabel}</td>
                     <td style="text-align:right;">
@@ -912,7 +912,7 @@ function dnsEditRecord(rec) {
     document.getElementById('drm-type').value     = rec.record_type || 'A';
     document.getElementById('drm-name').value     = rec.name  || '';
     document.getElementById('drm-value').value    = rec.value || '';
-    document.getElementById('drm-ttl').value      = rec.ttl   || 300;
+    _dnsSetTtl(rec.ttl || 1);
     document.getElementById('drm-priority').value = rec.priority || 0;
     document.getElementById('drm-proxied').value  = rec.proxied ? 'true' : 'false';
     const ddnsChk = document.getElementById('drm-ddns');
@@ -936,7 +936,7 @@ function dnsOpenAddRecordModal() {
     document.getElementById('drm-type').value    = 'A';
     document.getElementById('drm-name').value    = '';
     document.getElementById('drm-value').value   = '';
-    document.getElementById('drm-ttl').value     = '300';
+    _dnsSetTtl(1);
     document.getElementById('drm-priority').value = '0';
     document.getElementById('drm-proxied').value = 'false';
     document.getElementById('drm-ddns').checked  = false;
@@ -955,6 +955,40 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+function dnsOnTtlChange() {
+    const sel    = document.getElementById('drm-ttl');
+    const custom = document.getElementById('drm-ttl-custom');
+    if (!sel || !custom) return;
+    custom.style.display = sel.value === 'custom' ? '' : 'none';
+    if (sel.value === 'custom') custom.focus();
+}
+
+function _dnsSetTtl(ttl) {
+    const sel    = document.getElementById('drm-ttl');
+    const custom = document.getElementById('drm-ttl-custom');
+    if (!sel) return;
+    // ttl=1 means Auto in Cloudflare
+    const val    = String(ttl);
+    const opt    = sel.querySelector(`option[value="${val}"]`);
+    if (opt) {
+        sel.value = val;
+        custom.style.display = 'none';
+    } else {
+        sel.value = 'custom';
+        custom.value = ttl;
+        custom.style.display = '';
+    }
+}
+
+function _dnsGetTtl() {
+    const sel = document.getElementById('drm-ttl');
+    if (!sel) return 1;
+    if (sel.value === 'custom') {
+        return parseInt(document.getElementById('drm-ttl-custom').value) || 300;
+    }
+    return parseInt(sel.value) || 1;
+}
+
 function dnsSaveRecord() {
     const btn     = document.getElementById('drm-save-btn');
     const alertEl = document.getElementById('dns-rec-alert');
@@ -966,7 +1000,7 @@ function dnsSaveRecord() {
     const name     = document.getElementById('drm-name').value.trim();
     const value    = document.getElementById('drm-value').value.trim();
     const rtype    = document.getElementById('drm-type').value;
-    const ttl      = parseInt(document.getElementById('drm-ttl').value) || 300;
+    const ttl      = _dnsGetTtl();
     const priority = parseInt(document.getElementById('drm-priority').value) || 0;
     const proxied  = document.getElementById('drm-proxied').value === 'true';
     const ddns     = document.getElementById('drm-ddns').checked;
