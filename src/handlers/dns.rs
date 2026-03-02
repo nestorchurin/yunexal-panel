@@ -418,3 +418,63 @@ pub async fn api_dns_sync(State(state): State<AppState>) -> Json<Value> {
         "errors": errors,
     }))
 }
+
+// ── POST /api/admin/dns/providers/:id/sync-records?zone=:zid ──────────────────
+// Fetches live records from provider and updates the local DB for all tracked
+// records that have a matching remote_id (name, value, ttl, priority, proxied).
+
+#[derive(Deserialize)]
+pub struct SyncRecordsQuery { pub zone: String }
+
+pub async fn api_dns_sync_records(
+    State(state): State<AppState>,
+    Path(pid): Path<i64>,
+    Query(params): Query<SyncRecordsQuery>,
+) -> Json<Value> {
+    let zid = &params.zone;
+
+    let provider = match db::dns_get_provider(&state.db, pid).await {
+        Ok(Some(p)) => p,
+        Ok(None)    => return Json(json!({ "ok": false, "error": "Provider not found" })),
+        Err(e)      => return Json(json!({ "ok": false, "error": e.to_string() })),
+    };
+    let client = match dns_client(&provider) {
+        Ok(c)  => c,
+        Err(e) => return Json(json!({ "ok": false, "error": e.to_string() })),
+    };
+
+    // Fetch live records from provider
+    let remote = match client.list_records(zid).await {
+        Ok(r)  => r,
+        Err(e) => return Json(json!({ "ok": false, "error": format!("Provider error: {}", e) })),
+    };
+
+    // Fetch local tracked records for this provider
+    let local = match db::dns_list_records(&state.db, pid).await {
+        Ok(r)  => r,
+        Err(e) => return Json(json!({ "ok": false, "error": e.to_string() })),
+    };
+
+    // Build map remote_id → live remote record
+    let mut rmap: std::collections::HashMap<String, &dns_lib::RemoteDnsRecord> =
+        std::collections::HashMap::new();
+    for r in &remote {
+        if !r.id.is_empty() { rmap.insert(r.id.clone(), r); }
+    }
+
+    // Update each locally-tracked record whose remote_id matches a live record
+    let mut synced = 0i64;
+    for loc in &local {
+        if loc.remote_id.is_empty() { continue; }
+        if let Some(rem) = rmap.get(&loc.remote_id) {
+            let _ = db::dns_update_record(
+                &state.db, loc.id,
+                &rem.name, &rem.value, rem.ttl, rem.priority,
+                rem.proxied, loc.ddns_enabled != 0, loc.ddns_interval,
+            ).await;
+            synced += 1;
+        }
+    }
+
+    Json(json!({ "ok": true, "synced": synced }))
+}

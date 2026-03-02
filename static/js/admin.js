@@ -547,6 +547,7 @@ let _dnsCurrentZoneId     = '';
 let _dnsCurrentZoneName   = '';
 let _dnsTypeFilter        = '';
 let _dnsCurrentProviderType = '';
+let _dnsCachedRemoteMap     = {}; // { remote_id: RemoteDnsRecord } – refreshed each time provider records load
 
 // ── Type badge helper ─────────────────────────────────────────────────────────
 
@@ -863,6 +864,10 @@ function dnsLoadRemoteRecords() {
                 return;
             }
             const records = d.records || [];
+            // Cache live records so the panel-tracked table can show up-to-date values
+            _dnsCachedRemoteMap = {};
+            records.forEach(r => { if (r.id) _dnsCachedRemoteMap[r.id] = r; });
+            _dnsOverlayLiveValues(); // update any already-rendered local rows
             if (!records.length) {
                 tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">No records found in this zone.</td></tr>';
                 return;
@@ -893,9 +898,50 @@ function dnsLoadRemoteRecords() {
                     <td style="text-align:right;">${actionBtn}</td>
                 </tr>`;
             }).join('');
+            _dnsOverlayLiveValues(); // overlay live values after remote table renders
         }).catch(() => {
             tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#ef4444;padding:2rem;">Network error.</td></tr>`;
         });
+}
+
+// ── Live-value overlay ────────────────────────────────────────────────────────
+// After remote records load into _dnsCachedRemoteMap this patches the
+// Name / Value / TTL columns of every panel-tracked row that has a remote_id.
+function _dnsOverlayLiveValues() {
+    document.querySelectorAll('#dns-local-tbody tr[data-remote-id]').forEach(row => {
+        const rid  = row.dataset.remoteId;
+        if (!rid) return;
+        const live = _dnsCachedRemoteMap[rid];
+        if (!live) return;
+        const tds = row.querySelectorAll('td');
+        // td[0] = name, td[2] = value, td[3] = ttl
+        if (tds[0]) tds[0].innerHTML = `<span class="mono" style="font-size:.78rem;">${escHtml(live.name)}</span>`;
+        if (tds[2]) tds[2].innerHTML = `<span class="mono" style="font-size:.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(live.value)}">${escHtml(live.value)}</span>`;
+        if (tds[3]) tds[3].textContent = live.ttl === 1 ? 'Auto' : live.ttl + 's';
+    });
+}
+
+// ── Sync panel-tracked records from provider API ──────────────────────────────
+// Persists live name/value/ttl/proxied to local DB, then re-renders the table.
+function dnsSyncRecords() {
+    const pid = _dnsCurrentProviderId;
+    const zid = _dnsCurrentZoneId;
+    if (!pid || !zid) return;
+    const btn = document.getElementById('dns-sync-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+    fetch(`/api/admin/dns/providers/${pid}/sync-records?zone=${encodeURIComponent(zid)}`, {
+        method: 'POST', credentials: 'same-origin',
+    }).then(r => r.json()).then(d => {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Sync'; }
+        if (d.ok) {
+            dnsLoadLocalRecords();
+        } else {
+            alert(d.error || 'Sync failed.');
+        }
+    }).catch(() => {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Sync'; }
+        alert('Network error.');
+    });
 }
 
 // ── Load panel-tracked (local DB) records ────────────────────────────────────
@@ -903,8 +949,10 @@ function dnsLoadRemoteRecords() {
 function _dnsResetLocalTable() {
     const tbody = document.getElementById('dns-local-tbody');
     const count = document.getElementById('dns-local-count');
+    const syncBtn = document.getElementById('dns-sync-btn');
     if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view tracked records.</td></tr>';
     if (count) count.textContent = '';
+    if (syncBtn) syncBtn.style.display = 'none';
 }
 
 function dnsLoadLocalRecords() {
@@ -915,6 +963,8 @@ function dnsLoadLocalRecords() {
     if (!tbody) return;
     if (!pid || !zid) { _dnsResetLocalTable(); return; }
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1.5rem;"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+    const syncBtn = document.getElementById('dns-sync-btn');
+    if (syncBtn) syncBtn.style.display = 'inline-flex';
     fetch(`/api/admin/dns/providers/${pid}/records`, { credentials: 'same-origin' })
         .then(r => r.json()).then(d => {
             if (!d.ok) { tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;">${escHtml(d.error || 'Failed.')}</td></tr>`; return; }
@@ -925,6 +975,15 @@ function dnsLoadLocalRecords() {
                 return;
             }
             tbody.innerHTML = recs.map(r => {
+                // Prefer live values from remote cache when available
+                const live      = r.remote_id ? _dnsCachedRemoteMap[r.remote_id] : null;
+                const dispName  = live ? live.name  : r.name;
+                const dispValue = live ? live.value : r.value;
+                const dispTtl   = live ? live.ttl   : r.ttl;
+                // Merge live values into the record passed to the edit form
+                const editRec   = live
+                    ? { ...r, name: live.name, value: live.value, ttl: live.ttl, proxied: live.proxied, priority: live.priority }
+                    : r;
                 const ddnsBadge = r.ddns_enabled
                     ? `<span class="pill pill-run" style="font-size:.65rem;"><span class="pill-dot"></span>DDNS</span>`
                     : `<span style="color:var(--muted);font-size:.75rem;">—</span>`;
@@ -933,20 +992,21 @@ function dnsLoadLocalRecords() {
                     : `<span style="color:var(--muted);font-size:.75rem;">—</span>`;
                 return `
                 <tr data-record-id="${r.id}" data-remote-id="${escHtml(r.remote_id || '')}" data-rec-type="${escHtml(r.record_type)}">
-                    <td class="mono" style="font-size:.78rem;">${escHtml(r.name)}</td>
+                    <td class="mono" style="font-size:.78rem;">${escHtml(dispName)}</td>
                     <td>${_dnsTypeBadge(r.record_type)}</td>
-                    <td class="mono" style="font-size:.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(r.value)}</td>
-                    <td style="font-size:.8rem;">${r.ttl === 1 ? 'Auto' : r.ttl + 's'}</td>
+                    <td class="mono" style="font-size:.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(dispValue)}">${escHtml(dispValue)}</td>
+                    <td style="font-size:.8rem;">${dispTtl === 1 ? 'Auto' : dispTtl + 's'}</td>
                     <td>${ddnsBadge}</td>
                     <td>${remoteLabel}</td>
                     <td style="text-align:right;">
                         <div style="display:flex;gap:.3rem;justify-content:flex-end;">
-                            <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsEditRecord(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="Edit"><i class="bi bi-pencil"></i></button>
+                            <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsEditRecord(${JSON.stringify(editRec).replace(/"/g,'&quot;')})" title="Edit"><i class="bi bi-pencil"></i></button>
                             <button class="btn-yu btn-danger-yu btn-sm-yu" onclick="dnsDeleteRecord(${r.id},'${escHtml(r.remote_id || '')}')" title="Delete"><i class="bi bi-trash"></i></button>
                         </div>
                     </td>
                 </tr>`;
             }).join('');
+            _dnsOverlayLiveValues(); // second-pass overlay in case remote data loaded after this
         }).catch(() => { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;">Network error.</td></tr>'; });
 }
 
