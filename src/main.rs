@@ -1,6 +1,7 @@
 mod state;
 mod db;
 mod docker;
+mod dns;
 mod handlers;
 mod compose;
 mod auth;

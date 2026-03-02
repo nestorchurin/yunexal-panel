@@ -190,3 +190,65 @@ body { overflow: hidden; }
     /* Card header: allow wrap */
     .yu-card-hd { flex-wrap: wrap; gap: .4rem; }
 }
+
+/* ── DNS inner tabs ── */
+.yu-inner-tabs {
+    display: flex;
+    gap: .35rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--bdr);
+    padding-bottom: .6rem;
+}
+.yu-inner-tab {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    border-radius: 7px;
+    padding: .35rem .9rem;
+    font-size: .82rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    transition: all .15s;
+}
+.yu-inner-tab:hover { background: rgba(255,255,255,.05); color: var(--txt); }
+.yu-inner-tab.active { background: rgba(124,58,237,.15); border-color: rgba(124,58,237,.25); color: #a78bfa; }
+
+.dns-subtab { display: none; }
+.dns-subtab.active { display: block; }
+
+/* ── DNS provider card ── */
+.dns-provider-card {
+    background: var(--surface);
+    border: 1px solid var(--bdr);
+    border-radius: 11px;
+    padding: 1rem 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    transition: border-color .2s;
+}
+.dns-provider-card:hover { border-color: rgba(124,58,237,.3); }
+.dns-provider-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 9px;
+    background: rgba(124,58,237,.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    color: #a78bfa;
+    flex-shrink: 0;
+}
+.dns-type-badge {
+    font-size: .65rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    padding: .15rem .5rem;
+    border-radius: 5px;
+    background: rgba(124,58,237,.12);
+    color: #a78bfa;
+    border: 1px solid rgba(124,58,237,.2);
+}

@@ -2,6 +2,7 @@ pub mod admin;
 pub mod auth;
 pub mod create;
 pub mod dashboard;
+pub mod dns;
 pub mod files;
 pub mod network;
 pub mod servers;
@@ -34,6 +35,12 @@ use admin::{
     api_list_images, api_delete_image,
     api_get_image_env, api_set_image_env, api_duplicate_image, api_pull_image,
     api_admin_containers, api_admin_overview,
+};
+use dns::{
+    api_dns_list_providers, api_dns_add_provider, api_dns_update_provider, api_dns_delete_provider,
+    api_dns_test_provider, api_dns_list_zones, api_dns_remote_records, api_dns_local_records,
+    api_dns_add_record, api_dns_update_record, api_dns_delete_record,
+    api_dns_public_ip, api_dns_sync,
 };
 use auth::{login_page, login_submit, logout};
 use create::{api_image_env, api_image_env_overrides, api_local_images, create_server};
@@ -117,6 +124,19 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/admin/containers", get(api_admin_containers))
         .route("/api/admin/overview", get(api_admin_overview))
         .route("/api/servers/{id}/delete", post(delete_server))
+        // DNS management
+        .route("/api/admin/dns/providers", get(api_dns_list_providers).post(api_dns_add_provider))
+        .route("/api/admin/dns/providers/{id}/update", post(api_dns_update_provider))
+        .route("/api/admin/dns/providers/{id}/delete", post(api_dns_delete_provider))
+        .route("/api/admin/dns/providers/{id}/test",   post(api_dns_test_provider))
+        .route("/api/admin/dns/providers/{id}/zones",  get(api_dns_list_zones))
+        .route("/api/admin/dns/providers/{id}/records-remote", get(api_dns_remote_records))
+        .route("/api/admin/dns/providers/{id}/records", get(api_dns_local_records))
+        .route("/api/admin/dns/records",           post(api_dns_add_record))
+        .route("/api/admin/dns/records/{id}/update", post(api_dns_update_record))
+        .route("/api/admin/dns/records/{id}/delete", post(api_dns_delete_record))
+        .route("/api/admin/dns/public-ip",  get(api_dns_public_ip))
+        .route("/api/admin/dns/sync",       post(api_dns_sync))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware::require_admin,

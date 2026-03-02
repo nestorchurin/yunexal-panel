@@ -535,6 +535,470 @@ function duplicateImage(fullId, primaryRef) {
         .catch(() => alert('Network error'));
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// DNS Management
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _dnsProviders         = [];
+let _dnsEditProviderId    = null;
+let _dnsEditRecordId      = null;
+let _dnsCurrentProviderId = null;
+let _dnsCurrentZoneId     = '';
+let _dnsCurrentZoneName   = '';
+
+// ── Sub-tab switching ────────────────────────────────────────────────────────
+
+function dnsSwitchTab(tab, btn) {
+    document.querySelectorAll('.dns-subtab').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.yu-inner-tab').forEach(el => el.classList.remove('active'));
+    const panel = document.getElementById('dns-tab-' + tab);
+    if (panel) panel.classList.add('active');
+    if (btn)   btn.classList.add('active');
+    if (tab === 'providers') dnsLoadProviders();
+    if (tab === 'records')   { dnsPopulateProviderDropdown(); }
+    if (tab === 'ddns')      { dnsLoadDdns(); dnsGetPublicIp(); }
+}
+
+// ── Provider type → credential fields ────────────────────────────────────────
+
+const _DNS_CRED_FIELDS = {
+    cloudflare: [
+        { key: 'api_token', label: 'API Token', placeholder: 'Your Cloudflare API token', type: 'password' },
+    ],
+    duckdns: [
+        { key: 'token',  label: 'Token',   placeholder: 'DuckDNS token', type: 'password' },
+    ],
+    godaddy: [
+        { key: 'api_key',    label: 'API Key',    placeholder: 'GoDaddy API key',    type: 'text' },
+        { key: 'api_secret', label: 'API Secret', placeholder: 'GoDaddy API secret', type: 'password' },
+    ],
+    namecheap: [
+        { key: 'api_key',  label: 'Dynamic DNS Password', placeholder: 'From Namecheap Dynamic DNS', type: 'password' },
+        { key: 'api_user', label: 'API User (optional)',   placeholder: 'Namecheap username',         type: 'text' },
+        { key: 'username', label: 'Username (optional)',   placeholder: 'Namecheap username',         type: 'text' },
+    ],
+    generic: [
+        { key: 'update_url', label: 'Update URL', placeholder: 'https://...?ip={ip}&domain={domain}&token=YOUR_TOKEN', type: 'text' },
+        { key: 'method',     label: 'HTTP Method', placeholder: 'GET', type: 'text' },
+    ],
+};
+
+function dnsOnTypeChange(type, containerId, existing) {
+    const fields = _DNS_CRED_FIELDS[type] || [];
+    const html = fields.map(f => `
+        <div style="margin-bottom:.85rem;">
+            <label class="yu-label">${escHtml(f.label)}</label>
+            <input type="${f.type}" class="yu-input" data-cred-key="${escAttr(f.key)}"
+                   placeholder="${escAttr(f.placeholder)}"
+                   value="${existing && existing[f.key] ? escAttr(existing[f.key]) : ''}">
+        </div>`).join('');
+    const ct = document.getElementById(containerId);
+    if (ct) ct.innerHTML = html;
+}
+
+function _dnsReadCreds(containerId) {
+    const creds = {};
+    document.querySelectorAll(`#${containerId} [data-cred-key]`).forEach(inp => {
+        creds[inp.dataset.credKey] = inp.value.trim();
+    });
+    return creds;
+}
+
+// ── Load + render providers ───────────────────────────────────────────────────
+
+function dnsLoadProviders() {
+    fetch('/api/admin/dns/providers', { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            _dnsProviders = data.providers || [];
+            const list = document.getElementById('dns-providers-list');
+            if (!list) return;
+            if (!_dnsProviders.length) {
+                list.innerHTML = '<div class="col-12" style="text-align:center;color:var(--muted);padding:1.5rem 0;font-size:.85rem;">No providers configured yet.</div>';
+                return;
+            }
+            const icons = { cloudflare: 'bi-cloud-fill', duckdns: 'bi-feather', godaddy: 'bi-briefcase', namecheap: 'bi-tag', generic: 'bi-gear' };
+            list.innerHTML = _dnsProviders.map(p => `
+                <div class="col-md-6 col-xl-4">
+                  <div class="dns-provider-card">
+                    <div class="dns-provider-icon"><i class="bi ${icons[p.provider_type] || 'bi-diagram-3'}"></i></div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;font-size:.875rem;margin-bottom:.2rem;">${escHtml(p.name)}</div>
+                        <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
+                            <span class="dns-type-badge">${escHtml(p.provider_type)}</span>
+                            ${p.enabled ? '<span class="pill pill-run" style="font-size:.65rem;"><span class="pill-dot"></span>enabled</span>' : '<span class="pill pill-stop" style="font-size:.65rem;">disabled</span>'}
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:.35rem;flex-shrink:0;">
+                        <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsTestProvider(${p.id},this)" title="Test"><i class="bi bi-plug"></i></button>
+                        <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsEditProvider(${p.id})" title="Edit"><i class="bi bi-pencil"></i></button>
+                        <button class="btn-yu btn-danger-yu btn-sm-yu" onclick="dnsDeleteProvider(${p.id})" title="Delete"><i class="bi bi-trash"></i></button>
+                    </div>
+                  </div>
+                </div>`).join('');
+        })
+        .catch(() => {});
+
+    // Render add-form fields on first load
+    const addType = document.getElementById('dns-add-type');
+    if (addType) dnsOnTypeChange(addType.value, 'dns-add-creds');
+}
+
+// ── Add provider ──────────────────────────────────────────────────────────────
+
+function dnsAddProvider() {
+    const name  = document.getElementById('dns-add-name').value.trim();
+    const type  = document.getElementById('dns-add-type').value;
+    const creds = _dnsReadCreds('dns-add-creds');
+    const alertEl = document.getElementById('dns-add-alert');
+    const show = (ok, msg) => {
+        alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
+        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${msg}`;
+        alertEl.style.display = 'flex';
+    };
+    if (!name) return show(false, 'Display name is required.');
+    fetch('/api/admin/dns/providers', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, provider_type: type, credentials: creds }),
+    }).then(r => r.json()).then(d => {
+        if (d.ok) {
+            show(true, 'Provider added.');
+            document.getElementById('dns-add-name').value = '';
+            dnsOnTypeChange(type, 'dns-add-creds');
+            dnsLoadProviders();
+        } else { show(false, d.error || 'Failed.'); }
+    }).catch(() => show(false, 'Network error.'));
+}
+
+// ── Edit provider modal ───────────────────────────────────────────────────────
+
+function dnsEditProvider(id) {
+    const p = _dnsProviders.find(x => x.id === id);
+    if (!p) return;
+    _dnsEditProviderId = id;
+    document.getElementById('dep-name').value = p.name;
+    document.getElementById('dep-enabled').checked = !!p.enabled;
+    dnsOnTypeChange(p.provider_type, 'dep-creds', p.credentials);
+    document.getElementById('dns-ep-alert').style.display = 'none';
+    openModal('dnsProviderModal');
+}
+
+function dnsSaveProvider() {
+    const id      = _dnsEditProviderId;
+    const name    = document.getElementById('dep-name').value.trim();
+    const enabled = document.getElementById('dep-enabled').checked ? 1 : 0;
+    const creds   = _dnsReadCreds('dep-creds');
+    const alertEl = document.getElementById('dns-ep-alert');
+    const show = (ok, msg) => {
+        alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
+        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${msg}`;
+        alertEl.style.display = 'flex';
+    };
+    if (!name) return show(false, 'Name required.');
+    fetch(`/api/admin/dns/providers/${id}/update`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, credentials: creds, enabled }),
+    }).then(r => r.json()).then(d => {
+        if (d.ok) { closeModal('dnsProviderModal'); dnsLoadProviders(); }
+        else { show(false, d.error || 'Failed.'); }
+    }).catch(() => show(false, 'Network error.'));
+}
+
+function dnsDeleteProvider(id) {
+    if (!confirm('Delete this DNS provider? All associated records will also be removed.')) return;
+    fetch(`/api/admin/dns/providers/${id}/delete`, { method: 'POST', credentials: 'same-origin' })
+        .then(r => r.json()).then(d => {
+            if (d.ok) dnsLoadProviders();
+            else alert(d.error || 'Failed.');
+        }).catch(() => alert('Network error.'));
+}
+
+function dnsTestProvider(id, btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    fetch(`/api/admin/dns/providers/${id}/test`, { method: 'POST', credentials: 'same-origin' })
+        .then(r => r.json()).then(d => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-plug"></i>';
+            alert(d.ok ? '✅ ' + d.message : '❌ ' + (d.error || 'Test failed.'));
+        }).catch(() => { btn.disabled = false; btn.innerHTML = '<i class="bi bi-plug"></i>'; alert('Network error.'); });
+}
+
+// ── Records tab helpers ───────────────────────────────────────────────────────
+
+function dnsPopulateProviderDropdown() {
+    if (!_dnsProviders.length) {
+        dnsLoadProviders();
+        return;
+    }
+    const sel = document.getElementById('dns-rec-provider');
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— select provider —</option>' +
+        _dnsProviders.map(p => `<option value="${p.id}">${escHtml(p.name)} (${escHtml(p.provider_type)})</option>`).join('');
+    if (cur) sel.value = cur;
+}
+
+function dnsLoadZones() {
+    const pid  = document.getElementById('dns-rec-provider').value;
+    const sel  = document.getElementById('dns-rec-zone');
+    sel.innerHTML = '<option value="">loading…</option>';
+    if (!pid) { sel.innerHTML = '<option value="">— select zone —</option>'; return; }
+    fetch(`/api/admin/dns/providers/${pid}/zones`, { credentials: 'same-origin' })
+        .then(r => r.json()).then(d => {
+            sel.innerHTML = '<option value="">— select zone —</option>';
+            if (d.ok && d.zones.length) {
+                d.zones.forEach(z => {
+                    const opt = document.createElement('option');
+                    opt.value = z.id; opt.textContent = z.name;
+                    opt.dataset.zoneName = z.name;
+                    sel.appendChild(opt);
+                });
+                if (d.zones.length === 1) { sel.value = d.zones[0].id; dnsLoadRemoteRecords(); }
+            } else { sel.innerHTML = '<option value="">No zones found</option>'; }
+        }).catch(() => { sel.innerHTML = '<option value="">Error loading zones</option>'; });
+}
+
+function dnsLoadRemoteRecords() {
+    const pid  = document.getElementById('dns-rec-provider').value;
+    const sel  = document.getElementById('dns-rec-zone');
+    const zid  = sel.value;
+    const opt  = sel.querySelector(`option[value="${CSS.escape(zid)}"]`);
+    _dnsCurrentProviderId = pid ? parseInt(pid) : null;
+    _dnsCurrentZoneId     = zid;
+    _dnsCurrentZoneName   = opt ? (opt.dataset.zoneName || zid) : zid;
+
+    const tbody = document.getElementById('dns-records-tbody');
+    if (!pid || !zid) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view records.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
+
+    fetch(`/api/admin/dns/providers/${pid}/records-remote?zone=${encodeURIComponent(zid)}`, { credentials: 'same-origin' })
+        .then(r => r.json()).then(d => {
+            if (!d.ok) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;">${escHtml(d.error || 'Failed to load records.')}</td></tr>`;
+                return;
+            }
+            const records = d.records || [];
+            if (!records.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No records found in this zone.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = records.map(r => `
+                <tr>
+                    <td class="mono" style="font-size:.78rem;">${escHtml(r.name)}</td>
+                    <td><span class="dns-type-badge">${escHtml(r.record_type)}</span></td>
+                    <td class="mono" style="font-size:.75rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(r.value)}</td>
+                    <td style="font-size:.8rem;">${r.ttl === 1 ? 'Auto' : r.ttl + 's'}</td>
+                    <td>${r.proxied ? '<span class="pill pill-run" style="font-size:.65rem;"><i class="bi bi-cloud-fill"></i> On</span>' : '<span style="color:var(--muted);font-size:.8rem;">—</span>'}</td>
+                    <td><span style="color:var(--muted);font-size:.8rem;">—</span></td>
+                    <td style="text-align:right;">
+                        <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsImportRecord(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="Track in panel"><i class="bi bi-download"></i></button>
+                    </td>
+                </tr>`).join('');
+        }).catch(e => {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;">Network error.</td></tr>`;
+        });
+}
+
+// ── Import a remote record into local DB ──────────────────────────────────────
+
+function dnsImportRecord(r) {
+    if (!_dnsCurrentProviderId) return;
+    fetch('/api/admin/dns/records', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            provider_id: _dnsCurrentProviderId,
+            zone_id:     _dnsCurrentZoneId,
+            zone_name:   _dnsCurrentZoneName,
+            record_type: r.record_type,
+            name:        r.name,
+            value:       r.value,
+            ttl:         r.ttl,
+            priority:    r.priority,
+            proxied:     r.proxied,
+            push_to_provider: false,
+        }),
+    }).then(res => res.json()).then(d => {
+        if (d.ok) { alert('Record imported into panel.'); }
+        else { alert('Import failed: ' + (d.error || 'unknown error')); }
+    }).catch(() => alert('Network error.'));
+}
+
+// ── Add record modal ──────────────────────────────────────────────────────────
+
+function dnsOpenAddRecordModal() {
+    if (!_dnsCurrentProviderId) { alert('Select a provider and zone first.'); return; }
+    _dnsEditRecordId = null;
+    document.getElementById('dns-rec-modal-title').textContent = 'Add Record';
+    document.getElementById('drm-type').value    = 'A';
+    document.getElementById('drm-name').value    = '';
+    document.getElementById('drm-value').value   = '';
+    document.getElementById('drm-ttl').value     = '300';
+    document.getElementById('drm-priority').value = '0';
+    document.getElementById('drm-proxied').value = 'false';
+    document.getElementById('drm-ddns').checked  = false;
+    document.getElementById('drm-push').checked  = true;
+    document.getElementById('drm-interval-wrap').style.display = 'none';
+    document.getElementById('dns-rec-alert').style.display = 'none';
+    document.getElementById('drm-save-btn').disabled = false;
+    document.getElementById('drm-save-btn').innerHTML = '<i class="bi bi-check-lg"></i> Save';
+    openModal('dnsRecordModal');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const ddnsChk = document.getElementById('drm-ddns');
+    if (ddnsChk) ddnsChk.addEventListener('change', () => {
+        document.getElementById('drm-interval-wrap').style.display = ddnsChk.checked ? '' : 'none';
+    });
+});
+
+function dnsSaveRecord() {
+    const btn     = document.getElementById('drm-save-btn');
+    const alertEl = document.getElementById('dns-rec-alert');
+    const show = (ok, msg) => {
+        alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
+        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${msg}`;
+        alertEl.style.display = 'flex';
+    };
+    const name     = document.getElementById('drm-name').value.trim();
+    const value    = document.getElementById('drm-value').value.trim();
+    const rtype    = document.getElementById('drm-type').value;
+    const ttl      = parseInt(document.getElementById('drm-ttl').value) || 300;
+    const priority = parseInt(document.getElementById('drm-priority').value) || 0;
+    const proxied  = document.getElementById('drm-proxied').value === 'true';
+    const ddns     = document.getElementById('drm-ddns').checked;
+    const interval = parseInt(document.getElementById('drm-interval').value) || 300;
+    const push     = document.getElementById('drm-push').checked;
+
+    if (!name || !value) return show(false, 'Name and value are required.');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    const body = {
+        provider_id: _dnsCurrentProviderId,
+        zone_id:     _dnsCurrentZoneId,
+        zone_name:   _dnsCurrentZoneName,
+        record_type: rtype, name, value, ttl, priority, proxied,
+        ddns_enabled: ddns, ddns_interval: interval,
+        push_to_provider: push,
+    };
+    const url    = _dnsEditRecordId ? `/api/admin/dns/records/${_dnsEditRecordId}/update` : '/api/admin/dns/records';
+    const method = 'POST';
+
+    fetch(url, { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(r => r.json()).then(d => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> Save';
+            if (d.ok) {
+                show(true, _dnsEditRecordId ? 'Record updated.' : 'Record created.');
+                setTimeout(() => { closeModal('dnsRecordModal'); dnsLoadRemoteRecords(); }, 800);
+            } else { show(false, d.error || 'Failed.'); }
+        }).catch(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> Save';
+            show(false, 'Network error.');
+        });
+}
+
+function dnsDeleteRecord(id) {
+    if (!confirm('Delete this DNS record?')) return;
+    fetch(`/api/admin/dns/records/${id}/delete`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remove_from_provider: false }),
+    }).then(r => r.json()).then(d => {
+        if (d.ok) dnsLoadDdns();
+        else alert(d.error || 'Failed.');
+    }).catch(() => alert('Network error.'));
+}
+
+// ── DDNS tab ──────────────────────────────────────────────────────────────────
+
+function dnsGetPublicIp() {
+    const el = document.getElementById('dns-pub-ip');
+    if (el) el.textContent = '…';
+    fetch('/api/admin/dns/public-ip', { credentials: 'same-origin' })
+        .then(r => r.json()).then(d => {
+            if (el) el.textContent = d.ok ? d.ip : '?';
+        }).catch(() => { if (el) el.textContent = '?'; });
+}
+
+function dnsLoadDdns() {
+    const tbody = document.getElementById('dns-ddns-tbody');
+    if (!tbody) return;
+    // Load from all providers' local managed records where ddns_enabled = true
+    // We iterate all providers and gather their DDNS records
+    if (!_dnsProviders.length) {
+        fetch('/api/admin/dns/providers', { credentials: 'same-origin' })
+            .then(r => r.json()).then(d => { _dnsProviders = d.providers || []; _dnsLoadDdnsRows(tbody); });
+    } else {
+        _dnsLoadDdnsRows(tbody);
+    }
+}
+
+async function _dnsLoadDdnsRows(tbody) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
+    const rows = [];
+    for (const p of _dnsProviders) {
+        try {
+            const d = await fetch(`/api/admin/dns/providers/${p.id}/records`, { credentials: 'same-origin' }).then(r => r.json());
+            if (d.ok) {
+                for (const rec of (d.records || []).filter(r => r.ddns_enabled)) {
+                    rows.push({ ...rec, _providerName: p.name, _providerType: p.provider_type });
+                }
+            }
+        } catch (e) {}
+    }
+    if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No DDNS rules configured. Track a record and enable DDNS to add one.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(r => `
+        <tr>
+            <td style="font-size:.8rem;">${escHtml(r._providerName)}<br><span class="dns-type-badge">${escHtml(r._providerType)}</span></td>
+            <td style="font-size:.8rem;" class="mono">${escHtml(r.zone_name || r.zone_id)}</td>
+            <td style="font-size:.8rem;" class="mono">${escHtml(r.name)}</td>
+            <td style="font-size:.8rem;" class="mono">${r.last_ip ? escHtml(r.last_ip) : '<span style="color:var(--muted);">—</span>'}</td>
+            <td style="font-size:.75rem;color:var(--muted);">${r.last_synced || '—'}</td>
+            <td style="font-size:.8rem;">${r.ddns_interval}s</td>
+            <td style="text-align:right;">
+                <button class="btn-yu btn-danger-yu btn-sm-yu" onclick="dnsDeleteRecord(${r.id})" title="Remove"><i class="bi bi-trash"></i></button>
+            </td>
+        </tr>`).join('');
+}
+
+function dnsSyncAll() {
+    const btn = document.querySelector('[onclick="dnsSyncAll()"]');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing…'; }
+    fetch('/api/admin/dns/sync', { method: 'POST', credentials: 'same-origin' })
+        .then(r => r.json()).then(d => {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Sync Now'; }
+            if (d.ok) {
+                const errMsg = d.errors.length ? `\n\nErrors:\n${d.errors.join('\n')}` : '';
+                alert(`✅ Synced ${d.synced} record(s) to IP ${d.ip}${errMsg}`);
+                document.getElementById('dns-pub-ip').textContent = d.ip;
+                dnsLoadDdns();
+            } else {
+                alert('❌ Sync failed: ' + (d.error || 'unknown error'));
+            }
+        }).catch(() => {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Sync Now'; }
+            alert('Network error.');
+        });
+}
+
+// Auto-init DNS tab if opened via direct URL
+if (document.getElementById('tab-dns') && document.getElementById('tab-dns').classList.contains('active')) {
+    dnsLoadProviders();
+    dnsGetPublicIp();
+}
+
 function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }

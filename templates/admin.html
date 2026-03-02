@@ -9,7 +9,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.min.css" rel="stylesheet">
     <link href="/static/css/base.css" rel="stylesheet">
-    <link href="/static/css/admin.css" rel="stylesheet">
+    <link href="/static/css/admin.css?v=2" rel="stylesheet">
 </head>
 <body>
     <!-- Mobile sidebar overlay -->
@@ -66,7 +66,6 @@
                 </a>
                 <a href="/admin/dns" class="yu-nav-item{% if tab == "dns" %} active{% endif %}" onclick="switchTab('dns', this); return false;">
                     <i class="bi bi-diagram-3"></i> DNS
-                    <span class="yu-soon-badge">SOON</span>
                 </a>
                 <a href="/admin/firewall" class="yu-nav-item{% if tab == "firewall" %} active{% endif %}" onclick="switchTab('firewall', this); return false;">
                     <i class="bi bi-shield-shaded"></i> Firewall
@@ -397,18 +396,206 @@
         <!-- ─── PANEL: DNS ─── -->
         <div id="tab-dns" class="yu-tab-panel{% if tab == "dns" %} active{% endif %}">
             <div class="yu-page-hd">
-                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">DNS</div>
-                <p style="font-size:.825rem;color:var(--muted);margin:0;">Manage DNS records for your containers</p>
+                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">DNS Management</div>
+                <p style="font-size:.825rem;color:var(--muted);margin:0;">Manage DNS providers, records and dynamic DNS rules</p>
             </div>
-            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
-                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;">
-                    <i class="bi bi-diagram-3" style="font-size:1.8rem;color:#a78bfa;"></i>
+
+            <!-- DNS inner sub-tabs -->
+            <div class="yu-inner-tabs" id="dns-inner-tabs">
+                <button class="yu-inner-tab active" onclick="dnsSwitchTab('providers', this)">Providers</button>
+                <button class="yu-inner-tab" onclick="dnsSwitchTab('records', this)">Records</button>
+                <button class="yu-inner-tab" onclick="dnsSwitchTab('ddns', this)">DDNS</button>
+            </div>
+
+            <!-- ── SUB-TAB: Providers ── -->
+            <div id="dns-tab-providers" class="dns-subtab active">
+                <div class="row g-3 mb-3" id="dns-providers-list">
+                    <!-- Provider cards injected by JS -->
                 </div>
-                <div style="text-align:center;">
-                    <div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div>
-                    <p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">DNS management is coming soon. You will be able to assign custom domains and records to your containers directly from the panel.</p>
+                <div class="yu-card">
+                    <div class="yu-card-hd"><i class="bi bi-plus-circle me-2 text-muted"></i>Add Provider</div>
+                    <div class="yu-card-bd">
+                        <div id="dns-add-alert" style="display:none;"></div>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="yu-label">Display Name</label>
+                                <input type="text" class="yu-input" id="dns-add-name" placeholder="My Cloudflare">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="yu-label">Provider Type</label>
+                                <select class="yu-input" id="dns-add-type" onchange="dnsOnTypeChange(this.value,'dns-add-creds')" style="cursor:pointer;">
+                                    <option value="cloudflare">Cloudflare</option>
+                                    <option value="duckdns">DuckDNS</option>
+                                    <option value="godaddy">GoDaddy</option>
+                                    <option value="namecheap">Namecheap</option>
+                                    <option value="generic">Generic Webhook</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="dns-add-creds" class="mt-3"></div>
+                        <button class="btn-yu btn-primary-yu mt-3" onclick="dnsAddProvider()"><i class="bi bi-plus-lg"></i> Add Provider</button>
+                    </div>
                 </div>
-                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            </div>
+
+            <!-- ── SUB-TAB: Records ── -->
+            <div id="dns-tab-records" class="dns-subtab">
+                <div class="yu-card mb-3">
+                    <div class="yu-card-bd" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end;">
+                        <div style="flex:1;min-width:160px;">
+                            <label class="yu-label">Provider</label>
+                            <select class="yu-input" id="dns-rec-provider" onchange="dnsLoadZones()" style="cursor:pointer;">
+                                <option value="">— select provider —</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;min-width:160px;">
+                            <label class="yu-label">Zone / Domain</label>
+                            <select class="yu-input" id="dns-rec-zone" onchange="dnsLoadRemoteRecords()" style="cursor:pointer;">
+                                <option value="">— select zone —</option>
+                            </select>
+                        </div>
+                        <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsLoadRemoteRecords()" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
+                        <button class="btn-yu btn-primary-yu btn-sm-yu" onclick="dnsOpenAddRecordModal()"><i class="bi bi-plus-lg"></i> Add Record</button>
+                    </div>
+                </div>
+                <div class="yu-card">
+                    <div style="overflow-x:auto;">
+                        <table class="yu-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Value / Target</th>
+                                    <th>TTL</th>
+                                    <th>Proxy</th>
+                                    <th>DDNS</th>
+                                    <th style="text-align:right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dns-records-tbody">
+                                <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view records.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── SUB-TAB: DDNS ── -->
+            <div id="dns-tab-ddns" class="dns-subtab">
+                <div class="yu-card mb-3">
+                    <div class="yu-card-hd">
+                        <span><i class="bi bi-arrow-repeat me-2 text-muted"></i>Dynamic DNS</span>
+                        <div style="display:flex;align-items:center;gap:.75rem;">
+                            <span style="font-size:.78rem;color:var(--muted);">Public IP: <code id="dns-pub-ip" style="color:var(--txt);">—</code></span>
+                            <button class="btn-yu btn-primary-yu btn-sm-yu" onclick="dnsSyncAll()"><i class="bi bi-arrow-repeat"></i> Sync Now</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="yu-card">
+                    <div style="overflow-x:auto;">
+                        <table class="yu-table">
+                            <thead>
+                                <tr>
+                                    <th>Provider</th>
+                                    <th>Zone</th>
+                                    <th>Host</th>
+                                    <th>Last IP</th>
+                                    <th>Last Synced</th>
+                                    <th>Interval</th>
+                                    <th style="text-align:right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dns-ddns-tbody">
+                                <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ── DNS: Add/Edit Record Modal ── -->
+        <div id="dnsRecordModal" class="yu-modal" style="display:none;">
+            <div class="yu-modal-inner" style="max-width:520px;width:96%;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
+                    <div style="font-size:1rem;font-weight:700;"><i class="bi bi-diagram-3 me-2"></i><span id="dns-rec-modal-title">Add Record</span></div>
+                    <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="closeModal('dnsRecordModal')"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <div id="dns-rec-alert" style="display:none;" class="yu-alert mb-3"></div>
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="yu-label">Record Type</label>
+                        <select class="yu-input" id="drm-type" style="cursor:pointer;">
+                            <option>A</option><option>AAAA</option><option>CNAME</option>
+                            <option>TXT</option><option>MX</option><option>NS</option><option>SRV</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="yu-label">Name / Host</label>
+                        <input type="text" class="yu-input" id="drm-name" placeholder="@ or subdomain">
+                    </div>
+                    <div class="col-12">
+                        <label class="yu-label">Value / Target</label>
+                        <input type="text" class="yu-input" id="drm-value" placeholder="1.2.3.4 or target hostname">
+                    </div>
+                    <div class="col-4">
+                        <label class="yu-label">TTL (s)</label>
+                        <input type="number" class="yu-input" id="drm-ttl" value="300" min="60">
+                    </div>
+                    <div class="col-4">
+                        <label class="yu-label">Priority</label>
+                        <input type="number" class="yu-input" id="drm-priority" value="0" min="0">
+                    </div>
+                    <div class="col-4" id="drm-proxied-wrap">
+                        <label class="yu-label">Cloudflare Proxy</label>
+                        <select class="yu-input" id="drm-proxied" style="cursor:pointer;">
+                            <option value="false">DNS only</option>
+                            <option value="true">Proxied (orange cloud)</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label style="display:flex;align-items:center;gap:.55rem;cursor:pointer;font-size:.85rem;">
+                            <input type="checkbox" id="drm-ddns" style="width:16px;height:16px;cursor:pointer;"> Enable DDNS (auto-update with public IP)
+                        </label>
+                    </div>
+                    <div class="col-6" id="drm-interval-wrap" style="display:none;">
+                        <label class="yu-label">DDNS Interval (s)</label>
+                        <input type="number" class="yu-input" id="drm-interval" value="300" min="60">
+                    </div>
+                    <div class="col-6">
+                        <label style="display:flex;align-items:center;gap:.55rem;cursor:pointer;font-size:.85rem;">
+                            <input type="checkbox" id="drm-push" checked style="width:16px;height:16px;cursor:pointer;"> Push to provider API
+                        </label>
+                    </div>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:1.5rem;">
+                    <button class="btn-yu btn-ghost-yu" onclick="closeModal('dnsRecordModal')">Cancel</button>
+                    <button id="drm-save-btn" class="btn-yu btn-primary-yu" onclick="dnsSaveRecord()"><i class="bi bi-check-lg"></i> Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── DNS: Edit Provider Modal ── -->
+        <div id="dnsProviderModal" class="yu-modal" style="display:none;">
+            <div class="yu-modal-inner" style="max-width:480px;width:96%;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
+                    <div style="font-size:1rem;font-weight:700;"><i class="bi bi-pencil me-2"></i>Edit Provider</div>
+                    <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="closeModal('dnsProviderModal')"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <div id="dns-ep-alert" style="display:none;" class="yu-alert mb-3"></div>
+                <div style="margin-bottom:1rem;">
+                    <label class="yu-label">Display Name</label>
+                    <input type="text" class="yu-input" id="dep-name">
+                </div>
+                <div id="dep-creds"></div>
+                <div style="display:flex;align-items:center;gap:.5rem;margin-top:.75rem;">
+                    <input type="checkbox" id="dep-enabled" style="width:15px;height:15px;cursor:pointer;"> <label style="font-size:.85rem;cursor:pointer;" for="dep-enabled">Enabled</label>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:1.5rem;">
+                    <button class="btn-yu btn-ghost-yu" onclick="closeModal('dnsProviderModal')">Cancel</button>
+                    <button class="btn-yu btn-primary-yu" onclick="dnsSaveProvider()"><i class="bi bi-check-lg"></i> Save</button>
+                </div>
             </div>
         </div>
 
@@ -739,7 +926,7 @@
 
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/admin.js?v=3"></script>
+    <script src="/static/js/admin.js?v=4"></script>
     <script src="/static/js/footer.js"></script>
 </body>
 </html>
