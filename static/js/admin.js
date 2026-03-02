@@ -555,7 +555,7 @@ function dnsSwitchTab(tab, btn) {
     if (panel) panel.classList.add('active');
     if (btn)   btn.classList.add('active');
     if (tab === 'providers') dnsLoadProviders();
-    if (tab === 'records')   { dnsPopulateProviderDropdown(); }
+    if (tab === 'records')   { dnsPopulateProviderDropdown(); if (_dnsCurrentProviderId && _dnsCurrentZoneId) { dnsLoadRemoteRecords(); dnsLoadLocalRecords(); } }
     if (tab === 'ddns')      { dnsLoadDdns(); dnsGetPublicIp(); }
 }
 
@@ -772,23 +772,39 @@ function dnsLoadRemoteRecords() {
 
     const tbody = document.getElementById('dns-records-tbody');
     if (!pid || !zid) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view records.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view records.</td></tr>';
+        _dnsResetLocalTable();
         return;
     }
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>';
+    dnsLoadLocalRecords();
 
     fetch(`/api/admin/dns/providers/${pid}/records-remote?zone=${encodeURIComponent(zid)}`, { credentials: 'same-origin' })
         .then(r => r.json()).then(d => {
             if (!d.ok) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;">${escHtml(d.error || 'Failed to load records.')}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#ef4444;padding:2rem;">${escHtml(d.error || 'Failed to load records.')}</td></tr>`;
                 return;
             }
             const records = d.records || [];
             if (!records.length) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No records found in this zone.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">No records found in this zone.</td></tr>';
                 return;
             }
-            tbody.innerHTML = records.map(r => `
+            const managed = new Set();
+            document.querySelectorAll('#dns-local-tbody tr[data-record-id]').forEach(row => {
+                const rid = row.dataset.remoteId;
+                if (rid) managed.add(rid);
+            });
+            tbody.innerHTML = records.map(r => {
+                const isManaged = r.comment === 'yunexal.managed=true' || managed.has(r.id);
+                const managedBadge = isManaged
+                    ? `<span title="Managed by Yunexal" style="color:var(--primary);"><i class="bi bi-patch-check-fill"></i></span>`
+                    : `<span style="color:var(--muted);font-size:.75rem;">—</span>`;
+                const alreadyTracked = managed.has(r.id);
+                const actionBtn = alreadyTracked
+                    ? `<span style="font-size:.75rem;color:var(--muted);">tracked</span>`
+                    : `<button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsImportRecord(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="Track in panel"><i class="bi bi-download"></i></button>`;
+                return `
                 <tr>
                     <td class="mono" style="font-size:.78rem;">${escHtml(r.name)}</td>
                     <td><span class="dns-type-badge">${escHtml(r.record_type)}</span></td>
@@ -796,13 +812,65 @@ function dnsLoadRemoteRecords() {
                     <td style="font-size:.8rem;">${r.ttl === 1 ? 'Auto' : r.ttl + 's'}</td>
                     <td>${r.proxied ? '<span class="pill pill-run" style="font-size:.65rem;"><i class="bi bi-cloud-fill"></i> On</span>' : '<span style="color:var(--muted);font-size:.8rem;">—</span>'}</td>
                     <td><span style="color:var(--muted);font-size:.8rem;">—</span></td>
-                    <td style="text-align:right;">
-                        <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsImportRecord(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="Track in panel"><i class="bi bi-download"></i></button>
-                    </td>
-                </tr>`).join('');
-        }).catch(e => {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;">Network error.</td></tr>`;
+                    <td style="text-align:center;">${managedBadge}</td>
+                    <td style="text-align:right;">${actionBtn}</td>
+                </tr>`;
+            }).join('');
+        }).catch(() => {
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#ef4444;padding:2rem;">Network error.</td></tr>`;
         });
+}
+
+// ── Load panel-tracked (local DB) records ────────────────────────────────────
+
+function _dnsResetLocalTable() {
+    const tbody = document.getElementById('dns-local-tbody');
+    const count = document.getElementById('dns-local-count');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Select a provider and zone to view tracked records.</td></tr>';
+    if (count) count.textContent = '';
+}
+
+function dnsLoadLocalRecords() {
+    const pid  = _dnsCurrentProviderId;
+    const zid  = _dnsCurrentZoneId;
+    const tbody = document.getElementById('dns-local-tbody');
+    const count = document.getElementById('dns-local-count');
+    if (!tbody) return;
+    if (!pid || !zid) { _dnsResetLocalTable(); return; }
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1.5rem;"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+    fetch(`/api/admin/dns/providers/${pid}/records`, { credentials: 'same-origin' })
+        .then(r => r.json()).then(d => {
+            if (!d.ok) { tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;">${escHtml(d.error || 'Failed.')}</td></tr>`; return; }
+            const recs = (d.records || []).filter(r => r.zone_id === zid || r.zone_name === _dnsCurrentZoneName);
+            if (count) count.textContent = `${recs.length} tracked`;
+            if (!recs.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No tracked records for this zone.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = recs.map(r => {
+                const ddnsBadge = r.ddns_enabled
+                    ? `<span class="pill pill-run" style="font-size:.65rem;"><span class="pill-dot"></span>DDNS</span>`
+                    : `<span style="color:var(--muted);font-size:.75rem;">—</span>`;
+                const remoteLabel = r.remote_id
+                    ? `<span class="mono" style="font-size:.7rem;color:var(--muted);" title="${escHtml(r.remote_id)}">${escHtml(r.remote_id.substring(0,12))}…</span>`
+                    : `<span style="color:var(--muted);font-size:.75rem;">—</span>`;
+                return `
+                <tr data-record-id="${r.id}" data-remote-id="${escHtml(r.remote_id || '')}">
+                    <td class="mono" style="font-size:.78rem;">${escHtml(r.name)}</td>
+                    <td><span class="dns-type-badge">${escHtml(r.record_type)}</span></td>
+                    <td class="mono" style="font-size:.75rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(r.value)}</td>
+                    <td style="font-size:.8rem;">${r.ttl}s</td>
+                    <td>${ddnsBadge}</td>
+                    <td>${remoteLabel}</td>
+                    <td style="text-align:right;">
+                        <div style="display:flex;gap:.3rem;justify-content:flex-end;">
+                            <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsEditRecord(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="Edit"><i class="bi bi-pencil"></i></button>
+                            <button class="btn-yu btn-danger-yu btn-sm-yu" onclick="dnsDeleteRecord(${r.id},'${escHtml(r.remote_id || '')}')" title="Delete"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+        }).catch(() => { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;">Network error.</td></tr>'; });
 }
 
 // ── Import a remote record into local DB ──────────────────────────────────────
@@ -828,6 +896,35 @@ function dnsImportRecord(r) {
         if (d.ok) { alert('Record imported into panel.'); }
         else { alert('Import failed: ' + (d.error || 'unknown error')); }
     }).catch(() => alert('Network error.'));
+}
+
+// ── Edit a locally tracked record ────────────────────────────────────────────
+
+function dnsEditRecord(rec) {
+    if (!_dnsCurrentProviderId) {
+        // Try to restore from the record itself
+        _dnsCurrentProviderId = rec.provider_id;
+        _dnsCurrentZoneId     = rec.zone_id;
+        _dnsCurrentZoneName   = rec.zone_name;
+    }
+    _dnsEditRecordId = rec.id;
+    document.getElementById('dns-rec-modal-title').textContent = 'Edit Record';
+    document.getElementById('drm-type').value     = rec.record_type || 'A';
+    document.getElementById('drm-name').value     = rec.name  || '';
+    document.getElementById('drm-value').value    = rec.value || '';
+    document.getElementById('drm-ttl').value      = rec.ttl   || 300;
+    document.getElementById('drm-priority').value = rec.priority || 0;
+    document.getElementById('drm-proxied').value  = rec.proxied ? 'true' : 'false';
+    const ddnsChk = document.getElementById('drm-ddns');
+    ddnsChk.checked = !!rec.ddns_enabled;
+    document.getElementById('drm-interval-wrap').style.display = rec.ddns_enabled ? '' : 'none';
+    document.getElementById('drm-interval').value = rec.ddns_interval || 300;
+    // If record has a remote_id, offer to push update; otherwise default off
+    document.getElementById('drm-push').checked   = !!(rec.remote_id && rec.remote_id.length > 0);
+    document.getElementById('dns-rec-alert').style.display = 'none';
+    document.getElementById('drm-save-btn').disabled = false;
+    document.getElementById('drm-save-btn').innerHTML = '<i class="bi bi-check-lg"></i> Save';
+    openModal('dnsRecordModal');
 }
 
 // ── Add record modal ──────────────────────────────────────────────────────────
@@ -897,7 +994,7 @@ function dnsSaveRecord() {
             btn.innerHTML = '<i class="bi bi-check-lg"></i> Save';
             if (d.ok) {
                 show(true, _dnsEditRecordId ? 'Record updated.' : 'Record created.');
-                setTimeout(() => { closeModal('dnsRecordModal'); dnsLoadRemoteRecords(); }, 800);
+                setTimeout(() => { closeModal('dnsRecordModal'); dnsLoadRemoteRecords(); dnsLoadLocalRecords(); }, 800);
             } else { show(false, d.error || 'Failed.'); }
         }).catch(() => {
             btn.disabled = false;
@@ -906,14 +1003,19 @@ function dnsSaveRecord() {
         });
 }
 
-function dnsDeleteRecord(id) {
-    if (!confirm('Delete this DNS record?')) return;
+function dnsDeleteRecord(id, remoteId) {
+    const hasRemote = remoteId && remoteId.length > 0;
+    const msg = hasRemote
+        ? 'Delete this tracked record?\n\nOK = remove from panel only\nCancel = abort'
+        : 'Delete this tracked record from the panel?';
+    if (!confirm(msg)) return;
+    const fromProvider = hasRemote && confirm('Also delete this record from the DNS provider?');
     fetch(`/api/admin/dns/records/${id}/delete`, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ remove_from_provider: false }),
+        body: JSON.stringify({ remove_from_provider: fromProvider }),
     }).then(r => r.json()).then(d => {
-        if (d.ok) dnsLoadDdns();
+        if (d.ok) { dnsLoadLocalRecords(); dnsLoadDdns(); dnsLoadRemoteRecords(); }
         else alert(d.error || 'Failed.');
     }).catch(() => alert('Network error.'));
 }
@@ -968,7 +1070,10 @@ async function _dnsLoadDdnsRows(tbody) {
             <td style="font-size:.75rem;color:var(--muted);">${r.last_synced || '—'}</td>
             <td style="font-size:.8rem;">${r.ddns_interval}s</td>
             <td style="text-align:right;">
-                <button class="btn-yu btn-danger-yu btn-sm-yu" onclick="dnsDeleteRecord(${r.id})" title="Remove"><i class="bi bi-trash"></i></button>
+                <div style="display:flex;gap:.3rem;justify-content:flex-end;">
+                    <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsEditRecord(${JSON.stringify(r).replace(/"/g,'&quot;')})" title="Edit"><i class="bi bi-pencil"></i></button>
+                    <button class="btn-yu btn-danger-yu btn-sm-yu" onclick="dnsDeleteRecord(${r.id},'${r.remote_id || ''}')" title="Remove"><i class="bi bi-trash"></i></button>
+                </div>
             </td>
         </tr>`).join('');
 }

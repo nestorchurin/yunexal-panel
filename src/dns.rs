@@ -23,6 +23,8 @@ pub struct RemoteDnsRecord {
     pub ttl:         i64,
     pub priority:    i64,
     pub proxied:     bool,
+    /// Set to "yunexal.managed=true" by this panel; used to identify panel-managed records.
+    pub comment:     Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,6 +134,7 @@ impl DnsClient {
                         ttl:         r["ttl"].as_i64().unwrap_or(1),
                         priority:    r["priority"].as_i64().unwrap_or(0),
                         proxied:     r["proxied"].as_bool().unwrap_or(false),
+                        comment:     r["comment"].as_str().map(str::to_string),
                     })
                 }).collect()).unwrap_or_default())
             }
@@ -153,6 +156,7 @@ impl DnsClient {
                         ttl:         r["ttl"].as_i64().unwrap_or(600),
                         priority:    r["priority"].as_i64().unwrap_or(0),
                         proxied:     false,
+                        comment:     None,
                     })
                 }).collect()).unwrap_or_default())
             }
@@ -171,6 +175,7 @@ impl DnsClient {
                     "content": rec.value,
                     "ttl":     rec.ttl,
                     "proxied": rec.proxied,
+                    "comment": "yunexal.managed=true",
                 });
                 let resp = Self::http()
                     .post(format!(
@@ -222,6 +227,7 @@ impl DnsClient {
                     "content": rec.value,
                     "ttl":     rec.ttl,
                     "proxied": rec.proxied,
+                    "comment": "yunexal.managed=true",
                 });
                 let resp = Self::http()
                     .patch(format!(
