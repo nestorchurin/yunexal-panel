@@ -609,6 +609,11 @@
                                 </select>
                             </div>
                         </div>
+                        <!-- Service type -->
+                        <div style="margin-bottom:.7rem;">
+                            <label class="field-label">Service <span style="font-size:.69rem;color:var(--muted);">per RFC 2782 — used as <code style="font-size:.69rem;">_service._tcp</code></span></label>
+                            <input type="text" class="form-control" id="srv-service" list="srv-service-list" placeholder="yunexal" oninput="updateSrvPreview()" style="font-family:monospace;letter-spacing:.04em;">
+                        </div>
                         <!-- Subdomain -->
                         <div style="margin-bottom:.7rem;">
                             <label class="field-label">Subdomain <span style="font-size:.69rem;color:var(--muted);">(A-record — IP auto-detected)</span></label>
@@ -670,7 +675,24 @@
 
     <!-- DNS/SRV hidden fields -->
     <!-- datalists referenced by the DNS section inputs -->
-    <datalist id="srv-service-list"></datalist>
+    <datalist id="srv-service-list">
+        <!-- Gaming -->
+        <option value="minecraft"><option value="terraria"><option value="factorio"><option value="valheim"><option value="rust"><option value="ark"><option value="cs2"><option value="tf2"><option value="gmod"><option value="satisfactory"><option value="palworld"><option value="7dtd">
+        <!-- Voice / Chat -->
+        <option value="mumble"><option value="ts3"><option value="teamspeak"><option value="discord"><option value="matrix"><option value="xmpp-client"><option value="xmpp-server">
+        <!-- Web / Proxy -->
+        <option value="http"><option value="https"><option value="http-alt"><option value="caldav"><option value="carddav">
+        <!-- Mail -->
+        <option value="smtp"><option value="submission"><option value="imap"><option value="imaps"><option value="pop3"><option value="pop3s">
+        <!-- Infra / Auth -->
+        <option value="ssh"><option value="ftp"><option value="ftps"><option value="sftp"><option value="ldap"><option value="ldaps"><option value="kerberos"><option value="ntp"><option value="dns"><option value="openvpn"><option value="wireguard">
+        <!-- Databases -->
+        <option value="mysql"><option value="postgresql"><option value="redis"><option value="mongodb"><option value="elasticsearch"><option value="clickhouse">
+        <!-- VoIP -->
+        <option value="sip"><option value="sips"><option value="rtsp"><option value="rtp">
+        <!-- Custom -->
+        <option value="yunexal">
+    </datalist>
     <input type="hidden" name="dns_srv_enabled" id="h-dns-srv-enabled" value="0">
     <input type="hidden" name="dns_provider_id" id="h-dns-provider-id" value="">
     <input type="hidden" name="dns_zone_id" id="h-dns-zone-id" value="">
@@ -993,6 +1015,7 @@ function saveFormState() {
         gui_restart:   document.getElementById('gui_restart')?.value || 'unless-stopped',
         ports, envs, vols, collapsed,
         srv_enabled:     document.getElementById('srv-enable-chk')?.checked || false,
+        srv_service:     document.getElementById('srv-service')?.value || '',
         srv_a_subdomain: document.getElementById('srv-a-subdomain')?.value || '',
         srv_port:        document.getElementById('srv-port')?.value || '',
         dns_open:        document.getElementById('dns-srv-body')?.style.display !== 'none',
@@ -1037,6 +1060,7 @@ function restoreFormState() {
     if (s.srv_enabled) {
         const chk = document.getElementById('srv-enable-chk');
         if (chk) { chk.checked = true; onSrvToggle(); }
+        sv('srv-service', s.srv_service);
         sv('srv-a-subdomain', s.srv_a_subdomain);
         // srv-port is a <select> populated by _refreshSrvPortSelect inside onSrvToggle,
         // so restore value after a tick to ensure options exist
@@ -1213,13 +1237,13 @@ function showCreateConfirm() {
     // ── DNS / SRV ──
     const srvEnabled = document.getElementById('h-dns-srv-enabled').value === '1';
     if (srvEnabled) {
-        const cname     = _srvContainerName();
+        const srvName   = document.getElementById('h-dns-srv-name').value || '_yunexal';
         const srvTarget = document.getElementById('h-dns-srv-target').value;
         const srvPort   = document.getElementById('h-dns-srv-port').value;
         const aSub      = document.getElementById('h-dns-a-subdomain').value;
         const aIp       = document.getElementById('h-dns-a-ip').value;
-        const tcp = `_${cname}._tcp.${srvTarget}`;
-        const udp = `_${cname}._udp.${srvTarget}`;
+        const tcp = `${srvName}._tcp.${srvTarget}`;
+        const udp = `${srvName}._udp.${srvTarget}`;
         sections.push(_cfmSection('bi-hdd-network-fill', 'DNS / SRV Record',
             _cfmKV('TCP record', `<code style="color:#a78bfa;font-size:.77rem;">${esc(tcp)}</code>`) +
             _cfmKV('UDP record', `<code style="color:#a78bfa;font-size:.77rem;">${esc(udp)}</code>`) +
@@ -1258,6 +1282,7 @@ function onSrvToggle() {
     document.getElementById('srv-fields').style.display = on ? '' : 'none';
     saveFormState();
     if (on) {
+        if (!document.getElementById('srv-service').value) document.getElementById('srv-service').value = 'yunexal';
         if (!document.getElementById('srv-a-subdomain').value) rollSrvSubdomain();
         _refreshSrvPortSelect();
     }
@@ -1339,19 +1364,19 @@ function _srvContainerName() {
 }
 
 function updateSrvPreview() {
-    const cname = _srvContainerName();
+    const svc   = (document.getElementById('srv-service')?.value.trim() || 'yunexal').replace(/[^a-z0-9-]/gi, '-').toLowerCase();
     const sub   = document.getElementById('srv-a-subdomain').value.trim();
     const zone  = _getSrvZoneName();
     const port  = document.getElementById('srv-port').value;
     const box   = document.getElementById('srv-preview-box');
     if (!box) return;
     if (!sub || !zone || !port) {
-        box.innerHTML = '<em style="color:var(--muted);font-size:.74rem;">Fill in subdomain, domain and port to see preview</em>';
+        box.innerHTML = '<em style="color:var(--muted);font-size:.74rem;">Fill in service, subdomain, domain and port to see preview</em>';
         return;
     }
     const target = `${sub}.${zone}`;
-    const tcp = `_${cname}._tcp.${target}`;
-    const udp = `_${cname}._udp.${target}`;
+    const tcp = `_${svc}._tcp.${target}`;
+    const udp = `_${svc}._udp.${target}`;
     box.innerHTML =
         `<div style="margin-bottom:.3rem;">` +
         `<code style="color:#a78bfa;font-size:.76rem;">${esc(tcp)}</code>` +
@@ -1371,14 +1396,14 @@ function prepareSrvHiddenFields() {
     const port  = document.getElementById('srv-port').value;
     const aSub  = document.getElementById('srv-a-subdomain').value.trim();
     if (!pid || !zid || !port || !aSub) { document.getElementById('h-dns-srv-enabled').value = '0'; return; }
-    const cname  = _srvContainerName();
+    const svc    = (document.getElementById('srv-service')?.value.trim() || 'yunexal').replace(/[^a-z0-9-]/gi, '-').toLowerCase();
     const target = `${aSub}.${zname}`;
     document.getElementById('h-dns-srv-enabled').value     = '1';
     document.getElementById('h-dns-srv-both-protos').value = '1';
     document.getElementById('h-dns-provider-id').value     = pid;
     document.getElementById('h-dns-zone-id').value         = zid;
     document.getElementById('h-dns-zone-name').value       = zname;
-    document.getElementById('h-dns-srv-name').value        = `_${cname}`;
+    document.getElementById('h-dns-srv-name').value        = `_${svc}`;
     document.getElementById('h-dns-srv-port').value        = port;
     document.getElementById('h-dns-srv-target').value      = target;
     document.getElementById('h-dns-srv-priority').value    = '0';
