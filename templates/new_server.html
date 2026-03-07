@@ -970,6 +970,12 @@ require(['vs/editor/editor.main'], function () {
     updateYaml();
 });
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 // ── Sec-card generic collapse ───────────────────────────────────────────────
 function toggleSecCard(hd) {
     const body = hd.closest('.sec-card').querySelector('.sec-bd');
