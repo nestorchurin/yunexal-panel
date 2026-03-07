@@ -712,7 +712,7 @@
 
 <!-- ── Confirm Create Modal ── -->
 <div id="confirmCreateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:500;backdrop-filter:blur(10px);align-items:center;justify-content:center;padding:1rem;">
-    <div style="background:var(--surface);border:1px solid var(--bdr);border-radius:18px;width:100%;max-width:560px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="background:var(--surface);border:1px solid var(--bdr);border-radius:18px;width:100%;max-width:560px;max-height:90dvh;display:flex;flex-direction:column;overflow:hidden;">
 
         <!-- Header -->
         <div style="display:flex;align-items:center;gap:.75rem;padding:1.1rem 1.4rem;border-bottom:1px solid var(--bdr);background:var(--surface2);flex-shrink:0;">
@@ -721,18 +721,18 @@
             </div>
             <div>
                 <div style="font-size:.92rem;font-weight:700;letter-spacing:-.02em;">Confirm Server Creation</div>
-                <div style="font-size:.72rem;color:var(--muted);margin-top:.1rem;">Review all settings before deploying.</div>
+                <div style="font-size:.72rem;color:var(--muted);margin-top:.08rem;">Review all settings before deploying.</div>
             </div>
-            <button onclick="hideCreateConfirm()" style="margin-left:auto;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:1.05rem;line-height:1;padding:.2rem;border-radius:6px;transition:color .15s;" onmouseover="this.style.color='var(--txt)'" onmouseout="this.style.color='var(--muted)'"><i class="bi bi-x-lg"></i></button>
+            <button onclick="hideCreateConfirm()" style="margin-left:auto;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:1.05rem;line-height:1;padding:.25rem;border-radius:6px;transition:color .15s;" onmouseover="this.style.color='var(--txt)'" onmouseout="this.style.color='var(--muted)'"><i class="bi bi-x-lg"></i></button>
         </div>
 
-        <!-- Body — flex:1 + min-height:0 makes it scroll inside the capped modal -->
-        <div id="confirm-summary" style="flex:1 1 0;min-height:0;padding:1.1rem 1.4rem;overflow-y:auto;display:flex;flex-direction:column;gap:.85rem;"></div>
+        <!-- Body (scrollable) -->
+        <div id="confirm-summary" style="padding:1.1rem 1.4rem;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:.85rem;"></div>
 
         <!-- Footer -->
         <div style="display:flex;gap:.75rem;justify-content:flex-end;padding:.9rem 1.4rem;border-top:1px solid var(--bdr);background:var(--surface2);flex-shrink:0;">
-            <button onclick="hideCreateConfirm()" style="background:var(--surface);border:1px solid var(--bdr2);color:var(--muted);font-family:'Inter',sans-serif;font-size:.84rem;padding:.5rem 1.1rem;border-radius:9px;cursor:pointer;transition:background .15s,color .15s;" onmouseover="this.style.background='var(--surface3)';this.style.color='var(--txt)'" onmouseout="this.style.background='var(--surface)';this.style.color='var(--muted)'"><i class="bi bi-x-lg" style="margin-right:.35rem;"></i>Cancel</button>
-            <button onclick="submitCreateForm()" style="background:var(--accent);border:none;color:#fff;font-family:'Inter',sans-serif;font-weight:600;font-size:.84rem;padding:.5rem 1.3rem;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:.4rem;transition:background .15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='var(--accent)'"><i class="bi bi-play-fill"></i> Create Server</button>
+            <button onclick="hideCreateConfirm()" style="background:var(--surface);border:1px solid var(--bdr2);color:var(--muted);font-family:'Inter',sans-serif;font-size:.84rem;padding:.5rem 1rem;border-radius:9px;cursor:pointer;transition:background .15s,color .15s;" onmouseover="this.style.background='var(--surface3)';this.style.color='var(--txt)'" onmouseout="this.style.background='var(--surface)';this.style.color='var(--muted)'"><i class="bi bi-x-lg" style="margin-right:.35rem;"></i>Cancel</button>
+            <button onclick="submitCreateForm()" style="background:var(--accent);border:none;color:#fff;font-family:'Inter',sans-serif;font-weight:600;font-size:.84rem;padding:.5rem 1.2rem;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:.4rem;transition:background .15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='var(--accent)'"><i class="bi bi-play-fill"></i> Create Server</button>
         </div>
     </div>
 </div>
