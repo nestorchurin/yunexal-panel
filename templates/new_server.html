@@ -732,17 +732,28 @@
 </div><!-- /yu-page -->
 
 <!-- ── Confirm Create Modal ── -->
-<div id="confirmCreateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:500;backdrop-filter:blur(8px);align-items:center;justify-content:center;">
-    <div style="background:var(--surface);border:1px solid var(--bdr);border-radius:16px;padding:1.75rem 2rem;max-width:500px;width:92%;max-height:82vh;display:flex;flex-direction:column;gap:1.1rem;">
-        <div style="display:flex;align-items:center;gap:.6rem;font-size:1rem;font-weight:700;letter-spacing:-.02em;">
-            <span style="width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent);flex-shrink:0;display:inline-block;"></span>
-            Confirm Server Creation
+<div id="confirmCreateModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:500;backdrop-filter:blur(10px);align-items:flex-start;justify-content:center;padding:2rem 1rem;overflow-y:auto;">
+    <div style="background:var(--surface);border:1px solid var(--bdr);border-radius:18px;width:100%;max-width:560px;margin:auto;display:flex;flex-direction:column;overflow:hidden;">
+
+        <!-- Header -->
+        <div style="display:flex;align-items:center;gap:.75rem;padding:1.25rem 1.5rem;border-bottom:1px solid var(--bdr);background:var(--surface2);">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--accent-dim);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <i class="bi bi-check2-circle" style="color:var(--accent-l);font-size:1rem;"></i>
+            </div>
+            <div>
+                <div style="font-size:.95rem;font-weight:700;letter-spacing:-.02em;">Confirm Server Creation</div>
+                <div style="font-size:.74rem;color:var(--muted);margin-top:.1rem;">Review all settings before deploying.</div>
+            </div>
+            <button onclick="hideCreateConfirm()" style="margin-left:auto;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;line-height:1;padding:.2rem;border-radius:6px;transition:color .15s;" onmouseover="this.style.color='var(--txt)'" onmouseout="this.style.color='var(--muted)'"><i class="bi bi-x-lg"></i></button>
         </div>
-        <div style="font-size:.8rem;color:var(--muted);">Review the configuration before creating the server.</div>
-        <div id="confirm-summary" style="background:var(--surface2);border:1px solid var(--bdr);border-radius:10px;padding:1rem 1.1rem;font-size:.8rem;overflow-y:auto;max-height:48vh;line-height:1.8;"></div>
-        <div style="display:flex;gap:.75rem;justify-content:flex-end;">
-            <button onclick="hideCreateConfirm()" style="background:var(--surface2);border:1px solid var(--bdr2);color:var(--muted);font-family:'Inter',sans-serif;font-size:.85rem;padding:.6rem 1.2rem;border-radius:9px;cursor:pointer;transition:background .15s,color .15s;" onmouseover="this.style.background='var(--surface3)';this.style.color='var(--txt)'" onmouseout="this.style.background='var(--surface2)';this.style.color='var(--muted)'"><i class="bi bi-x-lg" style="margin-right:.3rem;"></i>Cancel</button>
-            <button onclick="submitCreateForm()" style="background:var(--accent);border:none;color:#fff;font-family:'Inter',sans-serif;font-weight:600;font-size:.85rem;padding:.6rem 1.5rem;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:.45rem;transition:background .15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='var(--accent)'"><i class="bi bi-play-fill"></i> Create Server</button>
+
+        <!-- Body -->
+        <div id="confirm-summary" style="padding:1.25rem 1.5rem;overflow-y:auto;max-height:calc(100vh - 220px);display:flex;flex-direction:column;gap:1rem;"></div>
+
+        <!-- Footer -->
+        <div style="display:flex;gap:.75rem;justify-content:flex-end;padding:1rem 1.5rem;border-top:1px solid var(--bdr);background:var(--surface2);">
+            <button onclick="hideCreateConfirm()" style="background:var(--surface);border:1px solid var(--bdr2);color:var(--muted);font-family:'Inter',sans-serif;font-size:.84rem;padding:.55rem 1.1rem;border-radius:9px;cursor:pointer;transition:background .15s,color .15s;" onmouseover="this.style.background='var(--surface3)';this.style.color='var(--txt)'" onmouseout="this.style.background='var(--surface)';this.style.color='var(--muted)'"><i class="bi bi-x-lg" style="margin-right:.35rem;"></i>Cancel</button>
+            <button onclick="submitCreateForm()" style="background:var(--accent);border:none;color:#fff;font-family:'Inter',sans-serif;font-weight:600;font-size:.84rem;padding:.55rem 1.3rem;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:.4rem;transition:background .15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='var(--accent)'"><i class="bi bi-play-fill"></i> Create Server</button>
         </div>
     </div>
 </div>
@@ -1097,6 +1108,28 @@ function toggleSecCard(hd) {
 }
 
 // ── Confirm Create Modal ────────────────────────────────────────────────────
+function _cfmSection(icon, title, content) {
+    return `<div style="background:var(--surface2);border:1px solid var(--bdr);border-radius:12px;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:.5rem;padding:.6rem 1rem;border-bottom:1px solid var(--bdr);background:var(--surface3);">
+            <i class="bi ${icon}" style="color:var(--accent-l);font-size:.8rem;"></i>
+            <span style="font-size:.69rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);">${title}</span>
+        </div>
+        <div style="padding:.75rem 1rem;">${content}</div>
+    </div>`;
+}
+function _cfmKV(label, value, accent) {
+    return `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:.5rem;padding:.22rem 0;border-bottom:1px solid rgba(255,255,255,.035);">
+        <span style="font-size:.76rem;color:var(--muted);white-space:nowrap;">${label}</span>
+        <span style="font-size:.8rem;font-weight:500;color:${accent||'var(--txt)'};text-align:right;word-break:break-all;">${value}</span>
+    </div>`;
+}
+function _cfmBadge(text, color) {
+    return `<span style="display:inline-block;background:${color||'rgba(124,58,237,.15)'};border:1px solid ${color ? color.replace('.15',',.35') : 'rgba(124,58,237,.25)'};color:${color ? '#fff' : 'var(--accent-l)'};font-size:.72rem;font-family:monospace;padding:.15rem .55rem;border-radius:5px;margin:.15rem .15rem 0 0;">${text}</span>`;
+}
+function _cfmEmpty(msg) {
+    return `<span style="font-size:.75rem;color:var(--muted);font-style:italic;">${msg}</span>`;
+}
+
 function showCreateConfirm() {
     // Auto-fill name if empty
     const nameEl = document.getElementById('name');
@@ -1108,7 +1141,6 @@ function showCreateConfirm() {
         imageEl.focus();
         imageEl.style.borderColor = 'rgba(239,68,68,.6)';
         imageEl.style.boxShadow   = '0 0 0 3px rgba(239,68,68,.15)';
-        // Make sure Basic Info section is open
         const basicBd = imageEl.closest('.sec-bd');
         if (basicBd && basicBd.style.display === 'none') {
             basicBd.style.display = '';
@@ -1123,72 +1155,122 @@ function showCreateConfirm() {
     updateYaml();
     prepareSrvHiddenFields();
 
-    const name    = document.getElementById('name').value.trim() || '—';
+    const name     = document.getElementById('name').value.trim() || '—';
     const ownerSel = document.getElementById('owner_id');
     const ownerTxt = ownerSel.options[ownerSel.selectedIndex]?.text || '—';
-    const image   = document.getElementById('image').value.trim() || '—';
-    const restart = document.getElementById('gui_restart').value;
-    const cpus    = document.getElementById('gui_cpus').value;
-    const memVal  = document.getElementById('gui_mem_val').value;
-    const memUnit = document.getElementById('gui_mem_unit').value.toUpperCase();
-    const diskVal = document.getElementById('gui_disk_val').value;
-    const diskUnit= document.getElementById('gui_disk_unit').value.toUpperCase();
-    const bw      = document.getElementById('bandwidth_mbit').value;
+    const image    = document.getElementById('image').value.trim() || '—';
+    const restart  = document.getElementById('gui_restart').value;
+    const cpus     = document.getElementById('gui_cpus').value;
+    const memVal   = document.getElementById('gui_mem_val').value;
+    const memUnit  = document.getElementById('gui_mem_unit').value.toUpperCase();
+    const diskVal  = document.getElementById('gui_disk_val').value;
+    const diskUnit = document.getElementById('gui_disk_unit').value.toUpperCase();
+    const bw       = document.getElementById('bandwidth_mbit').value;
 
-    const row = (label, val) =>
-        `<div style="display:contents;"><span style="color:var(--muted);white-space:nowrap;">${label}</span><span>${val}</span></div>`;
+    const restartColor = { 'always':'rgba(34,197,94,.15)', 'unless-stopped':'rgba(234,179,8,.15)', 'on-failure':'rgba(239,68,68,.15)', 'no':'rgba(107,114,128,.15)' }[restart] || 'rgba(124,58,237,.15)';
+    const restartBorder= { 'always':'rgba(34,197,94,.35)', 'unless-stopped':'rgba(234,179,8,.35)', 'on-failure':'rgba(239,68,68,.35)', 'no':'rgba(107,114,128,.35)' }[restart] || 'rgba(124,58,237,.35)';
+    const restartTxt   = { 'always':'#86efac',            'unless-stopped':'#fde047',             'on-failure':'#fca5a5',            'no':'#9ca3af'            }[restart] || 'var(--accent-l)';
+    const restartBadge = `<span style="display:inline-block;background:${restartColor};border:1px solid ${restartBorder};color:${restartTxt};font-size:.72rem;padding:.15rem .55rem;border-radius:5px;">${esc(restart)}</span>`;
 
-    let html = `<div style="display:grid;grid-template-columns:110px 1fr;gap:.3rem .85rem;">
-        ${row('Name', `<strong>${esc(name)}</strong>`)}
-        ${row('Owner', esc(ownerTxt))}
-        ${row('Image', `<code style="color:#a78bfa;font-size:.78rem;">${esc(image)}</code>`)}
-        ${row('Restart', esc(restart))}
-        ${row('CPU', cpus ? cpus + ' cores' : 'Unlimited')}
-        ${row('RAM', memVal ? memVal + '\u202f' + memUnit : 'Unlimited')}
-        ${row('Disk', diskVal ? diskVal + '\u202f' + diskUnit : 'Unlimited')}
-        ${row('Bandwidth', bw ? bw + ' Mbit/s' : 'Unlimited')}
-    </div>`;
+    const sections = [];
 
+    // ── Basic Info ──
+    sections.push(_cfmSection('bi-tag-fill', 'Basic Info',
+        _cfmKV('Server Name', `<strong style="color:var(--txt);font-family:monospace;letter-spacing:.02em;">${esc(name)}</strong>`) +
+        _cfmKV('Owner', esc(ownerTxt)) +
+        _cfmKV('Docker Image', `<code style="color:#a78bfa;font-size:.78rem;">${esc(image)}</code>`)
+    ));
+
+    // ── Resources ──
+    sections.push(_cfmSection('bi-cpu-fill', 'Resources & Limits',
+        _cfmKV('CPU',       cpus    ? `<span style="color:var(--success);">${esc(cpus)} core${parseFloat(cpus)!==1?'s':''}</span>` : _cfmEmpty('Unlimited')) +
+        _cfmKV('RAM',       memVal  ? `<span style="color:var(--success);">${esc(memVal)}\u202f${memUnit}</span>` : _cfmEmpty('Unlimited')) +
+        _cfmKV('Disk',      diskVal ? `<span style="color:var(--success);">${esc(diskVal)}\u202f${diskUnit}</span>` : _cfmEmpty('Unlimited')) +
+        _cfmKV('Bandwidth', bw      ? `<span style="color:var(--success);">${esc(bw)} Mbit/s</span>` : _cfmEmpty('Unlimited')) +
+        _cfmKV('Restart',   restartBadge)
+    ));
+
+    // ── Ports ──
     const ports = [];
     document.querySelectorAll('#ports-container .entry-row').forEach(r => {
         const h = r.querySelector('.host-input').value;
         const c = r.querySelector('.container-input').value;
         const p = r.querySelector('.proto-input').value;
-        if (h && c) ports.push(`${h}:${c}/${p}`);
+        if (h && c) ports.push({ h, c, p });
     });
-    if (ports.length) {
-        html += `<div style="margin-top:.85rem;"><div style="font-size:.69rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem;">Ports</div>${ports.map(p => `<code style="display:block;font-size:.77rem;color:#a78bfa;">${esc(p)}</code>`).join('')}</div>`;
+    {
+        const inner = ports.length
+            ? `<div style="display:grid;grid-template-columns:auto auto auto;gap:.3rem .6rem;align-items:center;font-size:.78rem;font-family:monospace;">
+                <span style="font-size:.67rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Host</span>
+                <span style="font-size:.67rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Container</span>
+                <span style="font-size:.67rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">Proto</span>
+                ${ports.map(({h,c,p}) =>
+                    `<span style="color:#a78bfa;">${esc(h)}</span><span style="color:var(--txt);">→ ${esc(c)}</span><span style="background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.25);color:var(--accent-l);padding:.1rem .4rem;border-radius:4px;font-size:.7rem;">${esc(p)}</span>`
+                ).join('')}
+            </div>`
+            : _cfmEmpty('No port bindings configured');
+        sections.push(_cfmSection('bi-diagram-2-fill', `Port Bindings${ports.length ? ' ('+ports.length+')' : ''}`, inner));
     }
 
+    // ── Environment ──
     const envs = [];
     document.querySelectorAll('#env-container .entry-row').forEach(r => {
         const k = r.querySelector('.key-input').value;
         const v = r.querySelector('.val-input').value;
-        if (k) envs.push(`${k}=${v}`);
+        if (k) envs.push({ k, v });
     });
-    if (envs.length) {
-        html += `<div style="margin-top:.85rem;"><div style="font-size:.69rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem;">Environment (${envs.length})</div>${envs.map(e => `<code style="display:block;font-size:.77rem;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(e)}</code>`).join('')}</div>`;
+    {
+        const inner = envs.length
+            ? `<div style="display:flex;flex-direction:column;gap:.25rem;">${envs.map(({k,v}) =>
+                `<div style="display:flex;align-items:baseline;gap:.4rem;padding:.25rem .4rem;background:var(--surface3);border-radius:6px;font-family:monospace;font-size:.77rem;overflow:hidden;">
+                    <span style="color:#a78bfa;white-space:nowrap;flex-shrink:0;">${esc(k)}</span>
+                    <span style="color:var(--muted);flex-shrink:0;">=</span>
+                    <span style="color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(v)||'<em style="opacity:.5;">empty</em>'}</span>
+                </div>`
+            ).join('')}</div>`
+            : _cfmEmpty('No environment variables');
+        sections.push(_cfmSection('bi-code-square', `Environment${envs.length ? ' ('+envs.length+')' : ''}`, inner));
     }
 
+    // ── Volumes ──
     const vols = [];
     document.querySelectorAll('#vol-container .entry-row').forEach(r => {
         const h = r.querySelector('.host-input').value;
         const c = r.querySelector('.container-input').value;
-        if (h && c) vols.push(`${h}:${c}`);
+        if (h && c) vols.push({ h, c });
     });
-    if (vols.length) {
-        html += `<div style="margin-top:.85rem;"><div style="font-size:.69rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem;">Volumes</div>${vols.map(v => `<code style="display:block;font-size:.77rem;color:var(--txt);">${esc(v)}</code>`).join('')}</div>`;
+    {
+        const inner = vols.length
+            ? `<div style="display:flex;flex-direction:column;gap:.25rem;">${vols.map(({h,c}) =>
+                `<div style="display:flex;align-items:center;gap:.4rem;padding:.25rem .4rem;background:var(--surface3);border-radius:6px;font-family:monospace;font-size:.77rem;overflow:hidden;">
+                    <span style="color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${esc(h)}</span>
+                    <i class="bi bi-arrow-right" style="color:var(--muted);flex-shrink:0;font-size:.7rem;"></i>
+                    <span style="color:#a78bfa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${esc(c)}</span>
+                </div>`
+            ).join('')}</div>`
+            : _cfmEmpty('No volume mounts');
+        sections.push(_cfmSection('bi-hdd-fill', `Volume Mounts${vols.length ? ' ('+vols.length+')' : ''}`, inner));
     }
 
+    // ── DNS / SRV ──
     const srvEnabled = document.getElementById('h-dns-srv-enabled').value === '1';
     if (srvEnabled) {
-        const srvName = document.getElementById('h-dns-srv-name').value;
+        const srvName   = document.getElementById('h-dns-srv-name').value;
         const srvTarget = document.getElementById('h-dns-srv-target').value;
-        const srvPort = document.getElementById('h-dns-srv-port').value;
-        html += `<div style="margin-top:.85rem;"><div style="font-size:.69rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem;">DNS / SRV</div><code style="font-size:.77rem;color:#a78bfa;">${esc(srvName)}._tcp + ._udp → ${esc(srvTarget)}:${esc(srvPort)}</code></div>`;
+        const srvPort   = document.getElementById('h-dns-srv-port').value;
+        const srvPri    = document.getElementById('h-dns-srv-priority').value;
+        const srvWgt    = document.getElementById('h-dns-srv-weight').value;
+        const aSub      = document.getElementById('h-dns-a-subdomain').value;
+        const aIp       = document.getElementById('h-dns-a-ip').value;
+        sections.push(_cfmSection('bi-hdd-network-fill', 'DNS / SRV Record',
+            _cfmKV('SRV record', `<code style="color:#a78bfa;font-size:.77rem;">${esc(srvName)}._tcp &amp; ._udp</code>`) +
+            _cfmKV('Target', `<code style="color:var(--txt);font-size:.77rem;">${esc(srvTarget)}:${esc(srvPort)}</code>`) +
+            _cfmKV('Priority / Weight', `${esc(srvPri)} / ${esc(srvWgt)}`) +
+            (aSub ? _cfmKV('A-record', `<code style="color:#a78bfa;font-size:.77rem;">${esc(aSub)}</code>${aIp ? ` <span style="color:var(--muted);font-size:.72rem;">→ ${esc(aIp)}</span>`:''}`): '')
+        ));
     }
 
-    document.getElementById('confirm-summary').innerHTML = html;
+    document.getElementById('confirm-summary').innerHTML = sections.join('');
     document.getElementById('confirmCreateModal').style.display = 'flex';
 }
 
