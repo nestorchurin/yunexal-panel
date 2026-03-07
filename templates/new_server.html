@@ -660,7 +660,7 @@
 
             <!-- ── Actions ── -->
             <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-top:.5rem;">
-                <button type="button" class="btn-cancel" onclick="history.back()"><i class="bi bi-x-lg"></i> Cancel</button>
+                <button type="button" class="btn-cancel" onclick="clearFormState();history.back()"><i class="bi bi-x-lg"></i> Cancel</button>
                 <button type="button" class="btn-create" onclick="showCreateConfirm()">
                     <i class="bi bi-play-fill"></i> Create Server
                 </button>
@@ -860,6 +860,7 @@ function updateYaml() {
         window.yamlEditor.setValue(yamlStr);
         if (pos) window.yamlEditor.setPosition(pos);
     }
+    saveFormState();
 }
 
 function copyYaml(btn) {
@@ -990,6 +991,99 @@ function autoFillName() {
     if (!el.value.trim()) el.value = randomServerName();
 }
 
+// ── Form persistence (sessionStorage) ───────────────────────────────────
+const FORM_KEY = 'yunexal_new_server_draft';
+
+function saveFormState() {
+    const ports = [], envs = [], vols = [];
+    document.querySelectorAll('#ports-container .entry-row').forEach(r => {
+        ports.push({ h: r.querySelector('.host-input').value, c: r.querySelector('.container-input').value, p: r.querySelector('.proto-input').value });
+    });
+    document.querySelectorAll('#env-container .entry-row').forEach(r => {
+        envs.push({ k: r.querySelector('.key-input').value, v: r.querySelector('.val-input').value });
+    });
+    document.querySelectorAll('#vol-container .entry-row').forEach(r => {
+        vols.push({ h: r.querySelector('.host-input').value, c: r.querySelector('.container-input').value });
+    });
+    const collapsed = {};
+    document.querySelectorAll('.sec-card').forEach((card, i) => {
+        const bd = card.querySelector('.sec-bd');
+        if (bd) collapsed[i] = bd.style.display === 'none';
+    });
+    sessionStorage.setItem(FORM_KEY, JSON.stringify({
+        name:          document.getElementById('name')?.value || '',
+        owner_id:      document.getElementById('owner_id')?.value || '0',
+        image:         document.getElementById('image')?.value || '',
+        gui_cpus:      document.getElementById('gui_cpus')?.value || '',
+        gui_mem_val:   document.getElementById('gui_mem_val')?.value || '',
+        gui_mem_unit:  document.getElementById('gui_mem_unit')?.value || 'mb',
+        gui_disk_val:  document.getElementById('gui_disk_val')?.value || '',
+        gui_disk_unit: document.getElementById('gui_disk_unit')?.value || 'gb',
+        bandwidth_mbit:document.getElementById('bandwidth_mbit')?.value || '',
+        gui_restart:   document.getElementById('gui_restart')?.value || 'unless-stopped',
+        ports, envs, vols, collapsed,
+        srv_enabled:   document.getElementById('srv-enable-chk')?.checked || false,
+        srv_service:   document.getElementById('srv-service')?.value || '',
+        srv_a_subdomain: document.getElementById('srv-a-subdomain')?.value || '',
+        srv_port:      document.getElementById('srv-port')?.value || '',
+        srv_priority:  document.getElementById('srv-priority')?.value || '0',
+        srv_weight:    document.getElementById('srv-weight')?.value || '0',
+        dns_open:      document.getElementById('dns-srv-body')?.style.display !== 'none',
+    }));
+}
+
+function restoreFormState() {
+    const raw = sessionStorage.getItem(FORM_KEY);
+    if (!raw) return;
+    let s; try { s = JSON.parse(raw); } catch { return; }
+    const sv = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined && val !== '') el.value = val; };
+    sv('name', s.name);
+    sv('owner_id', s.owner_id);
+    sv('image', s.image);
+    sv('gui_cpus', s.gui_cpus);
+    sv('gui_mem_val', s.gui_mem_val);
+    sv('gui_mem_unit', s.gui_mem_unit);
+    sv('gui_disk_val', s.gui_disk_val);
+    sv('gui_disk_unit', s.gui_disk_unit);
+    sv('bandwidth_mbit', s.bandwidth_mbit);
+    sv('gui_restart', s.gui_restart);
+    (s.ports || []).forEach(r => addPortRow(r.h, r.c, r.p));
+    (s.envs  || []).forEach(r => addEnvRow(r.k, r.v));
+    (s.vols  || []).forEach(r => addVolRow(r.h, r.c));
+    if (s.collapsed) {
+        document.querySelectorAll('.sec-card').forEach((card, i) => {
+            if (!(i in s.collapsed)) return;
+            const bd   = card.querySelector('.sec-bd');
+            const chev = card.querySelector('.sec-chev') || card.querySelector('#dns-srv-chevron');
+            if (!bd) return;
+            bd.style.display = s.collapsed[i] ? 'none' : '';
+            if (chev) chev.className = 'bi ' + (s.collapsed[i] ? 'bi-chevron-down' : 'bi-chevron-up') +
+                (chev.id === 'dns-srv-chevron' ? '' : ' sec-chev');
+        });
+    }
+    if (s.dns_open) {
+        const body = document.getElementById('dns-srv-body');
+        if (body) { body.style.display = ''; loadSrvProviders(); }
+        const chev = document.getElementById('dns-srv-chevron');
+        if (chev) chev.className = 'bi bi-chevron-up';
+    }
+    if (s.srv_enabled) {
+        const chk = document.getElementById('srv-enable-chk');
+        if (chk) { chk.checked = true; onSrvToggle(); }
+        sv('srv-service', s.srv_service);
+        sv('srv-a-subdomain', s.srv_a_subdomain);
+        sv('srv-port', s.srv_port);
+        sv('srv-priority', s.srv_priority);
+        sv('srv-weight', s.srv_weight);
+        updateSrvPreview();
+        updateSrvTargetPreview();
+    }
+}
+
+function clearFormState() {
+    sessionStorage.removeItem(FORM_KEY);
+}
+
 // ── Sec-card generic collapse ───────────────────────────────────────────────
 function toggleSecCard(hd) {
     const body = hd.closest('.sec-card').querySelector('.sec-bd');
@@ -999,6 +1093,7 @@ function toggleSecCard(hd) {
     const chev = hd.querySelector('.sec-chev');
     if (chev) chev.className = 'bi ' + (open ? 'bi-chevron-down' : 'bi-chevron-up') + ' sec-chev';
     if (chev) chev.style.cssText = 'margin-left:auto;color:var(--muted);transition:transform .2s;';
+    saveFormState();
 }
 
 // ── Confirm Create Modal ────────────────────────────────────────────────────
@@ -1102,6 +1197,7 @@ function hideCreateConfirm() {
 }
 
 function submitCreateForm() {
+    clearFormState();
     document.getElementById('createServerForm').submit();
 }
 
@@ -1113,10 +1209,12 @@ function toggleDnsSrv() {
     body.style.display = open ? 'none' : '';
     chev.className = open ? 'bi bi-chevron-down' : 'bi bi-chevron-up';
     if (!open) loadSrvProviders();
+    saveFormState();
 }
 function onSrvToggle() {
     const on = document.getElementById('srv-enable-chk').checked;
     document.getElementById('srv-fields').style.display = on ? '' : 'none';
+    saveFormState();
     if (on) {
         // Auto-generate subdomain if empty
         if (!document.getElementById('srv-a-subdomain').value)
@@ -1238,5 +1336,6 @@ function prepareSrvHiddenFields() {
 
 </script>
 <script src="/static/js/footer.js"></script>
+<script>restoreFormState();</script>
 </body>
 </html>
