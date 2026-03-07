@@ -335,6 +335,25 @@
             transition: background .15s, color .15s;
         }
         .btn-cancel:hover { background: var(--surface3); color: var(--txt); }
+        .proto-btn {
+            background: var(--surface3);
+            border: 1px solid var(--bdr2);
+            color: var(--muted);
+            font-family: 'Inter', sans-serif;
+            font-size: .76rem;
+            font-weight: 500;
+            padding: .32rem .65rem;
+            border-radius: 7px;
+            cursor: pointer;
+            transition: background .13s, color .13s, border-color .13s;
+            white-space: nowrap;
+        }
+        .proto-btn:hover { color: var(--txt); border-color: var(--bdr); }
+        .proto-btn.proto-active {
+            background: rgba(124,58,237,.18);
+            border-color: rgba(124,58,237,.55);
+            color: #a78bfa;
+        }
         .btn-fetch {
             background: transparent;
             border: 1px solid rgba(124,58,237,.3);
@@ -622,12 +641,22 @@
                                 <button type="button" style="background:var(--surface3);border:1px solid var(--bdr2);color:var(--txt);border-radius:8px;padding:.3rem .55rem;cursor:pointer;flex-shrink:0;" onclick="rollSrvSubdomain()" title="Random subdomain"><i class="bi bi-shuffle"></i></button>
                             </div>
                         </div>
-                        <!-- Port (only from port bindings) -->
-                        <div style="margin-bottom:.85rem;">
-                            <label class="field-label">Port <span style="font-size:.69rem;color:var(--muted);">from Port Bindings only</span></label>
-                            <select class="form-select" id="srv-port" onchange="updateSrvPreview()">
-                                <option value="">Add port bindings first</option>
-                            </select>
+                        <!-- Port + Protocol -->
+                        <div style="display:grid;grid-template-columns:1fr auto;gap:.6rem;margin-bottom:.85rem;align-items:end;">
+                            <div>
+                                <label class="field-label">Port <span style="font-size:.69rem;color:var(--muted);">from Port Bindings only</span></label>
+                                <select class="form-select" id="srv-port" onchange="updateSrvPreview()">
+                                    <option value="">Add port bindings first</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="field-label">Protocol</label>
+                                <div style="display:flex;gap:.3rem;">
+                                    <button type="button" id="srv-proto-both" class="proto-btn proto-active" onclick="setSrvProto('both')" title="TCP + UDP">Both</button>
+                                    <button type="button" id="srv-proto-tcp"  class="proto-btn" onclick="setSrvProto('tcp')"  title="TCP only">TCP</button>
+                                    <button type="button" id="srv-proto-udp"  class="proto-btn" onclick="setSrvProto('udp')"  title="UDP only">UDP</button>
+                                </div>
+                            </div>
                         </div>
                         <!-- Preview -->
                         <div id="srv-preview-box" style="background:var(--surface3);border:1px solid var(--bdr);border-radius:8px;padding:.55rem .85rem;font-size:.74rem;line-height:1.8;color:var(--muted);">
@@ -1018,6 +1047,7 @@ function saveFormState() {
         srv_service:     document.getElementById('srv-service')?.value || '',
         srv_a_subdomain: document.getElementById('srv-a-subdomain')?.value || '',
         srv_port:        document.getElementById('srv-port')?.value || '',
+        srv_proto:       _getSrvProto(),
         dns_open:        document.getElementById('dns-srv-body')?.style.display !== 'none',
     }));
 }
@@ -1062,6 +1092,7 @@ function restoreFormState() {
         if (chk) { chk.checked = true; onSrvToggle(); }
         sv('srv-service', s.srv_service);
         sv('srv-a-subdomain', s.srv_a_subdomain);
+        if (s.srv_proto) setSrvProto(s.srv_proto, true);
         // srv-port is a <select> populated by _refreshSrvPortSelect inside onSrvToggle,
         // so restore value after a tick to ensure options exist
         if (s.srv_port) setTimeout(() => {
@@ -1242,13 +1273,19 @@ function showCreateConfirm() {
         const srvPort   = document.getElementById('h-dns-srv-port').value;
         const aSub      = document.getElementById('h-dns-a-subdomain').value;
         const aIp       = document.getElementById('h-dns-a-ip').value;
-        const tcp = `${srvName}._tcp.${srvTarget}`;
-        const udp = `${srvName}._udp.${srvTarget}`;
+        const proto     = document.getElementById('h-dns-srv-both-protos').value || 'both';
+        const zone      = document.getElementById('h-dns-zone-name').value;
+        const protoLabel = proto === 'tcp' ? 'TCP only' : proto === 'udp' ? 'UDP only' : 'TCP + UDP';
+        const protoColor = proto === 'both' ? '#34d399' : '#fbbf24';
+        const records = [];
+        if (proto === 'both' || proto === 'tcp') records.push(`<code style="color:#a78bfa;font-size:.77rem;">${esc(srvName)}._tcp.${esc(srvTarget)}</code>`);
+        if (proto === 'both' || proto === 'udp') records.push(`<code style="color:#a78bfa;font-size:.77rem;">${esc(srvName)}._udp.${esc(srvTarget)}</code>`);
         sections.push(_cfmSection('bi-hdd-network-fill', 'DNS / SRV Record',
-            _cfmKV('TCP record', `<code style="color:#a78bfa;font-size:.77rem;">${esc(tcp)}</code>`) +
-            _cfmKV('UDP record', `<code style="color:#a78bfa;font-size:.77rem;">${esc(udp)}</code>`) +
+            _cfmKV('Protocol', `<span style="color:${protoColor};font-size:.77rem;font-weight:600;">${protoLabel}</span>`) +
+            records.map((r, i) => _cfmKV(records.length > 1 ? `SRV record ${i+1}` : 'SRV record', r)).join('') +
             _cfmKV('Target', `<code style="color:var(--txt);font-size:.77rem;">${esc(srvTarget)}:${esc(srvPort)}</code>`) +
-            (aSub ? _cfmKV('A-record subdomain', `<code style="color:#a78bfa;font-size:.77rem;">${esc(aSub)}</code>${aIp ? ` <span style="color:var(--muted);font-size:.72rem;">→ ${esc(aIp)}</span>` : ''}`) : '')
+            (zone ? _cfmKV('Zone', `<code style="color:var(--muted);font-size:.77rem;">${esc(zone)}</code>`) : '') +
+            (aSub ? _cfmKV('A-record', `<code style="color:#a78bfa;font-size:.77rem;">${esc(aSub)}.${esc(zone)}</code>${aIp ? ` <span style="color:var(--muted);font-size:.72rem;">→ ${esc(aIp)}</span>` : ''}`) : '')
         ));
     }
 
@@ -1363,11 +1400,29 @@ function _srvContainerName() {
         .trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'server';
 }
 
+function _getSrvProto() {
+    const btns = ['both','tcp','udp'];
+    for (const p of btns) {
+        const b = document.getElementById('srv-proto-' + p);
+        if (b && b.classList.contains('proto-active')) return p;
+    }
+    return 'both';
+}
+
+function setSrvProto(p, silent) {
+    ['both','tcp','udp'].forEach(x => {
+        const b = document.getElementById('srv-proto-' + x);
+        if (b) b.classList.toggle('proto-active', x === p);
+    });
+    if (!silent) { saveFormState(); updateSrvPreview(); }
+}
+
 function updateSrvPreview() {
     const svc   = (document.getElementById('srv-service')?.value.trim() || 'yunexal').replace(/[^a-z0-9-]/gi, '-').toLowerCase();
     const sub   = document.getElementById('srv-a-subdomain').value.trim();
     const zone  = _getSrvZoneName();
     const port  = document.getElementById('srv-port').value;
+    const proto = _getSrvProto();
     const box   = document.getElementById('srv-preview-box');
     if (!box) return;
     if (!sub || !zone || !port) {
@@ -1375,15 +1430,11 @@ function updateSrvPreview() {
         return;
     }
     const target = `${sub}.${zone}`;
-    const tcp = `_${svc}._tcp.${target}`;
-    const udp = `_${svc}._udp.${target}`;
-    box.innerHTML =
-        `<div style="margin-bottom:.3rem;">` +
-        `<code style="color:#a78bfa;font-size:.76rem;">${esc(tcp)}</code>` +
-        ` <span style="color:var(--muted);font-size:.72rem;">\u2192 ${esc(target)}:${esc(port)}</span></div>` +
-        `<div>` +
-        `<code style="color:#a78bfa;font-size:.76rem;">${esc(udp)}</code>` +
-        ` <span style="color:var(--muted);font-size:.72rem;">\u2192 ${esc(target)}:${esc(port)}</span></div>`;
+    const arrow  = `<span style="color:var(--muted);font-size:.72rem;"> \u2192 ${esc(target)}:${esc(port)}</span>`;
+    const rows = [];
+    if (proto === 'both' || proto === 'tcp') rows.push(`<code style="color:#a78bfa;font-size:.76rem;">_${esc(svc)}._tcp.${esc(target)}</code>${arrow}`);
+    if (proto === 'both' || proto === 'udp') rows.push(`<code style="color:#a78bfa;font-size:.76rem;">_${esc(svc)}._udp.${esc(target)}</code>${arrow}`);
+    box.innerHTML = rows.map(r => `<div style="margin-bottom:.15rem;">${r}</div>`).join('');
 }
 
 function prepareSrvHiddenFields() {
@@ -1398,8 +1449,9 @@ function prepareSrvHiddenFields() {
     if (!pid || !zid || !port || !aSub) { document.getElementById('h-dns-srv-enabled').value = '0'; return; }
     const svc    = (document.getElementById('srv-service')?.value.trim() || 'yunexal').replace(/[^a-z0-9-]/gi, '-').toLowerCase();
     const target = `${aSub}.${zname}`;
+    const proto = _getSrvProto();
     document.getElementById('h-dns-srv-enabled').value     = '1';
-    document.getElementById('h-dns-srv-both-protos').value = '1';
+    document.getElementById('h-dns-srv-both-protos').value = proto;
     document.getElementById('h-dns-provider-id').value     = pid;
     document.getElementById('h-dns-zone-id').value         = zid;
     document.getElementById('h-dns-zone-name').value       = zname;
