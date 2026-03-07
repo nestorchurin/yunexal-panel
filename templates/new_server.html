@@ -645,7 +645,7 @@
                         <div style="display:grid;grid-template-columns:1fr auto;gap:.6rem;margin-bottom:.85rem;align-items:end;">
                             <div>
                                 <label class="field-label">Port <span style="font-size:.69rem;color:var(--muted);">from Port Bindings only</span></label>
-                                <select class="form-select" id="srv-port" onchange="updateSrvPreview()">
+                                <select class="form-select" id="srv-port" onchange="_syncProtoFromPort();updateSrvPreview()">
                                     <option value="">Add port bindings first</option>
                                 </select>
                             </div>
@@ -1339,17 +1339,29 @@ function _refreshSrvPortSelect() {
     const prev = sel.value;
     sel.innerHTML = '<option value="">\u2014 select port \u2014</option>';
     const seen = new Set();
-    document.querySelectorAll('#ports-container .host-input').forEach(inp => {
-        const v = inp.value.trim();
-        if (v && !seen.has(v)) {
-            seen.add(v);
-            const o = document.createElement('option');
-            o.value = v; o.textContent = v;
-            sel.appendChild(o);
-        }
+    document.querySelectorAll('#ports-container .entry-row').forEach(row => {
+        const v = row.querySelector('.host-input')?.value.trim();
+        if (!v || seen.has(v)) return;
+        seen.add(v);
+        const proto = row.querySelector('.proto-input')?.value || 'tcp';
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = v;
+        o.dataset.proto = proto;
+        sel.appendChild(o);
     });
     if (sel.querySelector(`option[value="${prev}"]`)) sel.value = prev;
+    _syncProtoFromPort();
     updateSrvPreview();
+}
+
+function _syncProtoFromPort() {
+    const sel = document.getElementById('srv-port');
+    if (!sel || !sel.value) return;
+    const opt = sel.options[sel.selectedIndex];
+    const p = opt?.dataset?.proto || 'tcp';
+    // tcp+udp → both, otherwise pass through
+    setSrvProto(p === 'tcp+udp' ? 'both' : p, true);
 }
 
 function loadSrvProviders() {
