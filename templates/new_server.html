@@ -424,7 +424,8 @@
                         <div class="col-12 col-md-6">
                             <label class="field-label" for="name">Server Name</label>
                             <input type="text" class="form-control" id="name" name="name" required
-                                placeholder="my-game-server" autocomplete="off">
+                                placeholder="my-game-server" autocomplete="off"
+                                onblur="autoFillName()">
                             <div class="field-note">Used as the container display name.</div>
                         </div>
                         <div class="col-12 col-md-6">
@@ -440,7 +441,7 @@
                         <div class="col-12">
                             <label class="field-label" for="image">Docker Image</label>
                             <div class="image-combo-wrap">
-                                <input type="text" class="form-control" id="image" name="image"
+                                <input type="text" class="form-control" id="image" name="image" required
                                     placeholder="nginx:latest"
                                     list="local-images-list"
                                     oninput="updateYaml()">
@@ -467,7 +468,7 @@
                     </div>
                     <i class="bi bi-chevron-down sec-chev" style="margin-left:auto;color:var(--muted);transition:transform .2s;"></i>
                 </div>
-                <div class="sec-bd">
+                <div class="sec-bd" style="display:none;">
                     <div class="res-grid">
                         <div>
                             <label class="field-label">CPU Limit</label>
@@ -530,7 +531,7 @@
                     <div class="sec-hd-title">Port Bindings</div>
                     <i class="bi bi-chevron-down sec-chev" style="margin-left:auto;color:var(--muted);transition:transform .2s;"></i>
                 </div>
-                <div class="sec-bd">
+                <div class="sec-bd" style="display:none;">
                     <div style="display:grid;grid-template-columns:1fr 28px 1fr 84px 26px;gap:.45rem;padding:0 .6rem .35rem;font-size:.69rem;color:var(--muted);font-weight:500;letter-spacing:.04em;text-transform:uppercase;">
                         <span>Host Port</span><span></span><span>Container Port</span><span>Proto</span><span></span>
                     </div>
@@ -548,7 +549,7 @@
                     <div class="sec-hd-title">Environment Variables</div>
                     <i class="bi bi-chevron-down sec-chev" style="margin-left:auto;color:var(--muted);transition:transform .2s;"></i>
                 </div>
-                <div class="sec-bd">
+                <div class="sec-bd" style="display:none;">
                     <div style="display:grid;grid-template-columns:1fr 20px 1fr 26px;gap:.45rem;padding:0 .6rem .35rem;font-size:.69rem;color:var(--muted);font-weight:500;letter-spacing:.04em;text-transform:uppercase;">
                         <span>Key</span><span></span><span>Value</span><span></span>
                     </div>
@@ -566,7 +567,7 @@
                     <div class="sec-hd-title">Volume Mounts</div>
                     <i class="bi bi-chevron-down sec-chev" style="margin-left:auto;color:var(--muted);transition:transform .2s;"></i>
                 </div>
-                <div class="sec-bd">
+                <div class="sec-bd" style="display:none;">
                     <div style="display:grid;grid-template-columns:1fr 20px 1fr 26px;gap:.45rem;padding:0 .6rem .35rem;font-size:.69rem;color:var(--muted);font-weight:500;letter-spacing:.04em;text-transform:uppercase;">
                         <span>Host Path</span><span></span><span>Container Path</span><span></span>
                     </div>
@@ -976,6 +977,19 @@ function esc(s) {
         .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+const _adjectives = ['fast','cool','epic','dark','blue','red','gold','iron','neon','soft','wild','bold','calm','lazy','tiny'];
+const _nouns      = ['server','node','box','host','core','unit','base','hub','rack','cloud','forge','block','spark','tower','realm'];
+function randomServerName() {
+    const a = _adjectives[Math.floor(Math.random() * _adjectives.length)];
+    const n = _nouns[Math.floor(Math.random() * _nouns.length)];
+    const d = Math.floor(1000 + Math.random() * 9000);
+    return `${a}-${n}-${d}`;
+}
+function autoFillName() {
+    const el = document.getElementById('name');
+    if (!el.value.trim()) el.value = randomServerName();
+}
+
 // ── Sec-card generic collapse ───────────────────────────────────────────────
 function toggleSecCard(hd) {
     const body = hd.closest('.sec-card').querySelector('.sec-bd');
@@ -989,6 +1003,28 @@ function toggleSecCard(hd) {
 
 // ── Confirm Create Modal ────────────────────────────────────────────────────
 function showCreateConfirm() {
+    // Auto-fill name if empty
+    const nameEl = document.getElementById('name');
+    if (!nameEl.value.trim()) nameEl.value = randomServerName();
+
+    // Require docker image
+    const imageEl = document.getElementById('image');
+    if (!imageEl.value.trim()) {
+        imageEl.focus();
+        imageEl.style.borderColor = 'rgba(239,68,68,.6)';
+        imageEl.style.boxShadow   = '0 0 0 3px rgba(239,68,68,.15)';
+        // Make sure Basic Info section is open
+        const basicBd = imageEl.closest('.sec-bd');
+        if (basicBd && basicBd.style.display === 'none') {
+            basicBd.style.display = '';
+            const chev = basicBd.closest('.sec-card')?.querySelector('.sec-chev');
+            if (chev) chev.className = 'bi bi-chevron-up sec-chev';
+        }
+        return;
+    }
+    imageEl.style.borderColor = '';
+    imageEl.style.boxShadow   = '';
+
     updateYaml();
     prepareSrvHiddenFields();
 
