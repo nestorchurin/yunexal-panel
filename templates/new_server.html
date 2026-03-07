@@ -335,25 +335,6 @@
             transition: background .15s, color .15s;
         }
         .btn-cancel:hover { background: var(--surface3); color: var(--txt); }
-        .proto-btn {
-            background: var(--surface3);
-            border: 1px solid var(--bdr2);
-            color: var(--muted);
-            font-family: 'Inter', sans-serif;
-            font-size: .76rem;
-            font-weight: 500;
-            padding: .32rem .65rem;
-            border-radius: 7px;
-            cursor: pointer;
-            transition: background .13s, color .13s, border-color .13s;
-            white-space: nowrap;
-        }
-        .proto-btn:hover { color: var(--txt); border-color: var(--bdr); }
-        .proto-btn.proto-active {
-            background: rgba(124,58,237,.18);
-            border-color: rgba(124,58,237,.55);
-            color: #a78bfa;
-        }
         .btn-fetch {
             background: transparent;
             border: 1px solid rgba(124,58,237,.3);
@@ -641,22 +622,12 @@
                                 <button type="button" style="background:var(--surface3);border:1px solid var(--bdr2);color:var(--txt);border-radius:8px;padding:.3rem .55rem;cursor:pointer;flex-shrink:0;" onclick="rollSrvSubdomain()" title="Random subdomain"><i class="bi bi-shuffle"></i></button>
                             </div>
                         </div>
-                        <!-- Port + Protocol -->
-                        <div style="display:grid;grid-template-columns:1fr auto;gap:.6rem;margin-bottom:.85rem;align-items:end;">
-                            <div>
-                                <label class="field-label">Port <span style="font-size:.69rem;color:var(--muted);">from Port Bindings only</span></label>
-                                <select class="form-select" id="srv-port" onchange="_syncProtoFromPort();updateSrvPreview()">
-                                    <option value="">Add port bindings first</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="field-label">Protocol</label>
-                                <div style="display:flex;gap:.3rem;">
-                                    <button type="button" id="srv-proto-both" class="proto-btn proto-active" onclick="setSrvProto('both')" title="TCP + UDP">Both</button>
-                                    <button type="button" id="srv-proto-tcp"  class="proto-btn" onclick="setSrvProto('tcp')"  title="TCP only">TCP</button>
-                                    <button type="button" id="srv-proto-udp"  class="proto-btn" onclick="setSrvProto('udp')"  title="UDP only">UDP</button>
-                                </div>
-                            </div>
+                        <!-- Port (only from port bindings) -->
+                        <div style="margin-bottom:.85rem;">
+                            <label class="field-label">Port <span style="font-size:.69rem;color:var(--muted);">from Port Bindings only</span></label>
+                            <select class="form-select" id="srv-port" onchange="updateSrvPreview()">
+                                <option value="">Add port bindings first</option>
+                            </select>
                         </div>
                         <!-- Preview -->
                         <div id="srv-preview-box" style="background:var(--surface3);border:1px solid var(--bdr);border-radius:8px;padding:.55rem .85rem;font-size:.74rem;line-height:1.8;color:var(--muted);">
@@ -1047,7 +1018,6 @@ function saveFormState() {
         srv_service:     document.getElementById('srv-service')?.value || '',
         srv_a_subdomain: document.getElementById('srv-a-subdomain')?.value || '',
         srv_port:        document.getElementById('srv-port')?.value || '',
-        srv_proto:       _getSrvProto(),
         dns_open:        document.getElementById('dns-srv-body')?.style.display !== 'none',
     }));
 }
@@ -1092,7 +1062,6 @@ function restoreFormState() {
         if (chk) { chk.checked = true; onSrvToggle(); }
         sv('srv-service', s.srv_service);
         sv('srv-a-subdomain', s.srv_a_subdomain);
-        if (s.srv_proto) setSrvProto(s.srv_proto, true);
         // srv-port is a <select> populated by _refreshSrvPortSelect inside onSrvToggle,
         // so restore value after a tick to ensure options exist
         if (s.srv_port) setTimeout(() => {
@@ -1351,17 +1320,7 @@ function _refreshSrvPortSelect() {
         sel.appendChild(o);
     });
     if (sel.querySelector(`option[value="${prev}"]`)) sel.value = prev;
-    _syncProtoFromPort();
     updateSrvPreview();
-}
-
-function _syncProtoFromPort() {
-    const sel = document.getElementById('srv-port');
-    if (!sel || !sel.value) return;
-    const opt = sel.options[sel.selectedIndex];
-    const p = opt?.dataset?.proto || 'tcp';
-    // tcp+udp → both, otherwise pass through
-    setSrvProto(p === 'tcp+udp' ? 'both' : p, true);
 }
 
 function loadSrvProviders() {
@@ -1413,20 +1372,9 @@ function _srvContainerName() {
 }
 
 function _getSrvProto() {
-    const btns = ['both','tcp','udp'];
-    for (const p of btns) {
-        const b = document.getElementById('srv-proto-' + p);
-        if (b && b.classList.contains('proto-active')) return p;
-    }
-    return 'both';
-}
-
-function setSrvProto(p, silent) {
-    ['both','tcp','udp'].forEach(x => {
-        const b = document.getElementById('srv-proto-' + x);
-        if (b) b.classList.toggle('proto-active', x === p);
-    });
-    if (!silent) { saveFormState(); updateSrvPreview(); }
+    const sel = document.getElementById('srv-port');
+    const p = sel?.options[sel.selectedIndex]?.dataset?.proto || 'tcp';
+    return p === 'tcp+udp' ? 'both' : p;
 }
 
 function updateSrvPreview() {
