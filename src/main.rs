@@ -1,16 +1,8 @@
-mod state;
-mod db;
-mod docker;
-mod dns;
-mod handlers;
-mod compose;
-mod auth;
-mod password;
-
 use anyhow::{Context, Result};
 use tracing::info;
 use axum_extra::extract::cookie::Key;
-use crate::state::AppState;
+use yunexal_panel::{db, docker, handlers, password};
+use yunexal_panel::state::AppState;
 
 #[tokio::main]
 async fn main() -> Result<()> {

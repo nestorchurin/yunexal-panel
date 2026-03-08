@@ -1,7 +1,16 @@
 [package]
 name = "yunexal-panel"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
+default-run = "yunexal-panel"
+
+[[bin]]
+name = "yunexal-panel"
+path = "src/main.rs"
+
+[[bin]]
+name = "yunexal-setup"
+path = "src/bin/setup.rs"
 
 [dependencies]
 tokio = { version = "1.40", features = ["full"] }
@@ -29,3 +38,4 @@ argon2 = { version = "0.5", features = ["std"] }
 rust-embed = { version = "8", features = ["include-exclude"] }
 axum-embed = "0.1"
 reqwest = { version = "0.12", features = ["json"] }
+rpassword = "7"
