@@ -345,8 +345,11 @@ pub async fn create_server(
                                 let stripped = n.trim_end_matches("._tcp").trim_end_matches("._udp");
                                 stripped.to_string()
                             };
-                            let both = form.dns_srv_both_protos.trim() == "1";
-                            let protos: &[&str] = if both { &["tcp", "udp"] } else { &["tcp"] };
+                            let protos: &[&str] = match form.dns_srv_both_protos.trim() {
+                                "udp"  => &["udp"],
+                                "tcp"  => &["tcp"],
+                                _      => &["tcp", "udp"], // "both" or "1" (legacy)
+                            };
                             for proto in protos {
                                 let full_name = format!("{}._", base_name) + proto;
                                 let srv_value = format!("{} {} {}", weight, port, target);

@@ -286,6 +286,7 @@ function _buildImageRow(img) {
     return tr;
 }
 
+// Full render — called ONCE when a row is created for the first time
 function _fillImageRow(tr, img) {
     const primaryRef = img.repo_tags[0] || img.full_id;
     const tags = img.repo_tags.length
@@ -294,22 +295,62 @@ function _fillImageRow(tr, img) {
     const inUse = img.in_use
         ? '<span class="pill pill-run"><span class="pill-dot"></span>in use</span>'
         : '<span class="pill pill-stop">unused</span>';
-    const delBtn = img.in_use
-        ? `<button class="btn-yu btn-danger-yu btn-sm-yu" disabled title="Image is in use" style="opacity:.4;"><i class="bi bi-trash"></i></button>`
-        : `<button class="btn-yu btn-danger-yu btn-sm-yu" onclick="deleteImage('${escAttr(img.full_id)}', '${escAttr(primaryRef)}')"><i class="bi bi-trash"></i></button>`;
+    const delBtn = _imgDelBtn(img, primaryRef);
     tr.innerHTML = `
-        <td>${tags}</td>
+        <td class="img-cb-col"><input type="checkbox" class="img-row-cb" data-can-delete="${img.in_use ? '0' : '1'}" onchange="_updateImgBatchBar()" ${img.in_use ? 'disabled title="Image is in use"' : ''}></td>
+        <td data-el="tags">${tags}</td>
         <td class="mono" style="color:var(--muted);font-size:.75rem;">${escHtml(img.id)}</td>
         <td style="font-size:.8rem;">${escHtml(img.size_mb)}</td>
         <td style="color:var(--muted);font-size:.8rem;">${escHtml(img.created)}</td>
-        <td>${inUse}</td>
+        <td data-el="in-use">${inUse}</td>
         <td style="text-align:right;">
             <div style="display:flex;gap:.4rem;justify-content:flex-end;">
                 <button class="btn-yu btn-ghost-yu btn-sm-yu" title="Edit ENV overrides" onclick="openEnvModal('${escAttr(img.full_id)}', '${escAttr(primaryRef)}')"><i class="bi bi-sliders"></i></button>
                 <button class="btn-yu btn-ghost-yu btn-sm-yu" title="Duplicate image" onclick="duplicateImage('${escAttr(img.full_id)}', '${escAttr(primaryRef)}')"><i class="bi bi-copy"></i></button>
-                ${delBtn}
+                <span data-el="del-btn">${delBtn}</span>
             </div>
         </td>`;
+}
+
+// Returns delete button HTML string
+function _imgDelBtn(img, primaryRef) {
+    return img.in_use
+        ? `<button class="btn-yu btn-danger-yu btn-sm-yu" disabled title="Image is in use" style="opacity:.4;"><i class="bi bi-trash"></i></button>`
+        : `<button class="btn-yu btn-danger-yu btn-sm-yu" onclick="deleteImage('${escAttr(img.full_id)}', '${escAttr(primaryRef)}')"><i class="bi bi-trash"></i></button>`;
+}
+
+// Incremental update — called on every poll for EXISTING rows.
+// Never replaces the whole tr.innerHTML so pill-info / pill-stop never re-animate.
+function _updateImageRowInPlace(tr, img) {
+    const primaryRef = img.repo_tags[0] || img.full_id;
+    const nowInUse = img.in_use;
+    const wasInUse = tr.dataset.inUse === '1';
+
+    // Only update cells that can realistically change between polls
+    if (nowInUse !== wasInUse) {
+        tr.dataset.inUse = nowInUse ? '1' : '0';
+
+        // in_use badge
+        const inUseCell = tr.querySelector('[data-el="in-use"]');
+        if (inUseCell) {
+            inUseCell.innerHTML = nowInUse
+                ? '<span class="pill pill-run"><span class="pill-dot"></span>in use</span>'
+                : '<span class="pill pill-stop">unused</span>';
+        }
+
+        // delete button
+        const delWrap = tr.querySelector('[data-el="del-btn"]');
+        if (delWrap) delWrap.innerHTML = _imgDelBtn(img, primaryRef);
+
+        // checkbox ability
+        const cb = tr.querySelector('.img-row-cb');
+        if (cb) {
+            cb.disabled = nowInUse;
+            cb.dataset.canDelete = nowInUse ? '0' : '1';
+            cb.title = nowInUse ? 'Image is in use' : '';
+            if (nowInUse) cb.checked = false; // uncheck if image became in-use
+        }
+    }
 }
 
 function loadImages() {
@@ -319,7 +360,7 @@ function loadImages() {
     // Show loading spinner only on first load (tbody is empty or has placeholder)
     const hasData = tbody.querySelector('tr[data-img-id]');
     if (!hasData) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;"><span class="spinner-border spinner-border-sm"></span> Loading\u2026</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;"><span class="spinner-border spinner-border-sm"></span> Loading\u2026</td></tr>';
     }
 
     fetch('/api/admin/images', { credentials: 'same-origin' })
@@ -329,7 +370,7 @@ function loadImages() {
             document.getElementById('img-count').textContent = `${imgs.length} total`;
 
             if (!imgs.length) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">No images found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No images found.</td></tr>';
                 return;
             }
 
@@ -341,9 +382,11 @@ function loadImages() {
                 seen.add(img.full_id);
                 const existing = tbody.querySelector(`tr[data-img-id="${CSS.escape(img.full_id)}"]`);
                 if (existing) {
-                    _fillImageRow(existing, img);
+                    _updateImageRowInPlace(existing, img); // no animation replay
                 } else {
-                    tbody.appendChild(_buildImageRow(img));
+                    const row = _buildImageRow(img);
+                    row.dataset.inUse = img.in_use ? '1' : '0';
+                    tbody.appendChild(row);
                 }
             });
 
@@ -353,12 +396,67 @@ function loadImages() {
 
             const q = document.getElementById('img-search')?.value || '';
             if (q) filterTableRows(q, 'img-tbody');
+            _updateImgBatchBar();
         })
         .catch(() => {
             if (!tbody.querySelector('tr[data-img-id]')) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#ef4444;padding:2rem;"><i class="bi bi-x-circle"></i> Failed to load images.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;"><i class="bi bi-x-circle"></i> Failed to load images.</td></tr>';
             }
         });
+}
+
+// ── Image batch-select helpers ────────────────────────────────────────────────
+
+function toggleSelectAllImages(checked) {
+    document.querySelectorAll('#img-tbody .img-row-cb').forEach(cb => {
+        // Only select deletable images (not in use)
+        if (cb.dataset.canDelete === '1') cb.checked = checked;
+    });
+    _updateImgBatchBar();
+}
+
+function _updateImgBatchBar() {
+    const allCbs  = [...document.querySelectorAll('#img-tbody .img-row-cb')];
+    const checked = allCbs.filter(cb => cb.checked);
+    const btn  = document.getElementById('img-batch-del-btn');
+    const lbl  = document.getElementById('img-batch-del-lbl');
+    const selAll = document.getElementById('img-select-all');
+    if (btn) {
+        btn.style.display = checked.length ? '' : 'none';
+        if (lbl) lbl.textContent = `Delete selected (${checked.length})`;
+    }
+    if (selAll) {
+        const deletable = allCbs.filter(cb => cb.dataset.canDelete === '1');
+        selAll.indeterminate = checked.length > 0 && checked.length < deletable.length;
+        selAll.checked = deletable.length > 0 && checked.length === deletable.length;
+    }
+}
+
+function deleteSelectedImages() {
+    const rows = [...document.querySelectorAll('#img-tbody tr[data-img-id]')].filter(tr => {
+        const cb = tr.querySelector('.img-row-cb');
+        return cb && cb.checked;
+    });
+    if (!rows.length) return;
+    const count = rows.length;
+    if (!confirm(`Delete ${count} selected image${count !== 1 ? 's' : ''}?\n\nThis cannot be undone.`)) return;
+
+    const btn = document.getElementById('img-batch-del-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+
+    Promise.all(rows.map(tr => {
+        const fullId  = tr.dataset.imgId;
+        const encoded = encodeURIComponent(fullId);
+        return fetch(`/api/admin/images/${encoded}/delete`, { method: 'POST', credentials: 'same-origin' })
+            .then(r => r.json().catch(() => ({}))).catch(() => ({}));
+    })).then(results => {
+        const failed = results.filter(d => !d.ok);
+        if (failed.length) alert(`${failed.length} image(s) could not be deleted.`);
+        // Reset select-all checkbox
+        const selAll = document.getElementById('img-select-all');
+        if (selAll) { selAll.checked = false; selAll.indeterminate = false; }
+        loadImages();
+    });
 }
 
 function deleteImage(fullId, label) {
@@ -630,7 +728,7 @@ function dnsSwitchTab(tab, btn) {
     if (panel) panel.classList.add('active');
     if (btn)   btn.classList.add('active');
     if (tab === 'providers')  dnsLoadProviders();
-    if (tab === 'records')    { dnsPopulateProviderDropdown(); if (_dnsCurrentProviderId && _dnsCurrentZoneId) { dnsLoadRemoteRecords(); dnsLoadLocalRecords(); } }
+    if (tab === 'records')    { dnsPopulateProviderDropdown(); if (_dnsCurrentProviderId && _dnsCurrentZoneId) { dnsLoadRemoteRecords(); } }
     if (tab === 'ddns')       { dnsLoadDdns(); dnsGetPublicIp(); }
     if (tab === 'containers') dnsLoadContainerRecords();
 }
@@ -958,19 +1056,24 @@ function _dnsResetLocalTable() {
 }
 
 function dnsLoadLocalRecords() {
-    const pid  = _dnsCurrentProviderId;
-    const zid  = _dnsCurrentZoneId;
+    const pid       = _dnsCurrentProviderId;
+    const zid       = _dnsCurrentZoneId;
+    const zoneName  = _dnsCurrentZoneName; // capture now — avoid stale closure read
     const tbody = document.getElementById('dns-local-tbody');
     const count = document.getElementById('dns-local-count');
     if (!tbody) return;
     if (!pid || !zid) { _dnsResetLocalTable(); return; }
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:1.5rem;"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+    // Only show spinner on first load; preserve existing rows during refresh
+    const hasRows = !!tbody.querySelector('tr[data-record-id]');
+    if (!hasRows) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:1.5rem;"><span class="spinner-border spinner-border-sm"></span></td></tr>';
+    }
     const syncBtn = document.getElementById('dns-sync-btn');
     if (syncBtn) syncBtn.style.display = 'inline-flex';
     fetch(`/api/admin/dns/providers/${pid}/records`, { credentials: 'same-origin' })
         .then(r => r.json()).then(d => {
             if (!d.ok) { tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ef4444;padding:2rem;">${escHtml(d.error || 'Failed.')}</td></tr>`; return; }
-            const recs = (d.records || []).filter(r => r.zone_id === zid || r.zone_name === _dnsCurrentZoneName);
+            const recs = (d.records || []).filter(r => r.zone_id === zid || r.zone_name === zoneName);
             if (count) count.textContent = `${recs.length} tracked`;
             if (!recs.length) {
                 tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem;">No tracked records for this zone.</td></tr>';
