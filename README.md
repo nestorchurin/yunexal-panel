@@ -1,6 +1,6 @@
 # Yunexal Panel
 
-> **v0.2.0-beta** — Self-hosted web panel for managing Docker game-server containers.
+> **v0.2.1** — Self-hosted web panel for managing Docker game-server containers.
 
 Built with **Rust + Axum**, **SQLite**, and **Bollard** (Docker SDK).  
 Templates and static assets are embedded into a single binary — no external files needed.
@@ -13,8 +13,8 @@ Download the latest binary from the [Releases](https://github.com/nestorchurin/y
 
 ```bash
 # 1. Download and extract
-wget https://github.com/nestorchurin/yunexal-panel/releases/latest/download/yunexal-panel-v0.2.0-beta-linux-x86_64.tar.gz
-tar -xzf yunexal-panel-v0.2.0-beta-linux-x86_64.tar.gz
+wget https://github.com/nestorchurin/yunexal-panel/releases/latest/download/yunexal-panel-v0.2.1-linux-x86_64.tar.gz
+tar -xzf yunexal-panel-v0.2.1-linux-x86_64.tar.gz
 cd yunex-release
 
 # 2. Generate .env (interactive — sets admin credentials + cookie secret)
