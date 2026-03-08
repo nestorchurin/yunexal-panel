@@ -118,7 +118,13 @@ async fn build_admin_template(state: &AppState, tab: String, username: String) -
         docker_cpus,
         docker_storage_driver,
         listen_addr: state.listen_addr.clone(),
-        auth_username: username,
+        auth_username: username.clone(),
+        auth_role: db::find_user_by_username(&state.db, &username)
+            .await
+            .ok()
+            .flatten()
+            .map(|u| u.role)
+            .unwrap_or_else(|| "user".to_string()),
         panel_memory_mb,
         panel_version: env!("CARGO_PKG_VERSION").to_string(),
         users,

@@ -287,7 +287,7 @@ pub async fn create_server(
     let db_id = match db::register_server(&state.db, &docker_id, &form.name, owner_id).await {
         Ok(id) => id,
         Err(e) => {
-            error!("Failed to register server ownership: {}", e);
+            error!("Failed to register server ownership: {:#}", e);
             0
         }
     };

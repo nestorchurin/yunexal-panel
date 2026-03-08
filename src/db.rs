@@ -87,6 +87,14 @@ pub async fn init_db() -> Result<Pool<Sqlite>> {
     .execute(&pool)
     .await;
 
+    // Migration: add owner_id and status columns to servers table (no-op if already present)
+    let _ = sqlx::query("ALTER TABLE servers ADD COLUMN owner_id INTEGER DEFAULT 0")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE servers ADD COLUMN status TEXT DEFAULT 'stopped'")
+        .execute(&pool)
+        .await;
+
     // Unique name constraint (best-effort — no-op if already exists or if
     // there are pre-existing duplicates)
     let _ = sqlx::query(
@@ -814,3 +822,5 @@ pub async fn delete_port_entry(
     .context("delete_port_entry")?;
     Ok(())
 }
+
+
