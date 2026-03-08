@@ -1,6 +1,6 @@
 # Yunexal Panel
 
-> **v0.2.1** — Self-hosted web panel for managing Docker game-server containers.
+> **v0.2.2** — Self-hosted web panel for managing Docker game-server containers.
 
 Built with **Rust + Axum**, **SQLite**, and **Bollard** (Docker SDK).  
 Templates and static assets are embedded into a single binary — no external files needed.
@@ -13,12 +13,12 @@ Download the latest binary from the [Releases](https://github.com/nestorchurin/y
 
 ```bash
 # 1. Download and extract
-wget https://github.com/nestorchurin/yunexal-panel/releases/latest/download/yunexal-panel-v0.2.1-linux-x86_64.tar.gz
-tar -xzf yunexal-panel-v0.2.1-linux-x86_64.tar.gz
+wget https://github.com/nestorchurin/yunexal-panel/releases/latest/download/yunexal-panel-v0.2.2-linux-x86_64.tar.gz
+tar -xzf yunexal-panel-v0.2.2-linux-x86_64.tar.gz
 cd yunex-release
 
-# 2. Generate .env (interactive — sets admin credentials + cookie secret)
-./setup.sh
+# 2. Run the setup wizard (interactive — installs Docker, sets admin credentials, writes .env)
+sudo ./yunexal-setup
 
 # 3. Run
 ./yunexal-panel
@@ -33,7 +33,7 @@ The SQLite database and volume directories are created automatically on first ru
 | Requirement | Notes |
 |---|---|
 | **Docker Engine** 24.0+ | Must be running |
-| **Docker image `alpine`** | Pulled automatically by `setup.sh` |
+| **Docker image `alpine`** | Pulled automatically by `yunexal-setup` |
 | **OS** | Linux x86_64 |
 | **RAM** | ~256 MB for the panel process |
 
@@ -47,7 +47,7 @@ The SQLite database and volume directories are created automatically on first ru
 ## Configuration
 
 All configuration is done via `.env` in the **same directory as the binary**.  
-Use `setup.sh` to generate it, or create it manually:
+Use `yunexal-setup` to generate it, or create it manually:
 
 ```dotenv
 # Panel port (default: 3000)
@@ -60,7 +60,7 @@ COOKIE_SECRET=<128 hex chars>
 
 > Changing `COOKIE_SECRET` invalidates all active sessions.
 
-Initial admin credentials are set interactively by `setup.sh` (via `--seed`).  
+Initial admin credentials are set interactively by `yunexal-setup`.  
 Additional users are created from the Admin Panel.
 
 Alternatively pass values as environment variables without a `.env` file:
@@ -182,8 +182,8 @@ Full multi-provider DNS management with 5 supported providers:
 ```bash
 git clone https://github.com/nestorchurin/yunexal-panel.git
 cd yunexal-panel
-./setup.sh          # generate .env + seed admin user
 cargo build --release
+sudo ./target/release/yunexal-setup  # interactive wizard: Docker, .env, admin user, systemd
 ./target/release/yunexal-panel
 ```
 
@@ -196,13 +196,29 @@ Requires **Rust 1.78+** — install via [rustup.rs](https://rustup.rs).
 ```
 src/
 ├── main.rs               # Entry point, router, config
+├── lib.rs                # Library crate (exposes modules to binaries)
 ├── state.rs              # AppState (DB pool, Docker client, cookie key)
 ├── auth.rs               # Session middleware, admin guard
-├── db.rs                 # SQLite schema & queries
-├── docker.rs             # Bollard wrappers (lifecycle, stats, volumes, bandwidth)
+├── db/
+│   ├── mod.rs            # SQLite schema, init_db, seed_root_user
+│   ├── users.rs          # User CRUD
+│   ├── servers.rs        # Server CRUD
+│   ├── ports.rs          # Port mappings
+│   ├── dns.rs            # DNS records & providers
+│   └── images.rs         # Image ENV overrides
+├── docker/
+│   ├── mod.rs            # Docker client, ContainerInfo
+│   ├── containers.rs     # Lifecycle, attach, list
+│   ├── stats.rs          # CPU/RAM/network stats
+│   ├── images.rs         # Pull, delete, duplicate, ENV fetch
+│   ├── files.rs          # Volume file operations
+│   ├── network.rs        # Bandwidth limiting, isolated networks
+│   └── edit.rs           # Inspect & recreate containers
 ├── dns.rs                # DNS provider API clients (Cloudflare, GoDaddy, DuckDNS, Namecheap, Generic)
 ├── compose.rs            # Docker Compose YAML parser
 ├── password.rs           # Argon2id hash / verify
+├── bin/
+│   └── setup.rs          # yunexal-setup: interactive wizard (Docker, .env, admin, systemd)
 └── handlers/
     ├── mod.rs            # Router (public / protected / admin_only), embedded assets
     ├── auth.rs           # Login / logout
@@ -217,7 +233,6 @@ src/
     └── templates.rs      # Askama template structs
 templates/                # Embedded at compile time (Askama)
 static/                   # Embedded at compile time (rust-embed)
-setup.sh                  # Interactive .env generator + DB seeder
 ```
 
 ---
@@ -244,4 +259,4 @@ setup.sh                  # Interactive .env generator + DB seeder
 
 ## License
 
-MIT
+[MIT](LICENSE)
