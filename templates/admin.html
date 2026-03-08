@@ -276,20 +276,25 @@
             <div class="yu-card">
                 <div class="yu-card-hd">
                     <span><i class="bi bi-box-seam me-2 text-muted"></i>Local Docker Images</span>
-                    <div style="display:flex;align-items:center;gap:.5rem;">
-                        <span id="img-count" style="font-size:.75rem;color:var(--muted);"></span>
+                    <div class="img-card-toolbar">
+                        <span id="img-count" class="img-count-lbl"></span>
+                        <button id="img-batch-del-btn" class="btn-yu btn-danger-yu btn-sm-yu" style="display:none;" onclick="deleteSelectedImages()"><i class="bi bi-trash"></i> <span id="img-batch-del-lbl">Delete selected</span></button>
+                        <div class="img-toolbar-sep"></div>
                         <button class="btn-yu btn-primary-yu btn-sm-yu" onclick="openPullModal()"><i class="bi bi-cloud-download"></i> Pull</button>
                         <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="loadImages()" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
                     </div>
                 </div>
-                <div class="yu-search-bar">
-                    <i class="bi bi-search"></i>
-                    <input id="img-search" type="text" placeholder="Search by tag, ID or size…" oninput="filterTableRows(this.value, 'img-tbody')">
+                <div class="img-search-wrap">
+                    <div class="yu-search-bar">
+                        <i class="bi bi-search"></i>
+                        <input id="img-search" type="text" placeholder="Search by tag, ID or size…" oninput="filterTableRows(this.value, 'img-tbody')">
+                    </div>
                 </div>
                 <div style="overflow-x:auto;">
                     <table class="yu-table" id="img-table">
                         <thead>
                             <tr>
+                                <th class="img-cb-col"><input type="checkbox" id="img-select-all" title="Select all" onchange="toggleSelectAllImages(this.checked)"></th>
                                 <th>Tags</th>
                                 <th>Short ID</th>
                                 <th>Size</th>
@@ -299,7 +304,7 @@
                             </tr>
                         </thead>
                         <tbody id="img-tbody">
-                            <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>
+                            <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;"><span class="spinner-border spinner-border-sm"></span> Loading…</td></tr>
                         </tbody>
                     </table>
                 </div>

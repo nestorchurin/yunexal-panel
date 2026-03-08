@@ -1,146 +1,353 @@
 #!/usr/bin/env bash
-# ─────────────────────────────────────────────────────────────────────────────
-# Yunexal Panel — setup script
-# Generates a .env file and seeds the initial user into SQLite.
-# ─────────────────────────────────────────────────────────────────────────────
+# ============================================================
+#  Yunexal Panel — Setup / Install Wizard
+#  Usage: sudo ./setup.sh [--reset] [--non-interactive]
+# ============================================================
 set -euo pipefail
 
-ENV_FILE=".env"
+# ── Colour helpers ──────────────────────────────────────────
+RED='\033[0;31m';  GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+BLUE='\033[0;34m'; BOLD='\033[1m';     NC='\033[0m'
+info()    { echo -e "${BLUE}[INFO]${NC}  $*"; }
+success() { echo -e "${GREEN}[OK]${NC}    $*"; }
+warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
+error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+header()  { echo -e "\n${BOLD}${BLUE}══ $* ══${NC}"; }
 
-# Colour helpers
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
-info()    { echo -e "${CYAN}[*]${NC} $*"; }
-success() { echo -e "${GREEN}[✓]${NC} $*"; }
-warn()    { echo -e "${YELLOW}[!]${NC} $*"; }
-error()   { echo -e "${RED}[✗]${NC} $*"; exit 1; }
+# ── Script dir (works even when called from a different cwd) ─
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-echo ""
-echo -e "${CYAN}╔══════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║      Yunexal Panel  v0.1.0           ║${NC}"
-echo -e "${CYAN}║      Environment Setup               ║${NC}"
-echo -e "${CYAN}╚══════════════════════════════════════╝${NC}"
-echo ""
-
-# ── Prerequisites ─────────────────────────────────────────────────────────────
-info "Checking prerequisites..."
-command -v docker  >/dev/null 2>&1 || error "Docker is not installed or not in PATH."
-command -v cargo   >/dev/null 2>&1 || error "Rust/Cargo is not installed. Visit https://rustup.rs"
-success "Docker and Cargo found."
-
-# ── Existing .env guard ───────────────────────────────────────────────────────
-if [[ -f "$ENV_FILE" ]]; then
-    warn ".env already exists."
-    read -rp "    Overwrite? [y/N] " answer
-    [[ "${answer,,}" == "y" ]] || { info "Aborted. Existing .env kept."; exit 0; }
-fi
-
-# ── Interactive prompts ───────────────────────────────────────────────────────
-echo ""
-info "Configure admin credentials"
-
-read -rp "  Admin username [admin]: " PANEL_USERNAME
-PANEL_USERNAME="${PANEL_USERNAME:-admin}"
-
-while true; do
-    read -rsp "  Admin password: " PANEL_PASSWORD; echo
-    [[ ${#PANEL_PASSWORD} -ge 8 ]] && break
-    warn "Password must be at least 8 characters."
+# ── Flags ───────────────────────────────────────────────────
+OPT_RESET=false
+OPT_NON_INTERACTIVE=false
+for arg in "$@"; do
+  case "$arg" in
+    --reset)            OPT_RESET=true ;;
+    --non-interactive)  OPT_NON_INTERACTIVE=true ;;
+    --help|-h)
+      echo "Usage: sudo $0 [--reset] [--non-interactive]"
+      echo ""
+      echo "  --reset             Wipe existing database and .env without prompting"
+      echo "  --non-interactive   Read credentials from env: PANEL_USERNAME, PANEL_PASSWORD"
+      exit 0
+      ;;
+    *) warn "Unknown flag: $arg" ;;
+  esac
 done
 
-read -rsp "  Confirm password: " PANEL_PASSWORD_CONFIRM; echo
-[[ "$PANEL_PASSWORD" == "$PANEL_PASSWORD_CONFIRM" ]] || error "Passwords do not match."
-
-echo ""
-info "Choose a role for this user:"
-echo "  1) user   — read-only access"
-echo "  2) admin  — manage servers (default)"
-echo "  3) root   — full panel access"
-read -rp "  Role [2]: " ROLE_CHOICE
-case "${ROLE_CHOICE:-2}" in
-    1) PANEL_ROLE="user"  ;;
-    2) PANEL_ROLE="admin" ;;
-    3) PANEL_ROLE="root"  ;;
-    user|admin|root) PANEL_ROLE="$ROLE_CHOICE" ;;
-    *) warn "Unknown choice '${ROLE_CHOICE}', defaulting to 'admin'."; PANEL_ROLE="admin" ;;
-esac
-success "Role set to '${PANEL_ROLE}'."
-
-# ── Port ──────────────────────────────────────────────────────────────────────
-read -rp "  Panel port [3000]: " PANEL_PORT_INPUT
-PANEL_PORT="${PANEL_PORT_INPUT:-3000}"
-if ! [[ "$PANEL_PORT" =~ ^[0-9]+$ ]] || (( PANEL_PORT < 1 || PANEL_PORT > 65535 )); then
-    warn "Invalid port '${PANEL_PORT}', falling back to 3000."
-    PANEL_PORT="3000"
+# ── Root check ──────────────────────────────────────────────
+if [[ $EUID -ne 0 ]]; then
+  error "This script must be run as root (use sudo)."
+  exit 1
 fi
-success "Port set to ${PANEL_PORT}."
 
-# ── Generate COOKIE_SECRET (64 random bytes → hex = 128 chars) ───────────────
-info "Generating secure COOKIE_SECRET (64 bytes)..."
+# ── Detect the invoking user (for service User=) ─────────────
+REAL_USER="${SUDO_USER:-$(logname 2>/dev/null || echo root)}"
+REAL_HOME="$(eval echo ~"$REAL_USER")"
 
-if command -v openssl >/dev/null 2>&1; then
-    COOKIE_SECRET=$(openssl rand -hex 64)
-elif [[ -r /dev/urandom ]]; then
-    COOKIE_SECRET=$(LC_ALL=C tr -dc 'a-f0-9' < /dev/urandom | head -c 128)
+echo -e "\n${BOLD}╔══════════════════════════════════════════╗${NC}"
+echo -e "${BOLD}║      Yunexal Panel — Setup Wizard        ║${NC}"
+echo -e "${BOLD}╚══════════════════════════════════════════╝${NC}\n"
+
+# ============================================================
+# STEP 1 — Optional reset
+# ============================================================
+header "Step 1: Reset"
+
+do_reset() {
+  info "Stopping yunexal-panel service (if running)..."
+  systemctl stop yunexal-panel 2>/dev/null || true
+  info "Removing database files..."
+  rm -f yunexal.db yunexal.db-shm yunexal.db-wal
+  info "Removing .env..."
+  rm -f .env
+  success "Reset complete."
+}
+
+if $OPT_RESET; then
+  do_reset
 else
-    error "Cannot generate a secure secret: openssl and /dev/urandom both unavailable."
+  read -rp "$(echo -e "${YELLOW}Wipe existing database and .env? [y/N]:${NC} ")" ans
+  if [[ "${ans,,}" == "y" ]]; then
+    do_reset
+  else
+    info "Skipping reset."
+  fi
 fi
 
-[[ ${#COOKIE_SECRET} -eq 128 ]] || error "COOKIE_SECRET length unexpected: ${#COOKIE_SECRET} chars (expected 128)."
-success "COOKIE_SECRET generated."
+# ============================================================
+# STEP 2 — Docker
+# ============================================================
+header "Step 2: Docker"
 
-# ── Write .env ────────────────────────────────────────────────────────────────
-cat > "$ENV_FILE" <<EOF
-# Yunexal Panel — Environment Configuration
-# Generated by setup.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-# ─────────────────────────────────────────────────────────────
+_docker_latest() {
+  curl -fsSL "https://api.github.com/repos/moby/moby/releases/latest" 2>/dev/null \
+    | grep '"tag_name"' | head -1 | sed 's/.*"v\([^"]*\)".*/\1/'
+}
 
-# Port the panel listens on.
-PANEL_PORT=${PANEL_PORT}
+if ! command -v docker &>/dev/null; then
+  info "Docker not found. Installing latest stable Docker..."
+  curl -fsSL https://get.docker.com | sh
+  systemctl enable docker
+  systemctl start docker
+  # Add the real user to the docker group
+  usermod -aG docker "$REAL_USER" 2>/dev/null || true
+  success "Docker installed."
+else
+  DOCKER_VERSION="$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo 'unknown')"
+  info "Docker detected: v${DOCKER_VERSION}"
+  DOCKER_LATEST="$(_docker_latest)"
+  if [[ -n "$DOCKER_LATEST" && "$DOCKER_VERSION" != "$DOCKER_LATEST" ]]; then
+    warn "Newer Docker available: v${DOCKER_LATEST} (installed: v${DOCKER_VERSION})"
+    read -rp "$(echo -e "${YELLOW}Upgrade Docker now? [y/N]:${NC} ")" ans
+    if [[ "${ans,,}" == "y" ]]; then
+      info "Upgrading Docker via get.docker.com..."
+      curl -fsSL https://get.docker.com | sh
+      success "Docker upgraded to v${DOCKER_LATEST}."
+    else
+      info "Skipping Docker upgrade."
+    fi
+  else
+    success "Docker is up-to-date (v${DOCKER_VERSION})."
+  fi
+fi
 
-# 128-char hex string (64 random bytes) used to sign/encrypt session cookies.
-# Changing this value will invalidate all active sessions.
-COOKIE_SECRET=${COOKIE_SECRET}
+# Ensure Docker daemon is running
+if ! systemctl is-active --quiet docker; then
+  info "Starting Docker daemon..."
+  systemctl start docker
+fi
+
+# Quick connectivity check
+docker pull alpine:latest -q >/dev/null 2>&1 && success "Docker daemon reachable." \
+  || warn "Docker pull test failed — verify Docker is working before continuing."
+
+# ============================================================
+# STEP 3 — .env generation
+# ============================================================
+header "Step 3: Environment (.env)"
+
+write_env() {
+  local port="$1"
+  local secret
+  secret="$(openssl rand -hex 64)"
+  cat > .env <<EOF
+# Yunexal Panel — auto-generated by setup.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+PORT=${port}
+COOKIE_SECRET=${secret}
+DATABASE_URL=sqlite:yunexal.db
+EOF
+  chown "$REAL_USER":"$REAL_USER" .env 2>/dev/null || true
+  chmod 600 .env
+  success ".env written (port ${port}, fresh COOKIE_SECRET)."
+}
+
+if [[ -f .env ]]; then
+  warn ".env already exists."
+  read -rp "$(echo -e "${YELLOW}Overwrite .env with a new secret? [y/N]:${NC} ")" ans
+  if [[ "${ans,,}" == "y" ]]; then
+    read -rp "$(echo -e "${BLUE}Panel port [3000]:${NC} ")" PORT_INPUT
+    write_env "${PORT_INPUT:-3000}"
+  else
+    info "Keeping existing .env."
+  fi
+else
+  read -rp "$(echo -e "${BLUE}Panel port [3000]:${NC} ")" PORT_INPUT
+  write_env "${PORT_INPUT:-3000}"
+fi
+
+# ============================================================
+# STEP 4 — Admin user
+# ============================================================
+header "Step 4: Admin user"
+
+# Find the panel binary
+PANEL_BIN=""
+for candidate in "./yunexal-panel" "./target/release/yunexal-panel" "./target/debug/yunexal-panel"; do
+  if [[ -x "$candidate" ]]; then
+    PANEL_BIN="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$PANEL_BIN" ]]; then
+  warn "Panel binary not found. Build with 'cargo build --release' first."
+  warn "Skipping admin user creation — run the script again after building."
+else
+  if $OPT_NON_INTERACTIVE; then
+    PANEL_USERNAME="${PANEL_USERNAME:?'PANEL_USERNAME env var required for --non-interactive'}"
+    PANEL_PASSWORD="${PANEL_PASSWORD:?'PANEL_PASSWORD env var required for --non-interactive'}"
+  else
+    while true; do
+      read -rp "$(echo -e "${BLUE}Admin username:${NC} ")" PANEL_USERNAME
+      [[ -n "$PANEL_USERNAME" ]] && break
+      error "Username cannot be empty."
+    done
+    while true; do
+      read -rsp "$(echo -e "${BLUE}Admin password (min 8 chars):${NC} ")" PANEL_PASSWORD; echo
+      if [[ ${#PANEL_PASSWORD} -lt 8 ]]; then
+        error "Password too short (minimum 8 characters)."
+        continue
+      fi
+      read -rsp "$(echo -e "${BLUE}Confirm password:${NC} ")" PANEL_PASSWORD2; echo
+      if [[ "$PANEL_PASSWORD" != "$PANEL_PASSWORD2" ]]; then
+        error "Passwords do not match."
+        continue
+      fi
+      break
+    done
+  fi
+
+  info "Creating/updating admin user '${PANEL_USERNAME}'..."
+  # Load .env values into environment for the seed run
+  set -o allexport
+  # shellcheck source=/dev/null
+  source .env
+  set +o allexport
+  PANEL_USERNAME="$PANEL_USERNAME" \
+  PANEL_PASSWORD="$PANEL_PASSWORD" \
+  PANEL_ROLE="admin" \
+  "$PANEL_BIN" --seed
+  success "Admin user '${PANEL_USERNAME}' created/updated."
+fi
+
+# ============================================================
+# STEP 5 — Import existing Docker containers (default: No)
+# ============================================================
+header "Step 5: Import Docker containers"
+
+read -rp "$(echo -e "${YELLOW}Import existing Docker containers into the panel? [y/N]:${NC} ")" ans
+if [[ "${ans,,}" != "y" ]]; then
+  info "Skipping container import."
+else
+  if ! command -v sqlite3 &>/dev/null; then
+    warn "'sqlite3' CLI not found — cannot import containers. Install it with: apt install sqlite3"
+  elif [[ ! -f yunexal.db ]]; then
+    warn "Database file yunexal.db not found — start the panel once first to initialise the DB."
+  else
+    # List running containers
+    mapfile -t CONTAINERS < <(docker ps --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}' 2>/dev/null)
+    if [[ ${#CONTAINERS[@]} -eq 0 ]]; then
+      info "No running Docker containers found."
+    else
+      echo ""
+      echo -e "${BOLD}Running containers:${NC}"
+      echo -e "  #   ID            NAME                         IMAGE                  STATUS"
+      echo    "  ─────────────────────────────────────────────────────────────────────────────"
+      idx=1
+      declare -A CMAP
+      for c in "${CONTAINERS[@]}"; do
+        IFS=$'\t' read -r cid cname cimage cstatus <<< "$c"
+        printf "  %-3s %-14s %-28s %-22s %s\n" "$idx" "${cid:0:12}" "$cname" "${cimage:0:22}" "$cstatus"
+        CMAP[$idx]="$cid:$cname:$cimage"
+        ((idx++)) || true
+      done
+      echo ""
+      read -rp "$(echo -e "${BLUE}Enter numbers to import (e.g. 1 3 4) or 'all':${NC} ")" SELECTION
+
+      import_container() {
+        local cid="$1" cname="$2" cimage="$3"
+        # Inspect for port and env
+        local port
+        port="$(docker inspect --format '{{range $k,$v := .NetworkSettings.Ports}}{{$k}}{{break}}{{end}}' "$cid" 2>/dev/null | grep -oP '^\d+' || echo '')"
+        sqlite3 yunexal.db \
+          "INSERT OR IGNORE INTO servers (name, docker_id, image, port, status)
+           VALUES ('${cname//\'/\'\'}', '${cid}', '${cimage//\'/\'\'}', '${port}', 'running');"
+        success "Imported: $cname ($cid)"
+      }
+
+      if [[ "${SELECTION,,}" == "all" ]]; then
+        for key in "${!CMAP[@]}"; do
+          IFS=: read -r cid cname cimage <<< "${CMAP[$key]}"
+          import_container "$cid" "$cname" "$cimage"
+        done
+      else
+        for num in $SELECTION; do
+          if [[ -n "${CMAP[$num]+x}" ]]; then
+            IFS=: read -r cid cname cimage <<< "${CMAP[$num]}"
+            import_container "$cid" "$cname" "$cimage"
+          else
+            warn "No container at index $num — skipping."
+          fi
+        done
+      fi
+    fi
+  fi
+fi
+
+# ============================================================
+# STEP 6 — systemd service
+# ============================================================
+header "Step 6: systemd service"
+
+SERVICE_FILE="/etc/systemd/system/yunexal-panel.service"
+
+# Determine binary path for the service (prefer release build)
+if [[ -x "$SCRIPT_DIR/target/release/yunexal-panel" ]]; then
+  SVC_BIN="$SCRIPT_DIR/target/release/yunexal-panel"
+elif [[ -x "$SCRIPT_DIR/yunexal-panel" ]]; then
+  SVC_BIN="$SCRIPT_DIR/yunexal-panel"
+else
+  SVC_BIN="$SCRIPT_DIR/target/debug/yunexal-panel"
+fi
+
+cat > "$SERVICE_FILE" <<EOF
+[Unit]
+Description=Yunexal Panel
+Documentation=https://github.com/yunexal/yunexal-panel
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=${REAL_USER}
+WorkingDirectory=${SCRIPT_DIR}
+EnvironmentFile=${SCRIPT_DIR}/.env
+ExecStart=${SVC_BIN}
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=yunexal-panel
+
+[Install]
+WantedBy=multi-user.target
 EOF
 
-chmod 600 "$ENV_FILE"
-success ".env written and permissions set to 600."
+systemctl daemon-reload
+systemctl enable yunexal-panel
+success "Service installed and enabled: $SERVICE_FILE"
 
-# ── Seed database ─────────────────────────────────────────────────────────────
-echo ""
-read -rp "  Build the project and seed the database now? [Y/n] " DO_SEED
-if [[ "${DO_SEED,,}" != "n" ]]; then
-    info "Building Yunexal Panel (this may take a minute)..."
-    if cargo build 2>&1; then
-        success "Build complete."
-        info "Seeding database with user '${PANEL_USERNAME}' (role: ${PANEL_ROLE})..."
-        if PANEL_USERNAME="${PANEL_USERNAME}" PANEL_PASSWORD="${PANEL_PASSWORD}" PANEL_ROLE="${PANEL_ROLE}" ./target/debug/yunexal-panel --seed; then
-            success "Database seeded successfully."
-        else
-            warn "Seeding failed. The user will be created on first \`cargo run\`."
-        fi
+read -rp "$(echo -e "${YELLOW}Start yunexal-panel now? [Y/n]:${NC} ")" ans
+if [[ "${ans,,}" != "n" ]]; then
+  if [[ -x "$SVC_BIN" ]]; then
+    systemctl start yunexal-panel
+    sleep 1
+    if systemctl is-active --quiet yunexal-panel; then
+      success "yunexal-panel is running."
     else
-        warn "Build failed. The database will be seeded on first \`cargo run\`."
+      warn "Service did not start cleanly — check: journalctl -u yunexal-panel -n 50"
     fi
+  else
+    warn "Binary not found at ${SVC_BIN} — build the project first, then run: systemctl start yunexal-panel"
+  fi
 else
-    info "Skipped. The database will be seeded automatically on first \`cargo run\`."
+  info "Service not started. Run: systemctl start yunexal-panel"
 fi
 
-# ── Pull Alpine image (used for volume operations) ─────────────────────────────
-if ! docker image inspect alpine:latest >/dev/null 2>&1; then
-    info "Pulling alpine:latest (required for volume file operations)..."
-    docker pull alpine:latest
-    success "alpine:latest pulled."
-else
-    success "alpine:latest already present."
-fi
+# ============================================================
+# Done
+# ============================================================
+echo ""
+echo -e "${BOLD}${GREEN}╔══════════════════════════════════════════╗${NC}"
+echo -e "${BOLD}${GREEN}║            Setup complete!               ║${NC}"
+echo -e "${BOLD}${GREEN}╚══════════════════════════════════════════╝${NC}"
+echo ""
 
-# ── Done ──────────────────────────────────────────────────────────────────────
-echo ""
-echo -e "${GREEN}Setup complete!${NC}"
-echo ""
-echo "  Build and run:"
-echo -e "    ${CYAN}cargo run${NC}"
-echo ""
-echo "  Open in browser:"
-echo -e "    ${CYAN}http://localhost:${PANEL_PORT}${NC}"
+# Read port from .env for summary
+PANEL_PORT="$(grep -oP '(?<=^PORT=)\d+' .env 2>/dev/null || echo '3000')"
+echo -e "  Panel URL  : ${BOLD}http://localhost:${PANEL_PORT}${NC}"
+echo -e "  Service    : ${BOLD}systemctl status yunexal-panel${NC}"
+echo -e "  Logs       : ${BOLD}journalctl -u yunexal-panel -f${NC}"
 echo ""
