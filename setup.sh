@@ -295,7 +295,7 @@ fi
 cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Yunexal Panel
-Documentation=https://github.com/yunexal/yunexal-panel
+Documentation=https://github.com/nestorchurin/yunexal-panel
 After=network.target docker.service
 Wants=docker.service
 

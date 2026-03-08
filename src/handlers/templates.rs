@@ -123,6 +123,7 @@ pub struct AdminTemplate {
     pub docker_storage_driver: String,
     pub listen_addr: String,
     pub auth_username: String,
+    pub auth_role: String,
     pub panel_memory_mb: String,
     pub panel_version: String,
     pub users: Vec<UserInfo>,

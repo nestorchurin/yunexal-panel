@@ -27,7 +27,13 @@
                 <i class="bi bi-chevron-down" style="font-size:.6rem;opacity:.5;"></i>
             </button>
             <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px;background:#111119;border:1px solid var(--bdr);border-radius:10px;padding:.4rem;">
-                <li class="px-3 py-2" style="font-size:.75rem;color:var(--muted);border-bottom:1px solid var(--bdr);margin-bottom:.3rem;">Signed in as <strong style="color:var(--txt);">{{ auth_username }}</strong></li>
+                <li class="px-3 py-2" style="font-size:.75rem;color:var(--muted);border-bottom:1px solid var(--bdr);margin-bottom:.3rem;">
+                    Signed in as <strong style="color:var(--txt);">{{ auth_username }}</strong>
+                    <span style="margin-left:.4rem;padding:.15rem .45rem;border-radius:4px;font-size:.7rem;font-weight:600;letter-spacing:.02em;
+                        {% if auth_role == "root" %}background:rgba(239,68,68,.15);color:#f87171;
+                        {% else if auth_role == "admin" %}background:rgba(124,58,237,.15);color:#a78bfa;
+                        {% else %}background:rgba(34,197,94,.12);color:#4ade80;{% endif %}">{{ auth_role }}</span>
+                </li>
                 <li><a class="dropdown-item rounded-2" href="/" style="font-size:.82rem;color:var(--txt);"><i class="bi bi-grid-1x2 me-2 text-muted"></i>Dashboard</a></li>
                 <li><hr class="dropdown-divider" style="border-color:var(--bdr);margin:.3rem 0;"></li>
                 <li><a class="dropdown-item rounded-2" href="/admin/settings" style="font-size:.82rem;color:var(--txt);" onclick="switchTab('settings'); return false;"><i class="bi bi-gear me-2 text-muted"></i>Settings</a></li>
@@ -894,6 +900,30 @@
                 <p style="font-size:.825rem;color:var(--muted);margin:0;">Account &amp; panel configuration</p>
             </div>
             <div class="row g-3">
+                <!-- Account info card -->
+                <div class="col-12">
+                    <div class="yu-card" style="padding:1.1rem 1.4rem;">
+                        <div style="display:flex;align-items:center;gap:1rem;">
+                            <div style="width:42px;height:42px;border-radius:50%;background:rgba(124,58,237,.18);border:1px solid rgba(124,58,237,.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <i class="bi bi-person-fill" style="font-size:1.15rem;color:var(--accent);"></i>
+                            </div>
+                            <div>
+                                <div style="font-size:.95rem;font-weight:700;letter-spacing:-.02em;">{{ auth_username }}</div>
+                                <div style="margin-top:.25rem;display:flex;align-items:center;gap:.4rem;">
+                                    <span style="padding:.2rem .55rem;border-radius:5px;font-size:.72rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+                                        {% if auth_role == "root" %}background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.2);
+                                        {% else if auth_role == "admin" %}background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.2);
+                                        {% else %}background:rgba(34,197,94,.1);color:#4ade80;border:1px solid rgba(34,197,94,.2);{% endif %}">{{ auth_role }}</span>
+                                    <span style="font-size:.78rem;color:var(--muted);">
+                                        {% if auth_role == "root" %}Full system access
+                                        {% else if auth_role == "admin" %}Panel administration
+                                        {% else %}Standard user{% endif %}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div class="col-md-6">
                     <div class="yu-card">
                         <div class="yu-card-hd"><i class="bi bi-key me-2 text-muted"></i>Change Password</div>
