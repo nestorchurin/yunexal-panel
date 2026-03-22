@@ -1,10 +1,12 @@
 use axum::{
-    extract::{Form, Multipart, Path, Query, State},
+    extract::{ConnectInfo, Form, Multipart, Path, Query, State},
     http::StatusCode,
+    http::HeaderMap,
     response::{Html, IntoResponse, Redirect},
     Json,
 };
 use axum_extra::extract::cookie::PrivateCookieJar;
+use std::net::SocketAddr;
 use crate::{auth, db, docker};
 use crate::state::AppState;
 use super::templates::{ArchiveForm, CopyFileForm, CreateFileForm, DeleteFileQuery, ExtractForm, FileContentQuery, FileEditTemplate, FileListQuery, FileUploadQuery, RenameFileForm, SaveFileForm};
@@ -255,9 +257,12 @@ pub async fn edit_file_page(
 pub async fn save_file_content(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Form(form): Form<SaveFileForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -281,7 +286,11 @@ pub async fn save_file_content(
 
     // Try direct write first.
     match tokio::fs::write(&file_path, form.content.as_bytes()).await {
-        Ok(_) => return (StatusCode::OK, "ok").into_response(),
+        Ok(_) => {
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let _ = db::audit_log(&state.db, &actor, "file.save", &form.path, &format!("#{}", db_id), &ip).await;
+            return (StatusCode::OK, "ok").into_response();
+        }
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
             // Files are root-owned (created by Docker). Fall through to docker write.
         }
@@ -309,7 +318,11 @@ pub async fn save_file_content(
     }
 
     match child.wait_with_output().await {
-        Ok(out) if out.status.success() => (StatusCode::OK, "ok").into_response(),
+        Ok(out) if out.status.success() => {
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let _ = db::audit_log(&state.db, &actor, "file.save", &form.path, &format!("#{}", db_id), &ip).await;
+            (StatusCode::OK, "ok").into_response()
+        }
         Ok(out) => (StatusCode::INTERNAL_SERVER_ERROR,
             format!("Docker write failed: {}", String::from_utf8_lossy(&out.stderr))).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed: {}", e)).into_response(),
@@ -319,9 +332,12 @@ pub async fn save_file_content(
 pub async fn create_new_file(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Form(form): Form<CreateFileForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return "Access denied".into_response();
     }
@@ -386,6 +402,9 @@ pub async fn create_new_file(
             return format!("Failed to create file: {e}").into_response();
         }
     }
+
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "file.create", name, &format!("#{}", db_id), &ip).await;
 
     [(
         axum::http::header::HeaderName::from_static("hx-trigger"),
@@ -531,9 +550,12 @@ fn resolve_path(
 pub async fn delete_file(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Query(query): Query<DeleteFileQuery>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -561,13 +583,17 @@ pub async fn delete_file(
     };
 
     match result {
-        Ok(_) => (
-            StatusCode::OK,
-            axum::http::HeaderMap::from_iter([(
-                axum::http::header::HeaderName::from_static("hx-trigger"),
-                axum::http::HeaderValue::from_static("file-created"),
-            )]),
-        ).into_response(),
+        Ok(_) => {
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let _ = db::audit_log(&state.db, &actor, "file.delete", &query.path, &format!("#{}", db_id), &ip).await;
+            (
+                StatusCode::OK,
+                axum::http::HeaderMap::from_iter([(
+                    axum::http::header::HeaderName::from_static("hx-trigger"),
+                    axum::http::HeaderValue::from_static("file-created"),
+                )]),
+            ).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
@@ -576,9 +602,12 @@ pub async fn delete_file(
 pub async fn rename_file(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Form(form): Form<RenameFileForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -610,13 +639,17 @@ pub async fn rename_file(
         return (StatusCode::CONFLICT, "Name already exists").into_response();
     }
     match tokio::fs::rename(&src, &dst).await {
-        Ok(_) => (
-            StatusCode::OK,
-            axum::http::HeaderMap::from_iter([(
-                axum::http::header::HeaderName::from_static("hx-trigger"),
-                axum::http::HeaderValue::from_static("file-created"),
-            )]),
-        ).into_response(),
+        Ok(_) => {
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let _ = db::audit_log(&state.db, &actor, "file.rename", &form.path, &format!("#{} -> {}", db_id, new_name), &ip).await;
+            (
+                StatusCode::OK,
+                axum::http::HeaderMap::from_iter([(
+                    axum::http::header::HeaderName::from_static("hx-trigger"),
+                    axum::http::HeaderValue::from_static("file-created"),
+                )]),
+            ).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
@@ -625,9 +658,12 @@ pub async fn rename_file(
 pub async fn copy_file(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Form(form): Form<CopyFileForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -693,6 +729,9 @@ pub async fn copy_file(
         return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
     }
 
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "file.copy", &form.src, &format!("#{} -> {}", db_id, form.dst_dir), &ip).await;
+
     (
         StatusCode::OK,
         axum::http::HeaderMap::from_iter([(
@@ -706,10 +745,13 @@ pub async fn copy_file(
 pub async fn upload_files(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Query(query): Query<FileUploadQuery>,
     mut multipart: Multipart,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -842,6 +884,9 @@ pub async fn upload_files(
         return (StatusCode::BAD_REQUEST, msg).into_response();
     }
 
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "file.upload", &query.path, &format!("#{} count={}", db_id, saved), &ip).await;
+
     (
         StatusCode::OK,
         axum::http::HeaderMap::from_iter([(
@@ -855,9 +900,12 @@ pub async fn upload_files(
 pub async fn extract_archive(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Form(form): Form<ExtractForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -911,13 +959,17 @@ pub async fn extract_archive(
     };
 
     match docker_volume_cmd(&volume_path, &sh_cmd).await {
-        Ok(_) => (
-            StatusCode::OK,
-            axum::http::HeaderMap::from_iter([(
-                axum::http::header::HeaderName::from_static("hx-trigger"),
-                axum::http::HeaderValue::from_static("file-created"),
-            )]),
-        ).into_response(),
+        Ok(_) => {
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let _ = db::audit_log(&state.db, &actor, "file.extract", &form.path, &format!("#{}", db_id), &ip).await;
+            (
+                StatusCode::OK,
+                axum::http::HeaderMap::from_iter([(
+                    axum::http::header::HeaderName::from_static("hx-trigger"),
+                    axum::http::HeaderValue::from_static("file-created"),
+                )]),
+            ).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Extract failed: {e}")).into_response(),
     }
 }
@@ -926,9 +978,12 @@ pub async fn extract_archive(
 pub async fn create_archive(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Form(form): Form<ArchiveForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -990,13 +1045,17 @@ pub async fn create_archive(
     let sh_cmd = format!("{} && tar czf '{}' {}", cd_part, sh_esc(&archive_name), targets);
 
     match docker_volume_cmd(&volume_path, &sh_cmd).await {
-        Ok(_) => (
-            StatusCode::OK,
-            axum::http::HeaderMap::from_iter([(
-                axum::http::header::HeaderName::from_static("hx-trigger"),
-                axum::http::HeaderValue::from_static("file-created"),
-            )]),
-        ).into_response(),
+        Ok(_) => {
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let _ = db::audit_log(&state.db, &actor, "file.archive", &archive_name, &format!("#{} items={}", db_id, names.len()), &ip).await;
+            (
+                StatusCode::OK,
+                axum::http::HeaderMap::from_iter([(
+                    axum::http::header::HeaderName::from_static("hx-trigger"),
+                    axum::http::HeaderValue::from_static("file-created"),
+                )]),
+            ).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Archive failed: {e}")).into_response(),
     }
 }
@@ -1005,9 +1064,12 @@ pub async fn create_archive(
 pub async fn bulk_delete(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Form(form): Form<super::templates::BulkPathsForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -1038,6 +1100,9 @@ pub async fn bulk_delete(
     if !errors.is_empty() {
         return (StatusCode::INTERNAL_SERVER_ERROR, errors.join("\n")).into_response();
     }
+    let count = form.paths.lines().filter(|l| !l.trim().is_empty()).count();
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "file.bulk_delete", "", &format!("#{} count={}", db_id, count), &ip).await;
     (
         StatusCode::OK,
         axum::http::HeaderMap::from_iter([(
@@ -1051,9 +1116,12 @@ pub async fn bulk_delete(
 pub async fn move_file(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Form(form): Form<super::templates::CopyFileForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -1103,6 +1171,8 @@ pub async fn move_file(
             }
         }
     }
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "file.move", &form.src, &format!("#{} -> {}", db_id, form.dst_dir), &ip).await;
     (
         StatusCode::OK,
         axum::http::HeaderMap::from_iter([(

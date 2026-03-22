@@ -23,6 +23,7 @@ body { overflow: hidden; }
 
 .yu-nav-label { font-size: .6rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding: .35rem .75rem .12rem; opacity: .55; }
 .yu-nav-label:not(:first-child) { margin-top: .25rem; }
+.yu-nav-divider { height: 1px; background: var(--bdr); margin: .5rem .75rem; }
 .yu-nav-item { display: flex; align-items: center; gap: .55rem; padding: .32rem .75rem; border-radius: 7px; font-size: .8rem; font-weight: 500; color: var(--muted); cursor: pointer; border: 1px solid transparent; background: transparent; font-family: 'Inter', sans-serif; width: 100%; text-align: left; text-decoration: none; transition: all .15s; line-height: 1.2; }
 .yu-nav-item i { font-size: .88rem; width: 15px; flex-shrink: 0; }
 .yu-nav-item:hover { color: var(--txt); background: rgba(255,255,255,.04); }

@@ -1,8 +1,10 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{ConnectInfo, Path, Query, State},
+    http::HeaderMap,
     Json,
 };
 use axum_extra::extract::cookie::PrivateCookieJar;
+use std::net::SocketAddr;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use crate::{auth, db, dns as dns_lib};
@@ -67,11 +69,17 @@ pub struct AddProviderBody {
 
 pub async fn api_dns_add_provider(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<AddProviderBody>,
 ) -> Json<Value> {
+    let ip = auth::client_ip(&headers, addr);
     let creds_str = body.credentials.to_string();
     match db::dns_add_provider(&state.db, &body.name, &body.provider_type, &creds_str).await {
-        Ok(id) => Json(json!({ "ok": true, "id": id })),
+        Ok(id) => {
+            let _ = db::audit_log(&state.db, "admin", "dns.provider_add", &body.name, &body.provider_type, &ip).await;
+            Json(json!({ "ok": true, "id": id }))
+        }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
     }
 }
@@ -87,9 +95,12 @@ pub struct UpdateProviderBody {
 
 pub async fn api_dns_update_provider(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
     Json(body): Json<UpdateProviderBody>,
 ) -> Json<Value> {
+    let ip = auth::client_ip(&headers, addr);
     // Merge incoming credentials with existing (to allow partial updates — "••••" means keep)
     let existing = db::dns_get_provider(&state.db, id).await.ok().flatten();
     let creds_str = if let Some(existing) = existing {
@@ -108,7 +119,10 @@ pub async fn api_dns_update_provider(
     };
 
     match db::dns_update_provider(&state.db, id, &body.name, &creds_str, body.enabled).await {
-        Ok(_) => Json(json!({ "ok": true })),
+        Ok(_) => {
+            let _ = db::audit_log(&state.db, "admin", "dns.provider_edit", &body.name, &format!("id={}", id), &ip).await;
+            Json(json!({ "ok": true }))
+        }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
     }
 }
@@ -117,10 +131,16 @@ pub async fn api_dns_update_provider(
 
 pub async fn api_dns_delete_provider(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> Json<Value> {
+    let ip = auth::client_ip(&headers, addr);
     match db::dns_delete_provider(&state.db, id).await {
-        Ok(_) => Json(json!({ "ok": true })),
+        Ok(_) => {
+            let _ = db::audit_log(&state.db, "admin", "dns.provider_delete", "", &format!("id={}", id), &ip).await;
+            Json(json!({ "ok": true }))
+        }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
     }
 }
@@ -228,8 +248,11 @@ pub struct AddRecordBody {
 
 pub async fn api_dns_add_record(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<AddRecordBody>,
 ) -> Json<Value> {
+    let ip = auth::client_ip(&headers, addr);
     let provider = match db::dns_get_provider(&state.db, body.provider_id).await {
         Ok(Some(p)) => p,
         Ok(None)    => return Json(json!({ "ok": false, "error": "Provider not found" })),
@@ -292,7 +315,10 @@ pub async fn api_dns_add_record(
         ttl, priority, proxied, &remote_id,
         body.container_id, ddns, interval,
     ).await {
-        Ok(id) => Json(json!({ "ok": true, "id": id, "remote_id": remote_id })),
+        Ok(id) => {
+            let _ = db::audit_log(&state.db, "admin", "dns.record_add", &body.name, &format!("{} {}", body.record_type, body.value), &ip).await;
+            Json(json!({ "ok": true, "id": id, "remote_id": remote_id }))
+        }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
     }
 }
@@ -313,9 +339,12 @@ pub struct UpdateRecordBody {
 
 pub async fn api_dns_update_record(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
     Json(body): Json<UpdateRecordBody>,
 ) -> Json<Value> {
+    let ip = auth::client_ip(&headers, addr);
     let ttl      = body.ttl.unwrap_or(300);
     let priority = body.priority.unwrap_or(0);
     let proxied  = body.proxied.unwrap_or(false);
@@ -348,7 +377,10 @@ pub async fn api_dns_update_record(
     }
 
     match db::dns_update_record(&state.db, id, &body.name, &body.value, ttl, priority, proxied, ddns, interval).await {
-        Ok(_)  => Json(json!({ "ok": true })),
+        Ok(_)  => {
+            let _ = db::audit_log(&state.db, "admin", "dns.record_edit", &body.name, &format!("id={}", id), &ip).await;
+            Json(json!({ "ok": true }))
+        }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
     }
 }
@@ -360,9 +392,12 @@ pub struct DeleteRecordBody { pub remove_from_provider: Option<bool> }
 
 pub async fn api_dns_delete_record(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
     Json(body): Json<DeleteRecordBody>,
 ) -> Json<Value> {
+    let ip = auth::client_ip(&headers, addr);
     let remove = body.remove_from_provider.unwrap_or(false);
     if remove {
         if let Ok(providers) = db::dns_list_providers(&state.db).await {
@@ -382,7 +417,10 @@ pub async fn api_dns_delete_record(
     }
 
     match db::dns_delete_record(&state.db, id).await {
-        Ok(_)  => Json(json!({ "ok": true })),
+        Ok(_)  => {
+            let _ = db::audit_log(&state.db, "admin", "dns.record_delete", "", &format!("id={}", id), &ip).await;
+            Json(json!({ "ok": true }))
+        }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
     }
 }
@@ -397,9 +435,12 @@ pub struct SetProxyBody { pub proxied: bool }
 
 pub async fn api_dns_set_proxy(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
     Json(body): Json<SetProxyBody>,
 ) -> Json<Value> {
+    let ip = auth::client_ip(&headers, addr);
     // Find the record + its provider
     if let Ok(providers) = db::dns_list_providers(&state.db).await {
         'outer: for provider in &providers {
@@ -428,6 +469,7 @@ pub async fn api_dns_set_proxy(
             }
         }
     }
+    let _ = db::audit_log(&state.db, "admin", "dns.proxy_toggle", "", &format!("id={} proxied={}", id, body.proxied), &ip).await;
     Json(json!({ "ok": true, "proxied": body.proxied }))
 }
 
@@ -443,7 +485,8 @@ pub async fn api_dns_public_ip() -> Json<Value> {
 // ── POST /api/admin/dns/sync ──────────────────────────────────────────────────
 /// Manually trigger DDNS sync for all enabled records.
 
-pub async fn api_dns_sync(State(state): State<AppState>) -> Json<Value> {
+pub async fn api_dns_sync(State(state): State<AppState>, addr: ConnectInfo<SocketAddr>, headers: HeaderMap) -> Json<Value> {
+    let req_ip = auth::client_ip(&headers, addr);
     let ip = match dns_lib::get_public_ip().await {
         Ok(ip) => ip,
         Err(e) => return Json(json!({ "ok": false, "error": format!("Cannot get public IP: {}", e) })),
@@ -475,6 +518,8 @@ pub async fn api_dns_sync(State(state): State<AppState>) -> Json<Value> {
         }
     }
 
+    let _ = db::audit_log(&state.db, "admin", "dns.sync", "", &format!("ip={} synced={}", ip, synced), &req_ip).await;
+
     Json(json!({
         "ok":     true,
         "ip":     ip,
@@ -492,9 +537,12 @@ pub struct SyncRecordsQuery { pub zone: String }
 
 pub async fn api_dns_sync_records(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(pid): Path<i64>,
     Query(params): Query<SyncRecordsQuery>,
 ) -> Json<Value> {
+    let ip = auth::client_ip(&headers, addr);
     let zid = &params.zone;
 
     let provider = match db::dns_get_provider(&state.db, pid).await {
@@ -539,6 +587,8 @@ pub async fn api_dns_sync_records(
             synced += 1;
         }
     }
+
+    let _ = db::audit_log(&state.db, "admin", "dns.sync_records", "", &format!("provider={} synced={}", pid, synced), &ip).await;
 
     Json(json!({ "ok": true, "synced": synced }))
 }
@@ -638,9 +688,12 @@ pub struct AddServerDnsBody {
 pub async fn api_server_dns_add(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(server_id): Path<i64>,
     Json(body): Json<AddServerDnsBody>,
 ) -> Json<Value> {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, server_id).await {
         return Json(json!({ "ok": false, "error": "Access denied" }));
     }
@@ -673,7 +726,11 @@ pub async fn api_server_dns_add(
         ttl, priority, proxied, &remote_id,
         Some(server_id), false, 300,
     ).await {
-        Ok(id) => Json(json!({ "ok": true, "id": id, "remote_id": remote_id })),
+        Ok(id) => {
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let _ = db::audit_log(&state.db, &actor, "dns.server_record_add", &body.name, &format!("server={}", server_id), &ip).await;
+            Json(json!({ "ok": true, "id": id, "remote_id": remote_id }))
+        }
         Err(e) => Json(json!({ "ok": false, "error": e.to_string() })),
     }
 }
@@ -684,8 +741,11 @@ pub async fn api_server_dns_add(
 pub async fn api_server_dns_delete(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path((server_id, record_id)): Path<(i64, i64)>,
 ) -> Json<Value> {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, server_id).await {
         return Json(json!({ "ok": false, "error": "Access denied" }));
     }
@@ -713,7 +773,11 @@ pub async fn api_server_dns_delete(
     }
 
     match db::dns_delete_record(&state.db, record_id).await {
-        Ok(()) => Json(json!({ "ok": true })),
+        Ok(()) => {
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let _ = db::audit_log(&state.db, &actor, "dns.server_record_delete", &rec.name, &format!("server={}", server_id), &ip).await;
+            Json(json!({ "ok": true }))
+        }
         Err(e) => Json(json!({ "ok": false, "error": e.to_string() })),
     }
 }

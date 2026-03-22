@@ -134,6 +134,22 @@ pub struct AdminTemplate {
     pub users: Vec<UserInfo>,
     pub users_count: usize,
     pub tab: String,
+    // Host system stats
+    pub kernel_version: String,
+    pub host_uptime: String,
+    pub host_load_avg: String,
+    pub host_ram_used_gb: String,
+    pub host_ram_total_gb: String,
+    pub host_swap_used_gb: String,
+    pub host_swap_total_gb: String,
+    // ZRAM (empty strings = not active)
+    pub zram_active: bool,
+    pub zram_devices: usize,
+    pub zram_disk_mb: String,
+    pub zram_orig_mb: String,
+    pub zram_compr_mb: String,
+    pub zram_ratio: String,
+    pub zram_algorithm: String,
 }
 
 #[derive(Template)]

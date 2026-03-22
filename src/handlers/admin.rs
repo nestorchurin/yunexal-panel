@@ -1,10 +1,12 @@
 use axum::{
-    extract::{Path, State},
+    extract::{ConnectInfo, Path, State},
     http::StatusCode,
+    http::HeaderMap,
     response::{IntoResponse, Redirect},
     Json,
 };
 use axum_extra::extract::cookie::PrivateCookieJar;
+use std::net::SocketAddr;
 use crate::{auth, db, docker, password};
 use crate::state::AppState;
 use tracing::error;
@@ -22,7 +24,6 @@ const VALID_TABS: &[&str] = &[
     "workspaces", "tickets",
     "billing", "plans", "coupons",
     "notifications", "themes", "apikeys", "nodes",
-    "settings",
 ];
 
 async fn build_admin_template(state: &AppState, tab: String, username: String) -> AdminTemplate {
@@ -94,6 +95,12 @@ async fn build_admin_template(state: &AppState, tab: String, username: String) -
 
     let users_count = users.len();
 
+    let (kernel_version, host_uptime, host_load_avg) = host_proc_info().await;
+    let (host_ram_used_gb, host_ram_total_gb, host_swap_used_gb, host_swap_total_gb) = host_mem_info().await;
+    let ZramInfo { active: zram_active, devices: zram_devices, disk_mb: zram_disk_mb,
+                   orig_mb: zram_orig_mb, compr_mb: zram_compr_mb,
+                   ratio: zram_ratio, algorithm: zram_algorithm } = host_zram_info().await;
+
     // Override display names from SQLite
     let mut containers = containers;
     let info_map = db::get_server_info_map(&state.db).await.unwrap_or_default();
@@ -130,6 +137,154 @@ async fn build_admin_template(state: &AppState, tab: String, username: String) -
         users,
         users_count,
         tab,
+        kernel_version,
+        host_uptime,
+        host_load_avg,
+        host_ram_used_gb,
+        host_ram_total_gb,
+        host_swap_used_gb,
+        host_swap_total_gb,
+        zram_active,
+        zram_devices,
+        zram_disk_mb,
+        zram_orig_mb,
+        zram_compr_mb,
+        zram_ratio,
+        zram_algorithm,
+    }
+}
+
+// ── Host system helpers ───────────────────────────────────────────────────────
+
+async fn host_proc_info() -> (String, String, String) {
+    let kernel = tokio::fs::read_to_string("/proc/version")
+        .await
+        .ok()
+        .and_then(|s| s.split_whitespace().nth(2).map(|v| v.to_string()))
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let uptime = tokio::fs::read_to_string("/proc/uptime")
+        .await
+        .ok()
+        .and_then(|s| s.split_whitespace().next().and_then(|v| v.parse::<f64>().ok()))
+        .map(|secs| {
+            let s = secs as u64;
+            let d = s / 86400;
+            let h = (s % 86400) / 3600;
+            let m = (s % 3600) / 60;
+            if d > 0 { format!("{}d {}h {}m", d, h, m) }
+            else if h > 0 { format!("{}h {}m", h, m) }
+            else { format!("{}m", m) }
+        })
+        .unwrap_or_else(|| "N/A".to_string());
+
+    let load = tokio::fs::read_to_string("/proc/loadavg")
+        .await
+        .ok()
+        .map(|s| s.split_whitespace().take(3).collect::<Vec<_>>().join(" / "))
+        .unwrap_or_else(|| "N/A".to_string());
+
+    (kernel, uptime, load)
+}
+
+async fn host_mem_info() -> (String, String, String, String) {
+    let content = tokio::fs::read_to_string("/proc/meminfo").await.unwrap_or_default();
+    let mut mem_total_kb  = 0u64;
+    let mut mem_avail_kb  = 0u64;
+    let mut swap_total_kb = 0u64;
+    let mut swap_free_kb  = 0u64;
+    for line in content.lines() {
+        let mut parts = line.split_whitespace();
+        match parts.next() {
+            Some("MemTotal:")     => { mem_total_kb  = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0); }
+            Some("MemAvailable:") => { mem_avail_kb  = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0); }
+            Some("SwapTotal:")    => { swap_total_kb = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0); }
+            Some("SwapFree:")     => { swap_free_kb  = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0); }
+            _ => {}
+        }
+    }
+    let gib = |kb: u64| format!("{:.1}", kb as f64 / (1024.0 * 1024.0));
+    (
+        gib(mem_total_kb.saturating_sub(mem_avail_kb)),
+        gib(mem_total_kb),
+        gib(swap_total_kb.saturating_sub(swap_free_kb)),
+        gib(swap_total_kb),
+    )
+}
+
+struct ZramInfo {
+    active: bool,
+    devices: usize,
+    disk_mb: String,
+    orig_mb: String,
+    compr_mb: String,
+    ratio: String,
+    algorithm: String,
+}
+
+async fn host_zram_info() -> ZramInfo {
+    let empty = ZramInfo {
+        active: false,
+        devices: 0,
+        disk_mb: String::new(),
+        orig_mb: String::new(),
+        compr_mb: String::new(),
+        ratio: String::new(),
+        algorithm: String::new(),
+    };
+
+    // Count active zram devices (zram0, zram1, …)
+    let mut devices = 0usize;
+    let mut i = 0u32;
+    loop {
+        if tokio::fs::metadata(format!("/sys/block/zram{}", i)).await.is_ok() {
+            devices += 1;
+            i += 1;
+        } else {
+            break;
+        }
+    }
+    if devices == 0 { return empty; }
+
+    // Read mm_stat from zram0 (primary device)
+    let mm = tokio::fs::read_to_string("/sys/block/zram0/mm_stat").await.unwrap_or_default();
+    let nums: Vec<u64> = mm.split_whitespace()
+        .take(3).filter_map(|v| v.parse().ok()).collect();
+    if nums.len() < 2 || nums[0] == 0 { return empty; }
+
+    // Disk size (configured capacity)
+    let disksize_bytes: u64 = tokio::fs::read_to_string("/sys/block/zram0/disksize")
+        .await.unwrap_or_default().trim().parse().unwrap_or(0);
+    let disk_mb = if disksize_bytes > 0 {
+        format!("{}", disksize_bytes / 1_048_576)
+    } else {
+        "?".to_string()
+    };
+
+    // Compression algorithm — find the bracketed entry: "lzo [lz4] zstd" → "lz4"
+    let raw_algo = tokio::fs::read_to_string("/sys/block/zram0/comp_algorithm")
+        .await.unwrap_or_default();
+    let algorithm = raw_algo.split_whitespace()
+        .find(|s| s.starts_with('[') && s.ends_with(']'))
+        .map(|s| s.trim_matches(|c| c == '[' || c == ']').to_string())
+        .unwrap_or_else(|| raw_algo.split_whitespace().next().unwrap_or("unknown").to_string());
+
+    let orig_mb  = nums[0] as f64 / 1_048_576.0;
+    let compr_mb = nums[1] as f64 / 1_048_576.0;
+    let ratio = if nums[1] > 0 {
+        format!("{:.1}:1", nums[0] as f64 / nums[1] as f64)
+    } else {
+        "N/A".to_string()
+    };
+
+    ZramInfo {
+        active: true,
+        devices,
+        disk_mb,
+        orig_mb: format!("{:.0}", orig_mb),
+        compr_mb: format!("{:.0}", compr_mb),
+        ratio,
+        algorithm,
     }
 }
 
@@ -153,7 +308,8 @@ pub async fn admin_tab_page(
 
 // ── Docker helpers ───────────────────────────────────────────────────────────
 
-pub async fn admin_stop_all(State(state): State<AppState>) -> impl IntoResponse {
+pub async fn admin_stop_all(State(state): State<AppState>, addr: ConnectInfo<SocketAddr>, headers: HeaderMap) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     let containers = match docker::list_containers(&state.docker).await {
         Ok(c) => c,
         Err(e) => {
@@ -166,6 +322,7 @@ pub async fn admin_stop_all(State(state): State<AppState>) -> impl IntoResponse 
             error!("admin_stop_all: failed to stop {}: {}", c.id, e);
         }
     }
+    let _ = db::audit_log(&state.db, "admin", "admin.stop_all", "", &format!("{} containers", containers.len()), &ip).await;
     Json(serde_json::json!({"ok": true}))
 }
 
@@ -174,8 +331,11 @@ pub async fn admin_stop_all(State(state): State<AppState>) -> impl IntoResponse 
 pub async fn admin_change_password(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<ChangePwForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     let session_user = match auth::session_username(&jar) {
         Some(u) => u,
         None => return (
@@ -209,7 +369,10 @@ pub async fn admin_change_password(
 
     match password::hash(&body.new_password) {
         Ok(hash) => match db::update_user_password(&state.db, user.id, &hash).await {
-            Ok(_) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))),
+            Ok(_) => {
+                let _ = db::audit_log(&state.db, &session_user, "user.change_password", &session_user, "", &ip).await;
+                (StatusCode::OK, Json(serde_json::json!({"ok": true})))
+            }
             Err(e) => {
                 error!("admin_change_password: {}", e);
                 (
@@ -232,8 +395,11 @@ pub async fn admin_change_password(
 
 pub async fn api_create_user(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<CreateUserForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if body.username.trim().is_empty() || body.password.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -252,10 +418,13 @@ pub async fn api_create_user(
         }
     };
     match db::create_user(&state.db, body.username.trim(), &hash, role).await {
-        Ok(id) => (
-            StatusCode::OK,
-            Json(serde_json::json!({"ok": true, "id": id})),
-        ),
+        Ok(id) => {
+            let _ = db::audit_log(&state.db, "admin", "user.create", body.username.trim(), &format!("role={}", role), &ip).await;
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"ok": true, "id": id})),
+            )
+        }
         Err(e) => {
             let msg = e.to_string();
             let user_msg = if msg.contains("UNIQUE") {
@@ -274,8 +443,11 @@ pub async fn api_create_user(
 
 pub async fn api_delete_user(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     // Prevent deleting root users or the primary admin login
     match db::find_user_by_id(&state.db, id).await {
         Ok(Some(u)) if u.role == "root" => {
@@ -300,7 +472,10 @@ pub async fn api_delete_user(
         _ => {}
     }
     match db::delete_user(&state.db, id).await {
-        Ok(_) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))),
+        Ok(_) => {
+            let _ = db::audit_log(&state.db, "admin", "user.delete", &format!("uid:{}", id), "", &ip).await;
+            (StatusCode::OK, Json(serde_json::json!({"ok": true})))
+        }
         Err(e) => {
             error!("api_delete_user: {}", e);
             (
@@ -313,9 +488,12 @@ pub async fn api_delete_user(
 
 pub async fn api_set_user_password(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<i64>,
     Json(body): Json<AdminSetPasswordForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if body.new_password.trim().is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -333,7 +511,10 @@ pub async fn api_set_user_password(
         }
     };
     match db::update_user_password(&state.db, id, &hash).await {
-        Ok(_) => (StatusCode::OK, Json(serde_json::json!({"ok": true}))),
+        Ok(_) => {
+            let _ = db::audit_log(&state.db, "admin", "user.set_password", &format!("uid:{}", id), "", &ip).await;
+            (StatusCode::OK, Json(serde_json::json!({"ok": true})))
+        },
         Err(e) => {
             error!("api_set_user_password: {}", e);
             (
@@ -405,9 +586,12 @@ pub async fn admin_edit_page(
 
 pub async fn api_admin_edit_container(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Json(form): Json<EditContainerForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     let (docker_id, current_db_name) = match db::get_server_info_by_db_id(&state.db, db_id).await.ok().flatten() {
         Some(row) => row,
         None => return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Server not found"}))),
@@ -495,6 +679,7 @@ pub async fn api_admin_edit_container(
         }
 
         let short = if new_id.len() >= 12 { &new_id[..12] } else { &new_id };
+        let _ = db::audit_log(&state.db, "admin", "server.edit", &effective_name, &format!("#{} recreated", db_id), &ip).await;
         return (StatusCode::OK, Json(serde_json::json!({"ok": true, "new_id": db_id, "new_short": short})));
     }
 
@@ -508,6 +693,8 @@ pub async fn api_admin_edit_container(
     if let Err(e) = db::update_server_name_and_owner(&state.db, &full_id, &effective_name, form.owner_id).await {
         error!("api_admin_edit_container update_server_name_and_owner: {}", e);
     }
+
+    let _ = db::audit_log(&state.db, "admin", "server.edit", &effective_name, &format!("#{} updated", db_id), &ip).await;
 
     (StatusCode::OK, Json(serde_json::json!({"ok": true, "new_id": null})))
 }
@@ -565,14 +752,17 @@ pub async fn api_list_images(
 
 pub async fn api_delete_image(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(image_ref): Path<String>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     let decoded = urlencoding::decode(&image_ref).unwrap_or(std::borrow::Cow::Borrowed(&image_ref)).into_owned();
     match docker::delete_docker_image(&state.docker, &decoded).await {
         Ok(_) => {
             state.cache.remove("images_ts");
-            // Clean up any stored ENV overrides for this image
             let _ = db::delete_image_env(&state.db, &decoded).await;
+            let _ = db::audit_log(&state.db, "admin", "image.delete", &decoded, "", &ip).await;
             (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response()
         }
         Err(e) => {
@@ -589,8 +779,11 @@ pub struct PullImageForm {
 
 pub async fn api_pull_image(
     State(state): State<AppState>,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<PullImageForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     let image = body.image.trim().to_string();
     if image.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "image reference is required" }))).into_response();
@@ -598,6 +791,7 @@ pub async fn api_pull_image(
     match docker::ensure_image(&state.docker, &image).await {
         Ok(_) => {
             state.cache.remove("images_ts");
+            let _ = db::audit_log(&state.db, "admin", "image.pull", &image, "", &ip).await;
             (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response()
         }
         Err(e) => {
@@ -791,4 +985,49 @@ pub async fn api_admin_overview(State(state): State<AppState>) -> impl IntoRespo
         "panel_memory_mb": panel_memory_mb,
         "users_count": users_count,
     })).into_response()
+}
+
+// ── Audit log API ─────────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct AuditQuery {
+    pub page: Option<i64>,
+    pub limit: Option<i64>,
+    pub action: Option<String>,
+    pub actor: Option<String>,
+    pub search: Option<String>,
+}
+
+pub async fn api_audit_list(
+    State(state): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<AuditQuery>,
+) -> impl IntoResponse {
+    let limit = q.limit.unwrap_or(50).min(200).max(1);
+    let page = q.page.unwrap_or(1).max(1);
+    let offset = (page - 1) * limit;
+    let action = q.action.as_deref().unwrap_or("");
+    let actor = q.actor.as_deref().unwrap_or("");
+    let search = q.search.as_deref().unwrap_or("");
+    let total = db::audit_count(&state.db, action, actor, search).await.unwrap_or(0);
+    let entries = db::audit_list(&state.db, limit, offset, action, actor, search).await.unwrap_or_default();
+    Json(serde_json::json!({
+        "ok": true,
+        "entries": entries,
+        "total": total,
+        "page": page,
+        "pages": (total as f64 / limit as f64).ceil() as i64,
+    }))
+}
+
+pub async fn api_audit_clear(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_clear(&state.db).await;
+    let _ = db::audit_log(&state.db, &actor, "audit.clear", "", "", &ip).await;
+    Json(serde_json::json!({"ok": true}))
 }

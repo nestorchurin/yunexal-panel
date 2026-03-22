@@ -51,6 +51,9 @@ function switchTab(name, btn) {
     document.querySelectorAll('.yu-tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.yu-nav-item').forEach(b => b.classList.remove('active'));
     const panel = document.getElementById('tab-' + name);
+    // Make panel visible FIRST so animations fire while it's display:block
+    panel.classList.add('active');
+    if (btn) btn.classList.add('active');
     // Force animation replay on the panel itself
     panel.style.animation = 'none';
     panel.offsetHeight; // reflow
@@ -61,11 +64,10 @@ function switchTab(name, btn) {
         el.offsetHeight;
         el.style.animation = '';
     });
-    panel.classList.add('active');
-    if (btn) btn.classList.add('active');
     history.pushState({ tab: name }, '', '/admin/' + name);
     closeSidebar();
     if (name === 'images') loadImages();
+    if (name === 'audit') auditLoad();
 }
 
 // Handle browser back/forward
@@ -102,40 +104,6 @@ function stopAll() {
         .finally(() => loadContainers());
 }
 
-function changePassword() {
-    const cur     = document.getElementById('pw-current').value;
-    const nw      = document.getElementById('pw-new').value;
-    const conf    = document.getElementById('pw-confirm').value;
-    const alertEl = document.getElementById('pw-alert');
-
-    const show = (ok, msg) => {
-        alertEl.className = 'yu-alert ' + (ok ? 'yu-alert-success' : 'yu-alert-error');
-        alertEl.innerHTML = `<i class="bi bi-${ok ? 'check-circle' : 'x-circle'}"></i> ${escHtml(msg)}`;
-        alertEl.style.display = 'flex';
-    };
-
-    if (!cur || !nw || !conf) return show(false, 'All fields are required.');
-    if (nw !== conf) return show(false, 'New passwords do not match.');
-    if (nw.length < 8) return show(false, 'Password must be at least 8 characters.');
-
-    fetch('/api/admin/change-password', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ current: cur, new_password: nw })
-    }).then(async r => {
-        const data = await r.json().catch(() => ({}));
-        if (r.ok) {
-            show(true, 'Password updated successfully.');
-            document.getElementById('pw-current').value = '';
-            document.getElementById('pw-new').value = '';
-            document.getElementById('pw-confirm').value = '';
-        } else {
-            show(false, data.error || 'Failed to update password.');
-        }
-    }).catch(() => show(false, 'Network error.'));
-}
-
 function adminModalChangePw() {
     const cur  = document.getElementById('apm-current').value;
     const nw   = document.getElementById('apm-new').value;
@@ -151,7 +119,7 @@ function adminModalChangePw() {
     if (!cur || !nw || !conf) return show(false, 'All fields are required.');
     if (nw !== conf) return show(false, 'New passwords do not match.');
     if (nw.length < 8) return show(false, 'Password must be at least 8 characters.');
-    fetch('/api/admin/change-password', {
+    fetch('/api/user/change-password', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -1610,6 +1578,120 @@ function pollContainerStats() {
     });
 }
 
+// ── Audit Log ─────────────────────────────────────────────────────────────────
+
+let _auditPage = 1;
+let _auditSearchTimer = null;
+
+function auditSearchDebounce() {
+    clearTimeout(_auditSearchTimer);
+    _auditSearchTimer = setTimeout(() => { _auditPage = 1; auditLoad(); }, 300);
+}
+
+function auditLoad(page) {
+    if (page !== undefined) _auditPage = page;
+    const action = document.getElementById('audit-filter-action')?.value || '';
+    const search = document.getElementById('audit-search')?.value.trim() || '';
+    const limit = 50;
+    const params = new URLSearchParams({ page: _auditPage, limit });
+    if (action) params.set('action', action);
+    if (search) params.set('search', search);
+    const url = `/api/admin/audit?${params}`;
+    fetch(url, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.ok) return;
+            const totalEl = document.getElementById('audit-total-count');
+            if (totalEl) totalEl.textContent = data.total;
+            const tbody = document.getElementById('audit-tbody');
+            if (!tbody) return;
+            const entries = data.entries;
+            if (entries.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">No audit entries found</td></tr>';
+            } else {
+                tbody.innerHTML = entries.map(e => `<tr>
+                    <td class="mono" style="white-space:nowrap;">${escHtml(e.created_at)}</td>
+                    <td style="font-weight:600;">${escHtml(e.actor)}</td>
+                    <td class="mono" style="font-size:.8rem;">${escHtml(e.ip)}</td>
+                    <td>${_auditActionBadge(e.action)}</td>
+                    <td>${escHtml(e.target)}</td>
+                    <td style="color:var(--muted);font-size:.8rem;">${escHtml(e.detail)}</td>
+                </tr>`).join('');
+            }
+            // Pagination
+            const pag = document.getElementById('audit-pagination');
+            if (pag && data.pages > 1) {
+                let html = '';
+                if (_auditPage > 1) html += `<button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="auditLoad(${_auditPage - 1})"><i class="bi bi-chevron-left"></i></button>`;
+                html += `<span style="font-size:.8rem;color:var(--muted);">${_auditPage} / ${data.pages}</span>`;
+                if (_auditPage < data.pages) html += `<button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="auditLoad(${_auditPage + 1})"><i class="bi bi-chevron-right"></i></button>`;
+                pag.innerHTML = html;
+            } else if (pag) {
+                pag.innerHTML = '';
+            }
+        })
+        .catch(err => { console.error('auditLoad error', err); });
+}
+
+function _auditActionBadge(action) {
+    const colors = {
+        'auth.login':            ['#10b981', 'rgba(16,185,129,.12)'],
+        'auth.logout':           ['var(--muted)', 'rgba(255,255,255,.05)'],
+        'server.create':         ['#a78bfa', 'rgba(124,58,237,.12)'],
+        'server.delete':         ['#ef4444', 'rgba(239,68,68,.18)'],
+        'server.start':          ['#10b981', 'rgba(16,185,129,.12)'],
+        'server.stop':           ['#f87171', 'rgba(239,68,68,.12)'],
+        'server.restart':        ['#fbbf24', 'rgba(251,191,36,.12)'],
+        'server.kill':           ['#ef4444', 'rgba(239,68,68,.18)'],
+        'server.edit':           ['#60a5fa', 'rgba(96,165,250,.12)'],
+        'server.rename':         ['#60a5fa', 'rgba(96,165,250,.12)'],
+        'user.create':           ['#a78bfa', 'rgba(124,58,237,.12)'],
+        'user.delete':           ['#f87171', 'rgba(239,68,68,.12)'],
+        'user.change_password':  ['#fbbf24', 'rgba(251,191,36,.12)'],
+        'user.set_password':     ['#fbbf24', 'rgba(251,191,36,.12)'],
+        'dns.provider_add':      ['#2dd4bf', 'rgba(45,212,191,.12)'],
+        'dns.provider_edit':     ['#2dd4bf', 'rgba(45,212,191,.12)'],
+        'dns.provider_delete':   ['#f87171', 'rgba(239,68,68,.12)'],
+        'dns.record_add':        ['#2dd4bf', 'rgba(45,212,191,.12)'],
+        'dns.record_edit':       ['#2dd4bf', 'rgba(45,212,191,.12)'],
+        'dns.record_delete':     ['#f87171', 'rgba(239,68,68,.12)'],
+        'dns.proxy_toggle':      ['#fbbf24', 'rgba(251,191,36,.12)'],
+        'dns.sync':              ['#60a5fa', 'rgba(96,165,250,.12)'],
+        'dns.sync_records':      ['#60a5fa', 'rgba(96,165,250,.12)'],
+        'dns.server_record_add':    ['#2dd4bf', 'rgba(45,212,191,.12)'],
+        'dns.server_record_delete': ['#f87171', 'rgba(239,68,68,.12)'],
+        'net.bandwidth':         ['#f59e0b', 'rgba(245,158,11,.12)'],
+        'net.port_add':          ['#10b981', 'rgba(16,185,129,.12)'],
+        'net.port_remove':       ['#f87171', 'rgba(239,68,68,.12)'],
+        'net.port_tag':          ['#60a5fa', 'rgba(96,165,250,.12)'],
+        'net.port_toggle':       ['#fbbf24', 'rgba(251,191,36,.12)'],
+        'file.save':             ['#60a5fa', 'rgba(96,165,250,.12)'],
+        'file.create':           ['#10b981', 'rgba(16,185,129,.12)'],
+        'file.delete':           ['#f87171', 'rgba(239,68,68,.12)'],
+        'file.rename':           ['#fbbf24', 'rgba(251,191,36,.12)'],
+        'file.copy':             ['#60a5fa', 'rgba(96,165,250,.12)'],
+        'file.move':             ['#f59e0b', 'rgba(245,158,11,.12)'],
+        'file.upload':           ['#a78bfa', 'rgba(124,58,237,.12)'],
+        'file.extract':          ['#2dd4bf', 'rgba(45,212,191,.12)'],
+        'file.archive':          ['#2dd4bf', 'rgba(45,212,191,.12)'],
+        'file.bulk_delete':      ['#ef4444', 'rgba(239,68,68,.18)'],
+        'image.delete':          ['#f87171', 'rgba(239,68,68,.12)'],
+        'image.pull':            ['#10b981', 'rgba(16,185,129,.12)'],
+        'admin.stop_all':        ['#ef4444', 'rgba(239,68,68,.18)'],
+        'audit.clear':           ['var(--muted)', 'rgba(255,255,255,.05)'],
+    };
+    const [c, bg] = colors[action] || ['var(--muted)', 'rgba(255,255,255,.05)'];
+    return `<span style="display:inline-block;padding:.2rem .5rem;border-radius:5px;font-size:.75rem;font-weight:600;letter-spacing:.02em;color:${c};background:${bg};">${escHtml(action)}</span>`;
+}
+
+function auditClear() {
+    if (!confirm('Clear all audit log entries?')) return;
+    fetch('/api/admin/audit/clear', { method: 'POST', credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => { if (data.ok) { _auditPage = 1; auditLoad(); } })
+        .catch(() => {});
+}
+
 // ── Real-time Overview ────────────────────────────────────────────────────────
 
 function loadOverview() {
@@ -1669,3 +1751,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 _startAdminTimers();
+
+// Auto-init audit tab if opened via direct URL
+if (document.getElementById('tab-audit') && document.getElementById('tab-audit').classList.contains('active')) {
+    auditLoad();
+}

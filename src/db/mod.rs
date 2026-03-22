@@ -1,9 +1,11 @@
+mod audit;
 mod users;
 mod servers;
 mod ports;
 mod dns;
 mod images;
 
+pub use audit::*;
 pub use users::*;
 pub use servers::*;
 pub use ports::*;
@@ -168,6 +170,28 @@ pub async fn init_db() -> Result<Pool<Sqlite>> {
     .execute(&pool)
     .await
     .context("Failed to create dns_records table")?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor      TEXT NOT NULL,
+            action     TEXT NOT NULL,
+            target     TEXT NOT NULL DEFAULT '',
+            detail     TEXT NOT NULL DEFAULT '',
+            ip         TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .context("Failed to create audit_log table")?;
+
+    // Migration: add ip column to audit_log (no-op if already present)
+    let _ = sqlx::query("ALTER TABLE audit_log ADD COLUMN ip TEXT NOT NULL DEFAULT ''")
+        .execute(&pool)
+        .await;
 
     info!("Database initialized successfully");
     Ok(pool)

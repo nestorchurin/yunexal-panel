@@ -1,5 +1,6 @@
 use axum::{
-    extract::{Form, Path, State},
+    extract::{ConnectInfo, Form, Path, State},
+    http::HeaderMap,
     response::IntoResponse,
     Json,
 };
@@ -9,6 +10,7 @@ use crate::dns as dns_lib;
 use serde_json::Value as JsonValue;
 use axum_extra::extract::cookie::PrivateCookieJar;
 use crate::state::AppState;
+use std::net::SocketAddr;
 use tracing::error;
 use super::templates::{
     render, ConsoleTemplate, FilesTemplate, RenameServerForm, ServerCardTemplate, SettingsTemplate,
@@ -96,8 +98,11 @@ pub async fn settings_page(
 pub async fn start_server(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -110,6 +115,8 @@ pub async fn start_server(
     } else {
         docker::reapply_bandwidth_limit(&state.docker, &docker_id).await;
         docker::reapply_isolation_rules(&state.docker, &docker_id).await;
+        let actor = auth::session_username(&jar).unwrap_or_default();
+        let _ = db::audit_log(&state.db, &actor, "server.start", &db_name, &format!("#{}", db_id), &ip).await;
     }
     match docker::get_container(&state.docker, &docker_id).await {
         Ok(mut c) => { c.db_id = db_id; c.name = db_name.clone(); render(ServerCardTemplate { container: c, is_admin }).into_response() }
@@ -120,8 +127,11 @@ pub async fn start_server(
 pub async fn stop_server(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -131,6 +141,9 @@ pub async fn stop_server(
     };
     if let Err(e) = docker::stop_container(&state.docker, &docker_id).await {
         error!("Failed to stop container {}: {}", docker_id, e);
+    } else {
+        let actor = auth::session_username(&jar).unwrap_or_default();
+        let _ = db::audit_log(&state.db, &actor, "server.stop", &db_name, &format!("#{}", db_id), &ip).await;
     }
     match docker::get_container(&state.docker, &docker_id).await {
         Ok(mut c) => { c.db_id = db_id; c.name = db_name.clone(); render(ServerCardTemplate { container: c, is_admin }).into_response() }
@@ -141,8 +154,11 @@ pub async fn stop_server(
 pub async fn restart_server(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -156,6 +172,8 @@ pub async fn restart_server(
     }
     docker::reapply_bandwidth_limit(&state.docker, &docker_id).await;
     docker::reapply_isolation_rules(&state.docker, &docker_id).await;
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "server.restart", &db_name, &format!("#{}", db_id), &ip).await;
     match docker::get_container(&state.docker, &docker_id).await {
         Ok(mut c) => { c.db_id = db_id; c.name = db_name.clone(); render(ServerCardTemplate { container: c, is_admin }).into_response() }
         Err(_) => "Restarted".into_response(),
@@ -165,8 +183,11 @@ pub async fn restart_server(
 pub async fn kill_server(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -177,6 +198,8 @@ pub async fn kill_server(
     if let Err(e) = docker::kill_container(&state.docker, &docker_id).await {
         return format!("Failed to kill: {}", e).into_response();
     }
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "server.kill", &db_name, &format!("#{}", db_id), &ip).await;
     match docker::get_container(&state.docker, &docker_id).await {
         Ok(mut c) => { c.db_id = db_id; c.name = db_name.clone(); render(ServerCardTemplate { container: c, is_admin }).into_response() }
         Err(_) => "Killed".into_response(),
@@ -186,9 +209,12 @@ pub async fn kill_server(
 pub async fn rename_server(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Form(form): Form<RenameServerForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::can_access_server(&state, &jar, db_id).await {
         return (axum::http::StatusCode::FORBIDDEN, "Access denied").into_response();
     }
@@ -209,6 +235,9 @@ pub async fn rename_server(
     // Update name in SQLite only — Docker container name stays as internal identifier
     if let Err(e) = db::update_server_name_only(&state.db, &docker_id, &new_name).await {
         error!("rename_server db update: {}", e);
+    } else {
+        let actor = auth::session_username(&jar).unwrap_or_default();
+        let _ = db::audit_log(&state.db, &actor, "server.rename", &new_name, &format!("#{}", db_id), &ip).await;
     }
     match docker::get_container(&state.docker, &docker_id).await {
         Ok(mut c) => { c.db_id = db_id; c.name = new_name; render(ServerCardTemplate { container: c, is_admin }).into_response() }
@@ -218,10 +247,14 @@ pub async fn rename_server(
 
 pub async fn delete_server(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     let hx_redir = [(axum::http::header::HeaderName::from_static("hx-redirect"), "/")];
-    let (docker_id, _) = match resolve_server(&state, db_id).await {
+    let (docker_id, db_name) = match resolve_server(&state, db_id).await {
         Ok(v) => v,
         Err(_) => return hx_redir,
     };
@@ -275,6 +308,8 @@ pub async fn delete_server(
     if let Err(e) = db::delete_server_by_container_id(&state.db, &docker_id).await {
         error!("delete_server db: {}", e);
     }
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "server.delete", &db_name, &format!("#{}", db_id), &ip).await;
     hx_redir
 }
 

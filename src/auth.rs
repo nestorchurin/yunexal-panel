@@ -1,12 +1,33 @@
 use axum::{
-    extract::{Request, State},
+    extract::{ConnectInfo, Request, State},
+    http::HeaderMap,
     middleware::Next,
     response::{IntoResponse, Redirect},
 };
 use axum_extra::extract::cookie::PrivateCookieJar;
 use crate::{db, state::AppState};
+use std::net::SocketAddr;
 
 pub const SESSION_COOKIE: &str = "session";
+
+/// Extract client IP from X-Forwarded-For / X-Real-IP headers, falling back to socket address.
+pub fn client_ip(headers: &HeaderMap, addr: ConnectInfo<SocketAddr>) -> String {
+    if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+        if let Some(first) = xff.split(',').next() {
+            let ip = first.trim();
+            if !ip.is_empty() {
+                return ip.to_string();
+            }
+        }
+    }
+    if let Some(real) = headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
+        let ip = real.trim();
+        if !ip.is_empty() {
+            return ip.to_string();
+        }
+    }
+    addr.0.ip().to_string()
+}
 
 /// Returns the username stored in the session cookie, if any.
 pub fn session_username(jar: &PrivateCookieJar) -> Option<String> {

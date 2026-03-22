@@ -35,6 +35,7 @@ use admin::{
     api_list_images, api_delete_image,
     api_get_image_env, api_set_image_env, api_duplicate_image, api_pull_image,
     api_admin_containers, api_admin_overview,
+    api_audit_list, api_audit_clear,
 };
 use dns::{
     api_dns_list_providers, api_dns_add_provider, api_dns_update_provider, api_dns_delete_provider,
@@ -155,6 +156,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/admin/dns/sync",       post(api_dns_sync))
         .route("/api/admin/dns/providers/{id}/sync-records", post(api_dns_sync_records))
         .route("/api/admin/dns/container-records", get(api_dns_container_records))
+        .route("/api/admin/audit", get(api_audit_list))
+        .route("/api/admin/audit/clear", post(api_audit_clear))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware::require_admin,

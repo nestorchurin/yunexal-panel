@@ -1,6 +1,6 @@
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{ConnectInfo, Path, State},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -8,6 +8,7 @@ use axum_extra::extract::cookie::PrivateCookieJar;
 use serde::Deserialize;
 use crate::{auth, db, docker};
 use crate::state::AppState;
+use std::net::SocketAddr;
 use tracing::error;
 use super::templates::{render, NetworkingTemplate, PortRow};
 
@@ -87,9 +88,12 @@ pub async fn api_get_bandwidth(
 pub async fn api_set_bandwidth(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Json(body): Json<SetBandwidthBody>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::is_admin_session(&state, &jar).await {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({ "error": "Only admins can change bandwidth limits." }))).into_response();
     }
@@ -98,7 +102,12 @@ pub async fn api_set_bandwidth(
         None => return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error":"not found"}))).into_response(),
     };
     match docker::set_bandwidth_limit(&state.docker, &docker_id, body.mbit).await {
-        Ok(_) => Json(serde_json::json!({ "ok": true })).into_response(),
+        Ok(_) => {
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let detail = body.mbit.map(|m| format!("{}Mbit", m)).unwrap_or_else(|| "unlimited".into());
+            let _ = db::audit_log(&state.db, &actor, "net.bandwidth", &format!("#{}", db_id), &detail, &ip).await;
+            Json(serde_json::json!({ "ok": true })).into_response()
+        }
         Err(e) => {
             error!("set_bandwidth {}: {}", docker_id, e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))).into_response()
@@ -216,9 +225,12 @@ async fn recreate_for_ports(
 pub async fn api_add_port(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Json(body): Json<AddPortBody>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::is_admin_session(&state, &jar).await {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Only admins can open ports."}))).into_response();
     }
@@ -244,15 +256,21 @@ pub async fn api_add_port(
         error!("api_add_port set_port_enabled: {}", e);
     }
 
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "net.port_add", &format!("#{}", db_id), &format!("{}:{}", body.host_port, body.container_port), &ip).await;
+
     Json(serde_json::json!({"ok": true})).into_response()
 }
 
 pub async fn api_remove_port(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Json(body): Json<RemovePortBody>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::is_admin_session(&state, &jar).await {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Only admins can close ports."}))).into_response();
     }
@@ -274,20 +292,30 @@ pub async fn api_remove_port(
         error!("api_remove_port delete_port_entry: {}", e);
     }
 
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "net.port_remove", &format!("#{}", db_id), &format!("{}:{}", body.host_port, body.container_port), &ip).await;
+
     Json(serde_json::json!({"ok": true})).into_response()
 }
 
 pub async fn api_tag_port(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Json(body): Json<TagPortBody>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::is_admin_session(&state, &jar).await {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Only admins can tag ports."}))).into_response();
     }
     match db::set_port_tag(&state.db, db_id, body.host_port as i64, body.container_port as i64, &body.tag).await {
-        Ok(_) => Json(serde_json::json!({"ok": true})).into_response(),
+        Ok(_) => {
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let _ = db::audit_log(&state.db, &actor, "net.port_tag", &format!("#{}", db_id), &format!("{}:{} tag={}", body.host_port, body.container_port, body.tag), &ip).await;
+            Json(serde_json::json!({"ok": true})).into_response()
+        }
         Err(e) => {
             error!("api_tag_port: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response()
@@ -305,9 +333,12 @@ pub struct TogglePortBody {
 pub async fn api_toggle_port(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(db_id): Path<i64>,
     Json(body): Json<TogglePortBody>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     if !auth::is_admin_session(&state, &jar).await {
         return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Only admins can toggle ports."}))).into_response();
     }
@@ -330,5 +361,7 @@ pub async fn api_toggle_port(
     if let Err(e) = db::set_port_enabled(&state.db, db_id, body.host_port as i64, body.container_port as i64, body.enabled).await {
         error!("api_toggle_port set_port_enabled: {}", e);
     }
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "net.port_toggle", &format!("#{}", db_id), &format!("{}:{} enabled={}", body.host_port, body.container_port, body.enabled), &ip).await;
     Json(serde_json::json!({"ok": true, "enabled": body.enabled})).into_response()
 }

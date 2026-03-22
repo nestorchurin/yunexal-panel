@@ -1,5 +1,6 @@
 use axum::{
-    extract::{Form, Query, State},
+    extract::{ConnectInfo, Form, Query, State},
+    http::HeaderMap,
     response::{IntoResponse, Redirect},
     Json,
 };
@@ -11,14 +12,18 @@ use crate::compose::ComposeService;
 use crate::{auth, db, docker};
 use crate::dns as dns_lib;
 use crate::state::AppState;
+use std::net::SocketAddr;
 use super::templates::{render, CreateServerForm, NewServerTemplate, UserInfo};
 use tracing::warn;
 
 pub async fn create_server(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Form(form): Form<CreateServerForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
     // Load users once — every error render keeps the owner dropdown populated.
     let users: Vec<UserInfo> = db::list_users(&state.db)
         .await
@@ -374,6 +379,8 @@ pub async fn create_server(
                 }
             }
         }
+        let actor = auth::session_username(&jar).unwrap_or_default();
+        let _ = db::audit_log(&state.db, &actor, "server.create", &form.name, &format!("#{}", db_id), &ip).await;
         Redirect::to(&format!("/servers/{}/console", db_id)).into_response()
     } else {
         Redirect::to(&format!("/servers/{}/console", short_id)).into_response()
