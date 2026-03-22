@@ -18,7 +18,7 @@ const term = new Terminal({
     cursorBlink: true,
     theme: { background: '#000000', foreground: '#f0f0f0' },
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-    fontSize: 14,
+    fontSize: window.innerWidth <= 575 ? 12 : 14,
     convertEol: true,
 });
 const fitAddon = new FitAddon.FitAddon();

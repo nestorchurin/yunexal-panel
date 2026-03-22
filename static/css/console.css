@@ -53,7 +53,7 @@ body { overflow: hidden; }
     gap: .4rem;
     flex-shrink: 0;
 }
-.con-btn {
+button.con-btn {
     display: inline-flex;
     align-items: center;
     gap: .3rem;
@@ -67,17 +67,22 @@ body { overflow: hidden; }
     transition: all .15s;
     line-height: 1;
     white-space: nowrap;
+    text-decoration: none;
+    -webkit-appearance: none;
+    appearance: none;
+    outline: none;
+    box-shadow: none;
 }
-.con-btn:disabled { opacity: .35; cursor: not-allowed; pointer-events: none; }
-.con-btn i { font-size: .8rem; }
-.con-btn-start   { background: rgba(16,185,129,.12);  color: #10b981; border-color: rgba(16,185,129,.2); }
-.con-btn-restart { background: rgba(99,102,241,.1);   color: #818cf8; border-color: rgba(99,102,241,.2); }
-.con-btn-stop    { background: rgba(245,158,11,.1);   color: #f59e0b; border-color: rgba(245,158,11,.2); }
-.con-btn-kill    { background: rgba(239,68,68,.1);    color: #ef4444; border-color: rgba(239,68,68,.2); }
-.con-btn-start:hover:not(:disabled)   { background: rgba(16,185,129,.22); }
-.con-btn-restart:hover:not(:disabled) { background: rgba(99,102,241,.2); }
-.con-btn-stop:hover:not(:disabled)    { background: rgba(245,158,11,.2); }
-.con-btn-kill:hover:not(:disabled)    { background: rgba(239,68,68,.2); }
+button.con-btn:disabled { opacity: .35; cursor: not-allowed; pointer-events: none; }
+button.con-btn i { font-size: .8rem; }
+button.con-btn-start   { background: rgba(16,185,129,.12);  color: #10b981; border-color: rgba(16,185,129,.2); }
+button.con-btn-restart { background: rgba(99,102,241,.1);   color: #818cf8; border-color: rgba(99,102,241,.2); }
+button.con-btn-stop    { background: rgba(245,158,11,.1);   color: #f59e0b; border-color: rgba(245,158,11,.2); }
+button.con-btn-kill    { background: rgba(239,68,68,.1);    color: #ef4444; border-color: rgba(239,68,68,.2); }
+button.con-btn-start:hover:not(:disabled)   { background: rgba(16,185,129,.22); }
+button.con-btn-restart:hover:not(:disabled) { background: rgba(99,102,241,.2); }
+button.con-btn-stop:hover:not(:disabled)    { background: rgba(245,158,11,.2); }
+button.con-btn-kill:hover:not(:disabled)    { background: rgba(239,68,68,.2); }
 
 /* ── Main grid ── */
 .con-grid {
@@ -175,19 +180,68 @@ body { overflow: hidden; }
 .yu-panel-hd { padding: .7rem .85rem; border-bottom: 1px solid var(--bdr); font-size: .82rem; font-weight: 600; display: flex; align-items: center; gap: .4rem; }
 .yu-panel-bd { padding: .85rem; }
 
-/* ── Responsive ── */
+/* ── Responsive (tablet + phone) ── */
 @media (max-width: 991.98px) {
-    body { overflow: auto; }
-    .yu-layout { flex-direction: column; height: auto; min-height: 100vh; }
-    .yu-main { overflow: visible; }
-    .yu-content { flex: 1; overflow: visible; min-height: auto; }
+    html, body { overflow-x: hidden; max-width: 100vw; }
+    body { overflow-y: auto; }
+    .yu-layout { flex-direction: column; height: auto; min-height: 100dvh; }
+    .yu-main { overflow: clip; max-width: 100vw; }
+    .yu-content { flex: 1; overflow: visible; min-height: auto; max-width: 100%; padding: .75rem; gap: .6rem; }
+    /* Stack terminal above stats */
     .con-grid { grid-template-columns: 1fr; overflow: visible; }
-    .con-terminal-col { flex: none; }
-    .con-term-win { height: 55vmax; min-height: 320px; max-height: 520px; flex: none; }
+    .con-terminal-col { flex: none; min-width: 0; }
+    .con-term-win { height: clamp(260px, 45svh, 460px); flex: none; overflow: hidden; }
     .con-right-col { overflow-y: visible; }
-    .con-btn span { display: none; }
-    .con-btn { padding: .35rem .5rem; }
+    /* Icon-only buttons on all mobile — always fit regardless of phone width */
+    button.con-btn span { display: none; }
+    button.con-btn { padding: .42rem .6rem; }
 }
+
+/* ── Phone portrait ── */
 @media (max-width: 575.98px) {
-    .yu-content { padding: .75rem; gap: .6rem; }
+    .yu-content { padding: .55rem; gap: .5rem; }
+    /* Server name already shown in mobile topbar — hide duplicate */
+    .con-topbar-left { display: none; }
+    .con-topbar { padding: .4rem .55rem; }
+    /* 4 icon buttons spread evenly across full topbar width */
+    .con-topbar-actions { flex: 1; gap: .3rem; }
+    .con-topbar-actions button.con-btn { flex: 1; justify-content: center; padding: .5rem 0; }
+    /* Taller terminal relative to viewport */
+    .con-term-win { height: clamp(200px, 42svh, 360px); }
+    /* Stats: horizontal swipe strip — only this row scrolls, not the whole page */
+    .con-right-col {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        gap: .45rem;
+        padding-bottom: 1px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .con-right-col::-webkit-scrollbar { display: none; }
+    .con-stat-card { flex: 0 0 auto; min-width: 138px; padding: .55rem .7rem; }
+    /* Hide mini charts — not useful at phone size */
+    .chart-container { display: none; }
+    .con-stat-head { font-size: .6rem; }
+    .con-stat-val { font-size: .9rem; margin-bottom: 0; }
+}
+
+/* ── Landscape phone ── */
+@media (max-width: 767.98px) and (orientation: landscape) {
+    .con-term-win { height: clamp(150px, 54svh, 230px); }
+    .con-right-col {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        gap: .45rem;
+        scrollbar-width: none;
+    }
+    .con-right-col::-webkit-scrollbar { display: none; }
+    .con-stat-card { flex: 0 0 auto; min-width: 130px; padding: .45rem .6rem; }
+    .chart-container { display: none; }
+    .con-stat-val { margin-bottom: 0; }
 }
