@@ -2,11 +2,12 @@ use axum::{
     extract::{Form, Multipart, Path, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse, Redirect},
+    Json,
 };
 use axum_extra::extract::cookie::PrivateCookieJar;
 use crate::{auth, db, docker};
 use crate::state::AppState;
-use super::templates::{CopyFileForm, CreateFileForm, DeleteFileQuery, FileContentQuery, FileEditTemplate, FileListQuery, FileUploadQuery, RenameFileForm, SaveFileForm};
+use super::templates::{ArchiveForm, CopyFileForm, CreateFileForm, DeleteFileQuery, ExtractForm, FileContentQuery, FileEditTemplate, FileListQuery, FileUploadQuery, RenameFileForm, SaveFileForm};
 
 fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -14,6 +15,18 @@ fn escape_html(s: &str) -> String {
      .replace('>', "&gt;")
      .replace('"', "&quot;")
      .replace('\'', "&#x27;")
+}
+
+fn format_size(bytes: u64) -> String {
+    if bytes >= 1_073_741_824 {
+        format!("{:.1} GB", bytes as f64 / 1_073_741_824.0)
+    } else if bytes >= 1_048_576 {
+        format!("{:.1} MB", bytes as f64 / 1_048_576.0)
+    } else if bytes >= 1_024 {
+        format!("{:.1} KB", bytes as f64 / 1_024.0)
+    } else {
+        format!("{} B", bytes)
+    }
 }
 
 /// Returns (bootstrap-icon-class, color-class) for a filename based on its extension.
@@ -32,6 +45,14 @@ fn file_icon(name: &str) -> (&'static str, &'static str) {
             => ("bi-file-earmark-image", "fb-icon-config"),
         _ => ("bi-file-earmark", "fb-icon-text"),
     }
+}
+
+fn is_extractable(name: &str) -> bool {
+    let n = name.to_lowercase();
+    n.ends_with(".tar.gz") || n.ends_with(".tgz")
+    || n.ends_with(".tar.bz2") || n.ends_with(".tbz2")
+    || n.ends_with(".tar.xz") || n.ends_with(".txz")
+    || n.ends_with(".tar") || n.ends_with(".zip") || n.ends_with(".jar")
 }
 
 /// Builds a breadcrumb bar HTML for the given path.
@@ -94,6 +115,7 @@ pub async fn list_files_api(
     );
 
     html.push_str(&build_breadcrumb(db_id, &path));
+    html.push_str(r#"<div class="fb-sel-bar" id="fb-sel-bar"><label class="fb-sel-all"><span class="fb-cb-wrap"><input type="checkbox" class="fb-cb" id="fb-cb-all"><span class="fb-cb-box"></span></span>All</label><span class="fb-sel-count" id="fb-sel-count"></span><div class="fb-sel-actions"><button type="button" class="fb-sel-btn fb-sel-btn-copy" id="fb-btn-copy"><i class="bi bi-files"></i> Copy</button><button type="button" class="fb-sel-btn fb-sel-btn-cut" id="fb-btn-cut"><i class="bi bi-scissors"></i> Cut</button><div class="fb-sel-divider"></div><button type="button" class="fb-sel-btn fb-sel-btn-archive" id="fb-btn-archive"><i class="bi bi-file-earmark-zip"></i> Archive</button><div class="fb-sel-divider"></div><button type="button" class="fb-sel-btn fb-sel-btn-delete" id="fb-btn-delete"><i class="bi bi-trash3"></i> Delete</button></div></div>"#);
     html.push_str(r#"<div class="fb-list">"#);
 
     match docker::list_files(&state.docker, &volume_dir, &path).await {
@@ -115,7 +137,7 @@ pub async fn list_files_api(
                 html.push_str(r#"<div class="fb-empty"><i class="bi bi-folder2-open"></i><div>This folder is empty</div></div>"#);
             }
 
-            for file in &files {
+            for (file, fsize) in &files {
                 let is_dir = file.ends_with('/');
                 let clean_name = file.trim_end_matches('/');
                 let full_path = if path == "/" {
@@ -128,21 +150,27 @@ pub async fn list_files_api(
 
                 if is_dir {
                     html.push_str(&format!(
-                        r##"<a class="fb-row fb-row-dir" data-path="{}" data-type="dir" hx-get="/api/servers/{}/files/list?path={}" hx-target="#file-browser" hx-swap="outerHTML"><div class="fb-icon fb-icon-dir"><i class="bi bi-folder-fill"></i></div><div class="fb-name">{}</div><div class="fb-meta">folder</div></a>"##,
-                        safe_full, db_id, safe_full, safe_name
+                        r##"<a class="fb-row fb-row-dir" data-path="{}" data-type="dir" hx-get="/api/servers/{}/files/list?path={}" hx-target="#file-browser" hx-swap="outerHTML"><label class="fb-cb-wrap" onclick="event.stopPropagation()"><input type="checkbox" class="fb-cb" value="{}"><span class="fb-cb-box"></span></label><div class="fb-icon fb-icon-dir"><i class="bi bi-folder-fill"></i></div><div class="fb-name">{}</div><div class="fb-meta">folder</div></a>"##,
+                        safe_full, db_id, safe_full, safe_full, safe_name
                     ));
                 } else {
                     let (icon, color) = file_icon(clean_name);
-                    let raw_ext = clean_name.rsplit('.').next().unwrap_or(clean_name);
-                    let ext_label = if raw_ext != clean_name && raw_ext.len() <= 8 {
-                        format!(".{}", escape_html(raw_ext))
-                    } else {
-                        "file".to_string()
+                    let archive_attr = if is_extractable(clean_name) { " data-archive=\"true\"" } else { "" };
+                    let meta_label = match fsize {
+                        Some(b) => format_size(*b),
+                        None => {
+                            let raw_ext = clean_name.rsplit('.').next().unwrap_or(clean_name);
+                            if raw_ext != clean_name && raw_ext.len() <= 8 {
+                                format!(".{}", escape_html(raw_ext))
+                            } else {
+                                "file".to_string()
+                            }
+                        }
                     };
                     html.push_str(&format!(
-                        r#"<a class="fb-row fb-row-file" data-path="{}" data-type="file" href="/servers/{}/files/edit?path={}"><div class="fb-icon {}"><i class="bi {}"></i></div><div class="fb-name">{}</div><div class="fb-meta">{}</div></a>"#,
-                        safe_full, db_id, urlencoding::encode(&full_path),
-                        color, icon, safe_name, ext_label
+                        r#"<a class="fb-row fb-row-file" data-path="{}" data-type="file"{}  href="/servers/{}/files/edit?path={}"><label class="fb-cb-wrap" onclick="event.stopPropagation()"><input type="checkbox" class="fb-cb" value="{}"><span class="fb-cb-box"></span></label><div class="fb-icon {}"><i class="bi {}"></i></div><div class="fb-name">{}</div><div class="fb-meta">{}</div></a>"#,
+                        safe_full, archive_attr, db_id, urlencoding::encode(&full_path),
+                        safe_full, color, icon, safe_name, meta_label
                     ));
                 }
             }
@@ -219,6 +247,7 @@ pub async fn edit_file_page(
         filename,
         content,
         ace_mode,
+        active_tab: "files",
     })
     .into_response()
 }
@@ -385,6 +414,93 @@ async fn docker_volume_cmd(volume_path: &std::path::Path, cmd: &str) -> Result<(
 /// Shell-escape a path segment for use inside single-quoted strings.
 fn sh_esc(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\'', "'\\''")
+}
+
+// ── JSON file listing ──────────────────────────────────────────────────────────
+
+#[derive(serde::Serialize)]
+pub struct FileJsonEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+    meta: String,
+    icon: String,
+    color: String,
+    is_archive: bool,
+}
+
+pub async fn list_files_json(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    Path(db_id): Path<i64>,
+    Query(query): Query<FileListQuery>,
+) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, Json(Vec::<FileJsonEntry>::new())).into_response();
+    }
+    let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
+        Some(cid) => cid,
+        None => return (StatusCode::NOT_FOUND, Json(Vec::<FileJsonEntry>::new())).into_response(),
+    };
+    let path = query.path.unwrap_or_else(|| "/".to_string());
+    let volume_dir = docker::get_volume_dir(&state.docker, &docker_id)
+        .await
+        .unwrap_or_else(|_| docker_id.clone());
+
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let volume_path = cwd.join("volumes").join(&volume_dir);
+    if resolve_path(&volume_path, &path).is_none() {
+        return (StatusCode::FORBIDDEN, Json(Vec::<FileJsonEntry>::new())).into_response();
+    }
+
+    match docker::list_files(&state.docker, &volume_dir, &path).await {
+        Ok(files) => {
+            let entries: Vec<FileJsonEntry> = files.iter().map(|(file, fsize)| {
+                let is_dir = file.ends_with('/');
+                let clean_name = file.trim_end_matches('/').to_string();
+                let full_path = if path == "/" {
+                    format!("/{}", clean_name)
+                } else {
+                    format!("{}/{}", path.trim_end_matches('/'), clean_name)
+                };
+                if is_dir {
+                    FileJsonEntry {
+                        name: clean_name,
+                        path: full_path,
+                        is_dir: true,
+                        meta: "folder".to_string(),
+                        icon: "bi-folder-fill".to_string(),
+                        color: "fb-icon-dir".to_string(),
+                        is_archive: false,
+                    }
+                } else {
+                    let (icon, color) = file_icon(&clean_name);
+                    let meta = match fsize {
+                        Some(b) => format_size(*b),
+                        None => {
+                            let raw_ext = clean_name.rsplit('.').next().unwrap_or(&clean_name);
+                            if raw_ext != clean_name.as_str() && raw_ext.len() <= 8 {
+                                format!(".{}", raw_ext)
+                            } else {
+                                "file".to_string()
+                            }
+                        }
+                    };
+                    FileJsonEntry {
+                        is_archive: is_extractable(&clean_name),
+                        name: clean_name,
+                        path: full_path,
+                        is_dir: false,
+                        meta,
+                        icon: icon.to_string(),
+                        color: color.to_string(),
+                    }
+                }
+            }).collect();
+            Json(entries).into_response()
+        }
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(Vec::<FileJsonEntry>::new())).into_response(),
+    }
 }
 
 // ── Helper to resolve and guard a volume-relative path ───────────────────────
@@ -726,6 +842,267 @@ pub async fn upload_files(
         return (StatusCode::BAD_REQUEST, msg).into_response();
     }
 
+    (
+        StatusCode::OK,
+        axum::http::HeaderMap::from_iter([(
+            axum::http::header::HeaderName::from_static("hx-trigger"),
+            axum::http::HeaderValue::from_static("file-created"),
+        )]),
+    ).into_response()
+}
+
+// ── EXTRACT an archive file in-place ─────────────────────────────────────────
+pub async fn extract_archive(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    Path(db_id): Path<i64>,
+    Form(form): Form<ExtractForm>,
+) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
+    let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
+        Some(cid) => cid,
+        None => return (StatusCode::NOT_FOUND, "Server not found").into_response(),
+    };
+    let volume_dir = docker::get_volume_dir(&state.docker, &docker_id).await
+        .unwrap_or_else(|_| docker_id.clone());
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let volume_path = cwd.join("volumes").join(&volume_dir);
+
+    let archive_path = match resolve_path(&volume_path, &form.path) {
+        Some(p) => p,
+        None => return (StatusCode::FORBIDDEN, "Access denied").into_response(),
+    };
+    if !archive_path.exists() {
+        return (StatusCode::NOT_FOUND, "Archive not found").into_response();
+    }
+
+    let arch_name = match archive_path.file_name().and_then(|s| s.to_str()) {
+        Some(n) => n.to_string(),
+        None => return (StatusCode::BAD_REQUEST, "Invalid path").into_response(),
+    };
+    let arch_dir = match archive_path.parent() {
+        Some(p) => p.to_path_buf(),
+        None => return (StatusCode::BAD_REQUEST, "Invalid path").into_response(),
+    };
+    let rel_dir = arch_dir.strip_prefix(&volume_path)
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let cd_part = if rel_dir.is_empty() {
+        "cd /mnt".to_string()
+    } else {
+        format!("cd '/mnt/{}'", sh_esc(&rel_dir))
+    };
+
+    let name_lower = arch_name.to_lowercase();
+    let sh_cmd = if name_lower.ends_with(".tar.gz") || name_lower.ends_with(".tgz") {
+        format!("{} && tar xzf '{}'", cd_part, sh_esc(&arch_name))
+    } else if name_lower.ends_with(".tar.bz2") || name_lower.ends_with(".tbz2") {
+        format!("{} && tar xjf '{}'", cd_part, sh_esc(&arch_name))
+    } else if name_lower.ends_with(".tar.xz") || name_lower.ends_with(".txz") {
+        format!("{} && tar xJf '{}'", cd_part, sh_esc(&arch_name))
+    } else if name_lower.ends_with(".tar") {
+        format!("{} && tar xf '{}'", cd_part, sh_esc(&arch_name))
+    } else if name_lower.ends_with(".zip") || name_lower.ends_with(".jar") {
+        format!("{} && unzip -o '{}'", cd_part, sh_esc(&arch_name))
+    } else {
+        return (StatusCode::BAD_REQUEST, "Unsupported archive format").into_response();
+    };
+
+    match docker_volume_cmd(&volume_path, &sh_cmd).await {
+        Ok(_) => (
+            StatusCode::OK,
+            axum::http::HeaderMap::from_iter([(
+                axum::http::header::HeaderName::from_static("hx-trigger"),
+                axum::http::HeaderValue::from_static("file-created"),
+            )]),
+        ).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Extract failed: {e}")).into_response(),
+    }
+}
+
+// ── CREATE a tar.gz archive from selected items ───────────────────────────────
+pub async fn create_archive(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    Path(db_id): Path<i64>,
+    Form(form): Form<ArchiveForm>,
+) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
+    let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
+        Some(cid) => cid,
+        None => return (StatusCode::NOT_FOUND, "Server not found").into_response(),
+    };
+    let volume_dir = docker::get_volume_dir(&state.docker, &docker_id).await
+        .unwrap_or_else(|_| docker_id.clone());
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let volume_path = cwd.join("volumes").join(&volume_dir);
+
+    let base_dir = match resolve_path(&volume_path, &form.dir) {
+        Some(p) => p,
+        None => return (StatusCode::FORBIDDEN, "Access denied").into_response(),
+    };
+
+    // Sanitize archive name
+    let raw_name = form.name.trim();
+    if raw_name.is_empty() || raw_name.contains('/') || raw_name.contains('\\') || raw_name.starts_with('.') {
+        return (StatusCode::BAD_REQUEST, "Invalid archive name").into_response();
+    }
+    let archive_name = if raw_name.ends_with(".tar.gz") {
+        raw_name.to_string()
+    } else {
+        format!("{}.tar.gz", raw_name)
+    };
+
+    // Parse + validate paths (newline-separated full volume paths)
+    let names: Vec<String> = form.paths
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() { return None; }
+            let item = resolve_path(&volume_path, line)?;
+            if item.parent()? != base_dir { return None; }
+            let name = item.file_name()?.to_str()?.to_string();
+            if name.is_empty() || name.contains('/') { return None; }
+            Some(name)
+        })
+        .collect();
+
+    if names.is_empty() {
+        return (StatusCode::BAD_REQUEST, "No valid items selected").into_response();
+    }
+
+    let rel_dir = base_dir.strip_prefix(&volume_path)
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let cd_part = if rel_dir.is_empty() {
+        "cd /mnt".to_string()
+    } else {
+        format!("cd '/mnt/{}'", sh_esc(&rel_dir))
+    };
+    let targets: String = names.iter()
+        .map(|n| format!("'{}'", sh_esc(n)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let sh_cmd = format!("{} && tar czf '{}' {}", cd_part, sh_esc(&archive_name), targets);
+
+    match docker_volume_cmd(&volume_path, &sh_cmd).await {
+        Ok(_) => (
+            StatusCode::OK,
+            axum::http::HeaderMap::from_iter([(
+                axum::http::header::HeaderName::from_static("hx-trigger"),
+                axum::http::HeaderValue::from_static("file-created"),
+            )]),
+        ).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Archive failed: {e}")).into_response(),
+    }
+}
+
+// ── BULK DELETE multiple paths ────────────────────────────────────────────────
+pub async fn bulk_delete(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    Path(db_id): Path<i64>,
+    Form(form): Form<super::templates::BulkPathsForm>,
+) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
+    let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
+        Some(cid) => cid,
+        None => return (StatusCode::NOT_FOUND, "Server not found").into_response(),
+    };
+    let volume_dir = docker::get_volume_dir(&state.docker, &docker_id).await
+        .unwrap_or_else(|_| docker_id.clone());
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let volume_path = cwd.join("volumes").join(&volume_dir);
+
+    let mut errors: Vec<String> = Vec::new();
+    for line in form.paths.lines() {
+        let p = line.trim();
+        if p.is_empty() { continue; }
+        let target = match resolve_path(&volume_path, p) {
+            Some(t) => t,
+            None => { errors.push(format!("Access denied: {}", p)); continue; }
+        };
+        let res = if target.is_dir() {
+            tokio::fs::remove_dir_all(&target).await
+        } else {
+            tokio::fs::remove_file(&target).await
+        };
+        if let Err(e) = res { errors.push(format!("{}: {}", p, e)); }
+    }
+    if !errors.is_empty() {
+        return (StatusCode::INTERNAL_SERVER_ERROR, errors.join("\n")).into_response();
+    }
+    (
+        StatusCode::OK,
+        axum::http::HeaderMap::from_iter([(
+            axum::http::header::HeaderName::from_static("hx-trigger"),
+            axum::http::HeaderValue::from_static("file-created"),
+        )]),
+    ).into_response()
+}
+
+// ── MOVE a file/directory to another directory ────────────────────────────────
+pub async fn move_file(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    Path(db_id): Path<i64>,
+    Form(form): Form<super::templates::CopyFileForm>,
+) -> impl IntoResponse {
+    if !auth::can_access_server(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
+    let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
+        Some(cid) => cid,
+        None => return (StatusCode::NOT_FOUND, "Server not found").into_response(),
+    };
+    let volume_dir = docker::get_volume_dir(&state.docker, &docker_id).await
+        .unwrap_or_else(|_| docker_id.clone());
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let volume_path = cwd.join("volumes").join(&volume_dir);
+
+    let src = match resolve_path(&volume_path, &form.src) {
+        Some(p) => p,
+        None => return (StatusCode::FORBIDDEN, "Access denied (src)").into_response(),
+    };
+    let dst_dir = match resolve_path(&volume_path, &form.dst_dir) {
+        Some(p) => p,
+        None => return (StatusCode::FORBIDDEN, "Access denied (dst)").into_response(),
+    };
+    if !src.exists() {
+        return (StatusCode::NOT_FOUND, "Source not found").into_response();
+    }
+    let fname = match src.file_name().and_then(|s| s.to_str()) {
+        Some(n) => n.to_string(),
+        None => return (StatusCode::BAD_REQUEST, "Bad source name").into_response(),
+    };
+    let dst = dst_dir.join(&fname);
+    if !dst.starts_with(&volume_path) {
+        return (StatusCode::FORBIDDEN, "Access denied (dst path)").into_response();
+    }
+    if dst.exists() {
+        return (StatusCode::CONFLICT, "Destination already exists").into_response();
+    }
+    // Try cheap rename; fall back to Alpine mv for cross-device
+    match tokio::fs::rename(&src, &dst).await {
+        Ok(_) => {}
+        Err(e) => {
+            let rel_src = src.strip_prefix(&volume_path)
+                .map(|p| p.display().to_string()).unwrap_or_default();
+            let rel_dst = dst.strip_prefix(&volume_path)
+                .map(|p| p.display().to_string()).unwrap_or_default();
+            let cmd = format!("mv '/mnt/{}' '/mnt/{}'", sh_esc(&rel_src), sh_esc(&rel_dst));
+            if let Err(e2) = docker_volume_cmd(&volume_path, &cmd).await {
+                return (StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Move failed: {} / {}", e, e2)).into_response();
+            }
+        }
+    }
     (
         StatusCode::OK,
         axum::http::HeaderMap::from_iter([(

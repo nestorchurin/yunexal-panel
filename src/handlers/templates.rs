@@ -59,6 +59,7 @@ pub struct LoginTemplate {
 pub struct ConsoleTemplate {
     pub id: i64,
     pub container: ContainerInfo,
+    pub active_tab: &'static str,
 }
 
 #[derive(Template)]
@@ -66,6 +67,7 @@ pub struct ConsoleTemplate {
 pub struct FilesTemplate {
     pub id: i64,
     pub container: ContainerInfo,
+    pub active_tab: &'static str,
 }
 
 #[derive(Template)]
@@ -77,6 +79,7 @@ pub struct FileEditTemplate {
     pub filename: String,
     pub content: String,
     pub ace_mode: String,
+    pub active_tab: &'static str,
 }
 
 #[derive(Template)]
@@ -86,6 +89,7 @@ pub struct SettingsTemplate {
     pub id: i64,
     pub container: ContainerInfo,
     pub is_admin: bool,
+    pub active_tab: &'static str,
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +109,7 @@ pub struct NetworkingTemplate {
     pub bandwidth_mbit: Option<u32>,
     pub is_admin: bool,
     pub ports: Vec<PortRow>,
+    pub active_tab: &'static str,
 }
 
 #[derive(Template)]
@@ -248,6 +253,12 @@ pub struct CopyFileForm {
 }
 
 #[derive(Deserialize)]
+pub struct BulkPathsForm {
+    /// Newline-separated list of volume-relative paths to operate on.
+    pub paths: String,
+}
+
+#[derive(Deserialize)]
 pub struct FileUploadQuery {
     #[serde(default)]
     pub path: String,
@@ -291,4 +302,16 @@ pub struct EditContainerForm {
     pub cpu: f64,
     pub ports: String,
     pub env: String,
+}
+
+#[derive(Deserialize)]
+pub struct ExtractForm {
+    pub path: String,
+}
+
+#[derive(Deserialize)]
+pub struct ArchiveForm {
+    pub dir: String,
+    pub name: String,
+    pub paths: String,
 }

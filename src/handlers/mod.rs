@@ -47,7 +47,7 @@ use dns::{
 use auth::{login_page, login_submit, logout};
 use create::{api_image_env, api_image_env_overrides, api_local_images, create_server};
 use dashboard::{api_dashboard_json, dashboard, new_server_page, server_list_fragment};
-use files::{copy_file, create_new_file, delete_file, edit_file_page, list_files_api, rename_file, save_file_content, upload_files};
+use files::{bulk_delete, copy_file, create_archive, create_new_file, delete_file, edit_file_page, extract_archive, list_files_api, list_files_json, move_file, rename_file, save_file_content, upload_files};
 use network::{api_add_port, api_get_bandwidth, api_remove_port, api_set_bandwidth, api_tag_port, api_toggle_port, networking_page};
 use servers::{
     console_page, delete_server, files_page, get_server_stats, kill_server, rename_server,
@@ -87,6 +87,7 @@ pub fn create_router(state: AppState) -> Router {
         // File manager
         .route("/servers/{id}/files/edit", get(edit_file_page))
         .route("/api/servers/{id}/files/list", get(list_files_api))
+        .route("/api/servers/{id}/files/list-json", get(list_files_json))
         .route("/api/servers/{id}/files/save", post(save_file_content))
         .route("/api/servers/{id}/files/create", post(create_new_file))
         .route("/api/servers/{id}/files/delete", post(delete_file))
@@ -94,6 +95,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/servers/{id}/files/copy", post(copy_file))
         .route("/api/servers/{id}/files/upload", post(upload_files)
             .layer(axum::extract::DefaultBodyLimit::disable()))
+        .route("/api/servers/{id}/files/extract", post(extract_archive))
+        .route("/api/servers/{id}/files/archive", post(create_archive))
+        .route("/api/servers/{id}/files/bulk-delete", post(bulk_delete))
+        .route("/api/servers/{id}/files/move", post(move_file))
         // WebSocket console
         .route("/api/servers/{id}/ws", get(console_ws))
         // Server DNS records (owner-accessible)

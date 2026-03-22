@@ -1,38 +1,193 @@
-/* Console page overrides base.css */
-
-/* Full-height layout, no scroll on body */
+/* Console page */
 body { overflow: hidden; }
-
 .yu-layout { display: flex; height: 100vh; }
-.yu-sidebar { position: sticky; height: 100vh; overflow-y: auto; }
-
-/* ── Console main area ── */
 .yu-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
-.yu-content { flex: 1; padding: 1.25rem; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.yu-content {
+    flex: 1;
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: .8rem;
+    min-height: 0;
+    overflow: hidden;
+}
 
-/* ── Panels ── */
-.yu-panel { background: var(--surface); border: 1px solid var(--bdr); border-radius: 11px; overflow: hidden; margin-bottom: 0; }
-.yu-panel-hd { padding: .8rem 1rem; border-bottom: 1px solid var(--bdr); font-size: .85rem; font-weight: 600; display: flex; align-items: center; gap: .5rem; justify-content: space-between; }
-.yu-panel-bd { padding: 1rem; }
+/* ── Control bar ── */
+.con-topbar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--bdr);
+    border-radius: 11px;
+    padding: .55rem .9rem;
+}
+.con-topbar-left {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    min-width: 0;
+    overflow: hidden;
+}
+.con-srv-icon {
+    width: 28px; height: 28px;
+    border-radius: 7px;
+    background: rgba(124,58,237,.15);
+    color: #a78bfa;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .85rem;
+    flex-shrink: 0;
+}
+.con-srv-name {
+    font-size: .875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.con-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    flex-shrink: 0;
+}
+.con-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .35rem .7rem;
+    border-radius: 7px;
+    font-size: .78rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    font-family: 'Inter', sans-serif;
+    transition: all .15s;
+    line-height: 1;
+    white-space: nowrap;
+}
+.con-btn:disabled { opacity: .35; cursor: not-allowed; pointer-events: none; }
+.con-btn i { font-size: .8rem; }
+.con-btn-start   { background: rgba(16,185,129,.12);  color: #10b981; border-color: rgba(16,185,129,.2); }
+.con-btn-restart { background: rgba(99,102,241,.1);   color: #818cf8; border-color: rgba(99,102,241,.2); }
+.con-btn-stop    { background: rgba(245,158,11,.1);   color: #f59e0b; border-color: rgba(245,158,11,.2); }
+.con-btn-kill    { background: rgba(239,68,68,.1);    color: #ef4444; border-color: rgba(239,68,68,.2); }
+.con-btn-start:hover:not(:disabled)   { background: rgba(16,185,129,.22); }
+.con-btn-restart:hover:not(:disabled) { background: rgba(99,102,241,.2); }
+.con-btn-stop:hover:not(:disabled)    { background: rgba(245,158,11,.2); }
+.con-btn-kill:hover:not(:disabled)    { background: rgba(239,68,68,.2); }
 
-/* ── Stats label ── */
-.stat-lbl { font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+/* ── Main grid ── */
+.con-grid {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 252px;
+    gap: .8rem;
+    overflow: hidden;
+}
 
-/* ── Charts ── */
-.chart-container { position: relative; height: 110px; width: 100%; margin-bottom: .25rem; }
+/* ── Terminal window ── */
+.con-terminal-col { min-height: 0; display: flex; flex-direction: column; }
+.con-term-win {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 11px;
+    overflow: hidden;
+    border: 1px solid var(--bdr);
+}
+.con-term-hd {
+    flex-shrink: 0;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: .5rem;
+    padding: .5rem .85rem;
+    background: #141420;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.con-term-dots { display: flex; gap: .38rem; align-items: center; }
+.tdt { width: 11px; height: 11px; border-radius: 50%; }
+.tdt-r { background: #ff5f57; }
+.tdt-y { background: #febc2e; }
+.tdt-g { background: #28c840; }
+.con-term-caption {
+    font-size: .73rem;
+    color: var(--muted);
+    font-family: 'Menlo', 'Courier New', monospace;
+    text-align: center;
+}
+.con-term-bd {
+    flex: 1;
+    min-height: 0;
+    background: #000;
+    padding: 8px 4px 8px 8px;
+    overflow: hidden;
+}
+.con-term-bd #terminal { width: 100%; height: 100%; }
 
-/* ── Column entrance stagger ── */
-.yu-row-console > div:nth-child(1) { animation: yu-fade-up .3s .06s ease both; }
-.yu-row-console > div:nth-child(2) { animation: yu-fade-up .3s .14s ease both; }
+/* ── Right column ── */
+.con-right-col {
+    display: flex;
+    flex-direction: column;
+    gap: .65rem;
+    min-height: 0;
+    overflow-y: auto;
+}
 
-/* ── Responsive (console-specific overrides) ── */
+/* ── Stat cards ── */
+.con-stat-card {
+    background: var(--surface);
+    border: 1px solid var(--bdr);
+    border-radius: 10px;
+    padding: .7rem .85rem .6rem;
+    flex-shrink: 0;
+}
+.con-stat-head {
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .63rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--muted);
+    margin-bottom: .22rem;
+}
+.con-stat-val {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--txt);
+    margin-bottom: .2rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+}
+.chart-container { position: relative; height: 44px; width: 100%; }
+
+/* ── DNS panel ── */
+.yu-panel { background: var(--surface); border: 1px solid var(--bdr); border-radius: 10px; overflow: hidden; }
+.yu-panel-hd { padding: .7rem .85rem; border-bottom: 1px solid var(--bdr); font-size: .82rem; font-weight: 600; display: flex; align-items: center; gap: .4rem; }
+.yu-panel-bd { padding: .85rem; }
+
+/* ── Responsive ── */
 @media (max-width: 991.98px) {
     body { overflow: auto; }
     .yu-layout { flex-direction: column; height: auto; min-height: 100vh; }
-    .yu-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: visible; }
-    .yu-content { flex: 1; padding: 1rem; overflow: visible; min-height: auto; }
-    .yu-row-console { flex-direction: column !important; height: auto !important; flex: none !important; }
-    .yu-col-terminal { min-height: 0; height: auto !important; }
-    .yu-terminal-wrap { height: 55vmax !important; min-height: 320px; max-height: 520px; }
-    .yu-col-controls { overflow-y: visible !important; }
+    .yu-main { overflow: visible; }
+    .yu-content { flex: 1; overflow: visible; min-height: auto; }
+    .con-grid { grid-template-columns: 1fr; overflow: visible; }
+    .con-terminal-col { flex: none; }
+    .con-term-win { height: 55vmax; min-height: 320px; max-height: 520px; flex: none; }
+    .con-right-col { overflow-y: visible; }
+    .con-btn span { display: none; }
+    .con-btn { padding: .35rem .5rem; }
+}
+@media (max-width: 575.98px) {
+    .yu-content { padding: .75rem; gap: .6rem; }
 }

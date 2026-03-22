@@ -51,7 +51,7 @@ pub async fn networking_page(
                 .into_iter()
                 .map(|((hp, cp), (tag, enabled))| PortRow { host_port: hp, container_port: cp, tag, enabled })
                 .collect();
-            render(NetworkingTemplate { id: db_id, container, bandwidth_mbit, is_admin, ports }).into_response()
+            render(NetworkingTemplate { id: db_id, container, bandwidth_mbit, is_admin, ports, active_tab: "networking" }).into_response()
         }
         Err(e) => format!("Error: {}", e).into_response(),
     }

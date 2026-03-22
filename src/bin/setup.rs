@@ -152,7 +152,7 @@ async fn main() -> Result<()> {
 
     // ── Step 4: Admin user ───────────────────────────────────────────────────
     header!("Step 4: Admin user");
-    step_admin_user(opt_non_interactive).await?;
+    step_admin_user(opt_non_interactive, &script_dir, &real_user).await?;
 
     // ── Step 5: Import containers ─────────────────────────────────────────────
     header!("Step 5: Import Docker containers");
@@ -353,7 +353,7 @@ fn step_env(dir: &Path, real_user: &str) -> Result<()> {
     Ok(())
 }
 
-async fn step_admin_user(non_interactive: bool) -> Result<()> {
+async fn step_admin_user(non_interactive: bool, dir: &Path, real_user: &str) -> Result<()> {
     let (username, pass) = if non_interactive {
         let u = std::env::var("PANEL_USERNAME")
             .context("PANEL_USERNAME env var required with --non-interactive")?;
@@ -388,6 +388,18 @@ async fn step_admin_user(non_interactive: bool) -> Result<()> {
     let hash = password::hash(&pass).context("Failed to hash password")?;
     db::seed_root_user(&pool, &username, &hash, "admin").await?;
     ok!("Admin user '{}' created/updated.", username);
+
+    // Fix ownership: DB files were created by root, but the service runs as real_user.
+    let owner_arg = format!("{}:{}", real_user, real_user);
+    for f in &["yunexal.db", "yunexal.db-shm", "yunexal.db-wal"] {
+        let p = dir.join(f);
+        if p.exists() {
+            let _ = std::process::Command::new("chown")
+                .args([&owner_arg, p.to_str().unwrap_or(f)])
+                .status();
+            info!("chown {} → {}", f, real_user);
+        }
+    }
 
     Ok(())
 }

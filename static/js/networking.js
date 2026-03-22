@@ -1,9 +1,40 @@
 // Networking page: bandwidth limit controls
 // Requires YU_SERVER_ID and YU_INITIAL_MBIT to be set inline in the template.
 
-document.addEventListener('DOMContentLoaded', () => {
-    if (YU_INITIAL_MBIT !== null) updateBar(YU_INITIAL_MBIT);
-});
+// ── Particles (declared first to avoid TDZ errors) ───────────────────────────
+// ┌─ TUNE THESE ───────────────────────────────────────────────────────────────
+const PART_SPEED_MIN  = 0.03;
+const PART_SPEED_MAX  = 0.30;
+const PART_RADIUS_MIN = 0.4;
+const PART_RADIUS_MAX = 1.0;
+const PART_DECAY_MIN  = 0.008;
+const PART_DECAY_MAX  = 0.016;
+const PART_UPBIAS     = 0.3;
+const PART_GLOW_R     = 0.8;
+// └────────────────────────────────────────────────────────────────────────────
+
+const BW_CANVAS = document.getElementById('bw-particles');
+const BW_CTX    = BW_CANVAS ? BW_CANVAS.getContext('2d') : null;
+let bwRAF       = null;
+let bwParts     = [];
+
+const TIER_COLORS = {
+    gbit:  ['#06b6d4','#38bdf8','#818cf8','#93c5fd','#67e8f9'],
+    turbo: ['#4ade80','#86efac','#a3e635','#bbf7d0','#d9f99d','#fff'],
+    hyper: ['#f472b6','#a855f7','#c084fc','#e879f9','#f0abfc','#fff'],
+    ultra: ['#fcd34d','#fbbf24','#fde68a','#f59e0b','#fff7ed','#fffbeb'],
+};
+
+// Init bar — works on first load and on SPA navigation
+function _netInit() {
+    const mbit = typeof window.YU_INITIAL_MBIT !== 'undefined' ? window.YU_INITIAL_MBIT : null;
+    if (mbit !== null) updateBar(mbit);
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _netInit, { once: true });
+} else {
+    _netInit();
+}
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function showToast(msg, type) {
@@ -36,29 +67,6 @@ function formatMbit(mbit) {
 }
 
 // ── Particles ────────────────────────────────────────────────────────────────
-// ┌─ TUNE THESE ───────────────────────────────────────────────────────────────
-const PART_SPEED_MIN  = 0.03;   // px/frame minimum speed
-const PART_SPEED_MAX  = 0.30;   // px/frame maximum speed (total range added to min)
-const PART_RADIUS_MIN = 0.4;    // px  minimum radius
-const PART_RADIUS_MAX = 1.0;    // px  maximum extra radius  (min + random*max)
-const PART_DECAY_MIN  = 0.008;  // life lost per frame  (lower = longer lived)
-const PART_DECAY_MAX  = 0.016;  // extra decay range
-const PART_UPBIAS     = 0.3;    // upward drift added to vy  (0 = symmetric)
-const PART_GLOW_R     = 0.8;    // radius threshold for glow effect (px)
-// └────────────────────────────────────────────────────────────────────────────
-
-const BW_CANVAS = document.getElementById('bw-particles');
-const BW_CTX    = BW_CANVAS ? BW_CANVAS.getContext('2d') : null;
-let bwRAF       = null;
-let bwParts     = [];
-
-const TIER_COLORS = {
-    gbit:  ['#06b6d4','#38bdf8','#818cf8','#93c5fd','#67e8f9'],
-    turbo: ['#4ade80','#86efac','#a3e635','#bbf7d0','#d9f99d','#fff'],
-    hyper: ['#f472b6','#a855f7','#c084fc','#e879f9','#f0abfc','#fff'],
-    ultra: ['#fcd34d','#fbbf24','#fde68a','#f59e0b','#fff7ed','#fffbeb'],
-};
-
 function spawnPart(fillPct, tier) {
     const w      = BW_CANVAS ? BW_CANVAS.width  : 400;
     const h      = BW_CANVAS ? BW_CANVAS.height : 40;
@@ -266,7 +274,13 @@ async function addPort(e) {
 }
 
 async function removePort(hp, cp, btn) {
-    if (!confirm(`Close port ${hp} → ${cp}?\nThe server will be restarted.`)) return;
+    if (!await yuConfirm(`Close port ${hp} → ${cp}?`, {
+        icon: 'bi-door-closed-fill', iconColor: '#f59e0b',
+        subtitle: 'The server will be restarted.',
+        okLabel: 'Close Port',
+        okColor: 'rgba(245,158,11,.1)', okBorder: 'rgba(245,158,11,.3)',
+        okText: '#fcd34d', okHover: 'rgba(245,158,11,.22)',
+    })) return;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
     try {
@@ -386,3 +400,9 @@ async function togglePort(hp, cp, currentEnabled, btn) {
         btn.disabled = false;
     }
 }
+
+// ── Cleanup (called by SPA navigation before leaving this page) ───────────────
+window._yuPageCleanup = function () {
+    stopParts();
+    window._yuPageCleanup = undefined;
+};

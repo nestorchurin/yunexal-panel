@@ -3,12 +3,13 @@ use anyhow::{Result, Context};
 
 // ── File listing ─────────────────────────────────────────────────────────────
 
-pub async fn list_files(_docker: &Docker, id: &str, path: &str) -> Result<Vec<String>> {
+/// File entry: (name_with_trailing_slash_for_dirs, size_in_bytes_for_files)
+pub type FileEntry = (String, Option<u64>);
+
+pub async fn list_files(_docker: &Docker, id: &str, path: &str) -> Result<Vec<FileEntry>> {
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    // 'id' is expected to be the container name (server_id)
     let volume_path = cwd.join("volumes").join(id);
-    
-    // path is relative to the mount point (/app/data), so it should be relative to volume_path
+
     let rel_path = path.trim_start_matches('/');
     let target_joined = volume_path.join(rel_path);
     // Normalize ".." to prevent path traversal (defense in depth)
@@ -30,31 +31,28 @@ pub async fn list_files(_docker: &Docker, id: &str, path: &str) -> Result<Vec<St
 
     let mut entries = tokio::fs::read_dir(target_path).await
         .context(format!("Failed to read directory {:?}", rel_path))?;
-    let mut files = Vec::new();
-    
+    let mut files: Vec<FileEntry> = Vec::new();
+
     while let Some(entry) = entries.next_entry().await? {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') || name.ends_with(".example") || name.ends_with(".test") { continue; }
         if entry.file_type().await?.is_dir() {
-            files.push(format!("{}/", name));
+            files.push((format!("{}/", name), None));
         } else {
-            files.push(name);
+            let size = entry.metadata().await.ok().map(|m| m.len());
+            files.push((name, size));
         }
     }
-    
-    // Sort files: directories first, then alphabetical
-    files.sort_by(|a, b| {
+
+    // Sort: directories first, then alphabetical
+    files.sort_by(|(a, _), (b, _)| {
         let a_is_dir = a.ends_with('/');
         let b_is_dir = b.ends_with('/');
-        if a_is_dir && !b_is_dir {
-            std::cmp::Ordering::Less
-        } else if !a_is_dir && b_is_dir {
-            std::cmp::Ordering::Greater
-        } else {
-            a.cmp(b)
-        }
+        if a_is_dir && !b_is_dir      { std::cmp::Ordering::Less }
+        else if !a_is_dir && b_is_dir { std::cmp::Ordering::Greater }
+        else                          { a.cmp(b) }
     });
-    
+
     Ok(files)
 }
 

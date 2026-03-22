@@ -253,8 +253,8 @@ function toggleAmoled() {
 // Apply saved preference immediately (before first paint)
 _applyAmoled(localStorage.getItem('amoled') === '1');
 
-function dashDelete(id, name) {
-    if (!confirm(`Delete server "${name}"? This cannot be undone.`)) return;
+async function dashDelete(id, name) {
+    if (!await yuConfirm(`Delete server "${name}"?`)) return;
     const card = document.getElementById('container-' + id);
     if (card) card.style.opacity = '0.4';
     fetch(`/api/servers/${id}/delete`, { method: 'POST' })

@@ -51,7 +51,7 @@ pub async fn console_page(
         Ok(v) => v, Err(e) => return e.into_response(),
     };
     match docker::get_container(&state.docker, &docker_id).await {
-        Ok(mut c) => { c.db_id = db_id; c.name = db_name; render(ConsoleTemplate { id: db_id, container: c }).into_response() }
+        Ok(mut c) => { c.db_id = db_id; c.name = db_name; render(ConsoleTemplate { id: db_id, container: c, active_tab: "console" }).into_response() }
         Err(e) => format!("Error: {}", e).into_response(),
     }
 }
@@ -68,7 +68,7 @@ pub async fn files_page(
         Ok(v) => v, Err(e) => return e.into_response(),
     };
     match docker::get_container(&state.docker, &docker_id).await {
-        Ok(mut c) => { c.db_id = db_id; c.name = db_name; render(FilesTemplate { id: db_id, container: c }).into_response() }
+        Ok(mut c) => { c.db_id = db_id; c.name = db_name; render(FilesTemplate { id: db_id, container: c, active_tab: "files" }).into_response() }
         Err(e) => format!("Error: {}", e).into_response(),
     }
 }
@@ -86,7 +86,7 @@ pub async fn settings_page(
         Ok(v) => v, Err(e) => return e.into_response(),
     };
     match docker::get_container(&state.docker, &docker_id).await {
-        Ok(mut c) => { c.db_id = db_id; c.name = db_name; render(SettingsTemplate { id: db_id, container: c, is_admin }).into_response() }
+        Ok(mut c) => { c.db_id = db_id; c.name = db_name; render(SettingsTemplate { id: db_id, container: c, is_admin, active_tab: "settings" }).into_response() }
         Err(e) => format!("Error: {}", e).into_response(),
     }
 }

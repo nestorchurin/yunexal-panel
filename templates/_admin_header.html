@@ -1,0 +1,35 @@
+    <!-- Mobile sidebar overlay -->
+    <div class="yu-sb-overlay" id="sbOverlay" onclick="closeSidebar()"></div>
+
+    <!-- Topbar -->
+    <header class="yu-topbar">
+        <button class="yu-hamburger" onclick="openSidebar()" title="Menu"><i class="bi bi-list"></i></button>
+        <div class="yu-brand"><span class="dot"></span>Yunexal Panel</div>
+        <span class="yu-badge">Admin</span>
+        <div class="dropdown" style="margin-left:auto;">
+            <button class="btn-yu btn-yu-ghost{% if tab == "settings" %} yu-topbar-user active{% endif %}" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-person" style="color:var(--muted);"></i>
+                <span style="font-size:.825rem;font-weight:500;">{{ auth_username }}</span>
+                <i class="bi bi-chevron-down" style="font-size:.6rem;opacity:.5;"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" style="min-width:200px;background:#111119;border:1px solid var(--bdr);border-radius:10px;padding:.4rem;">
+                <li class="px-3 py-2" style="font-size:.75rem;color:var(--muted);border-bottom:1px solid var(--bdr);margin-bottom:.3rem;">
+                    Signed in as <strong style="color:var(--txt);">{{ auth_username }}</strong>
+                    <span style="margin-left:.4rem;padding:.15rem .45rem;border-radius:4px;font-size:.7rem;font-weight:600;letter-spacing:.02em;
+                        {% if auth_role == "root" %}background:rgba(239,68,68,.15);color:#f87171;
+                        {% else if auth_role == "admin" %}background:rgba(124,58,237,.15);color:#a78bfa;
+                        {% else %}background:rgba(34,197,94,.12);color:#4ade80;{% endif %}">{{ auth_role }}</span>
+                </li>
+                <li><a class="dropdown-item rounded-2" href="/" style="font-size:.82rem;color:var(--txt);"><i class="bi bi-grid-1x2 me-2 text-muted"></i>Dashboard</a></li>
+                <li><hr class="dropdown-divider" style="border-color:var(--bdr);margin:.3rem 0;"></li>
+                <li><a class="dropdown-item rounded-2" href="/admin/settings" style="font-size:.82rem;color:var(--txt);" onclick="switchTab('settings'); return false;"><i class="bi bi-gear me-2 text-muted"></i>Settings</a></li>
+                <li><button class="dropdown-item rounded-2" style="font-size:.82rem;color:var(--txt);" onclick="openModal('adminPwModal')"><i class="bi bi-key me-2 text-muted"></i>Change Password</button></li>
+                <li><hr class="dropdown-divider" style="border-color:var(--bdr);margin:.3rem 0;"></li>
+                <li>
+                    <form action="/logout" method="POST" style="margin:0;">
+                        <button type="submit" class="dropdown-item rounded-2" style="font-size:.82rem;color:#ef4444;"><i class="bi bi-box-arrow-right me-2"></i>Log Out</button>
+                    </form>
+                </li>
+            </ul>
+        </div>
+    </header>

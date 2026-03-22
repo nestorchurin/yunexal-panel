@@ -1,0 +1,21 @@
+<div class="yu-sb-overlay" id="sbOverlay" onclick="closeSidebar()"></div>
+<aside class="yu-sidebar" id="sidebar">
+    <a href="/" class="sb-back"><i class="bi bi-arrow-left"></i> Dashboard</a>
+    <div class="sb-brand"><span class="dot"></span>Yunexal Panel</div>
+    <div class="sb-server">
+        <div class="sb-server-name">{{ container.name }}</div>
+        <span id="server-status-badge" class="sb-status
+            {% if container.state == "running" %}sb-running
+            {% else if container.state == "restarting" %}sb-other
+            {% else %}sb-stopped{% endif %}">
+            <span class="sb-dot"></span><span id="status-text">{{ container.state }}</span>
+        </span>
+    </div>
+    <div class="yu-sidebar-top">
+        <div class="yu-nav-label">Server</div>
+        <a href="/servers/{{id}}/console" class="yu-nav-item{% if active_tab == "console" %} active{% endif %}"><i class="bi bi-terminal-fill"></i> Console</a>
+        <a href="/servers/{{id}}/files" class="yu-nav-item{% if active_tab == "files" %} active{% endif %}"><i class="bi bi-folder2-open"></i> Files</a>
+        <a href="/servers/{{id}}/networking" class="yu-nav-item{% if active_tab == "networking" %} active{% endif %}"><i class="bi bi-diagram-3"></i> Networking</a>
+        <a href="/servers/{{id}}/settings" class="yu-nav-item{% if active_tab == "settings" %} active{% endif %}"><i class="bi bi-gear"></i> Settings</a>
+    </div>
+</aside>

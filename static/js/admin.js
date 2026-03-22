@@ -208,8 +208,8 @@ function createUser() {
     }).catch(() => show(false, 'Network error.'));
 }
 
-function deleteUser(id, username, btn) {
-    if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+async function deleteUser(id, username, btn) {
+    if (!await yuConfirm(`Delete user "${username}"?`)) return;
     btn.disabled = true;
     fetch(`/api/admin/users/${id}/delete`, { method: 'POST', credentials: 'same-origin' })
         .then(async r => {
@@ -432,14 +432,14 @@ function _updateImgBatchBar() {
     }
 }
 
-function deleteSelectedImages() {
+async function deleteSelectedImages() {
     const rows = [...document.querySelectorAll('#img-tbody tr[data-img-id]')].filter(tr => {
         const cb = tr.querySelector('.img-row-cb');
         return cb && cb.checked;
     });
     if (!rows.length) return;
     const count = rows.length;
-    if (!confirm(`Delete ${count} selected image${count !== 1 ? 's' : ''}?\n\nThis cannot be undone.`)) return;
+    if (!await yuConfirm(`Delete ${count} selected image${count !== 1 ? 's' : ''}?`)) return;
 
     const btn = document.getElementById('img-batch-del-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
@@ -459,8 +459,8 @@ function deleteSelectedImages() {
     });
 }
 
-function deleteImage(fullId, label) {
-    if (!confirm(`Delete image "${label}"?\n\nThis cannot be undone.`)) return;
+async function deleteImage(fullId, label) {
+    if (!await yuConfirm(`Delete image "${label}"?`)) return;
     const encoded = encodeURIComponent(fullId);
     fetch(`/api/admin/images/${encoded}/delete`, { method: 'POST', credentials: 'same-origin' })
         .then(async r => {
@@ -618,8 +618,14 @@ function submitEnv() {
 
 // ── Image duplicate ───────────────────────────────────────────────────────────
 
-function duplicateImage(fullId, primaryRef) {
-    if (!confirm(`Create a full independent copy of "${primaryRef}"?\n\nThis commits the image to a new independent image (no shared layers).`)) return;
+async function duplicateImage(fullId, primaryRef) {
+    if (!await yuConfirm(`Create a full copy of "${primaryRef}"?`, {
+        icon: 'bi-copy', iconColor: '#818cf8',
+        subtitle: 'This commits the image to a new independent image (no shared layers).',
+        okLabel: 'Duplicate',
+        okColor: 'rgba(99,102,241,.12)', okBorder: 'rgba(99,102,241,.3)',
+        okText: '#a5b4fc', okHover: 'rgba(99,102,241,.25)',
+    })) return;
     const encoded = encodeURIComponent(fullId);
     fetch(`/api/admin/images/${encoded}/duplicate`, { method: 'POST', credentials: 'same-origin' })
         .then(async r => {
@@ -881,8 +887,8 @@ function dnsSaveProvider() {
     }).catch(() => show(false, 'Network error.'));
 }
 
-function dnsDeleteProvider(id) {
-    if (!confirm('Delete this DNS provider? All associated records will also be removed.')) return;
+async function dnsDeleteProvider(id) {
+    if (!await yuConfirm('Delete this DNS provider?', { subtitle: 'All associated records will also be removed.' })) return;
     fetch(`/api/admin/dns/providers/${id}/delete`, { method: 'POST', credentials: 'same-origin' })
         .then(r => r.json()).then(d => {
             if (d.ok) dnsLoadProviders();
@@ -1315,13 +1321,18 @@ function dnsSaveRecord() {
         });
 }
 
-function dnsDeleteRecord(id, remoteId) {
+async function dnsDeleteRecord(id, remoteId) {
     const hasRemote = remoteId && remoteId.length > 0;
-    const msg = hasRemote
-        ? 'Delete this tracked record?\n\nOK = remove from panel only\nCancel = abort'
-        : 'Delete this tracked record from the panel?';
-    if (!confirm(msg)) return;
-    const fromProvider = hasRemote && confirm('Also delete this record from the DNS provider?');
+    if (!await yuConfirm('Delete this tracked record from the panel?', {
+        subtitle: hasRemote ? 'You will be asked separately about the provider.' : 'This cannot be undone.',
+    })) return;
+    const fromProvider = hasRemote && await yuConfirm('Also delete this record from the DNS provider?', {
+        icon: 'bi-cloud-minus-fill', iconColor: '#f59e0b',
+        subtitle: null,
+        okLabel: 'Yes, delete from provider',
+        okColor: 'rgba(245,158,11,.1)', okBorder: 'rgba(245,158,11,.3)',
+        okText: '#fcd34d', okHover: 'rgba(245,158,11,.22)',
+    });
     fetch(`/api/admin/dns/records/${id}/delete`, {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
@@ -1391,7 +1402,7 @@ function dnsLoadContainerRecords() {
 }
 
 async function dnsDeleteContainerRecord(id) {
-    if (!confirm('Delete this DNS record from the provider and the panel?')) return;
+    if (!await yuConfirm('Delete this DNS record from the provider and panel?')) return;
     try {
         const d = await fetch(`/api/admin/dns/records/${id}/delete`, {
             method: 'POST', credentials: 'same-origin',
