@@ -9,7 +9,13 @@ pub mod servers;
 pub mod templates;
 pub mod ws;
 
-use axum::{http::{header, StatusCode}, middleware, response::IntoResponse, routing::{get, post}, Router};
+use axum::{
+    http::{header, HeaderValue, StatusCode},
+    middleware,
+    response::{Html, IntoResponse},
+    routing::{get, post},
+    Router,
+};
 use axum_embed::ServeEmbed;
 use rust_embed::Embed;
 use crate::auth as auth_middleware;
@@ -29,6 +35,49 @@ async fn serve_embedded(path: &str, content_type: &'static str) -> impl IntoResp
 async fn serve_manifest() -> impl IntoResponse { serve_embedded("manifest.json", "application/json").await }
 async fn serve_sw()       -> impl IntoResponse { serve_embedded("sw.js", "application/javascript").await }
 
+// ── Security headers middleware ───────────────────────────────────────────────
+
+async fn security_headers(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> impl IntoResponse {
+    let mut resp = next.run(req).await;
+    let h = resp.headers_mut();
+
+    h.insert("X-Content-Type-Options",         HeaderValue::from_static("nosniff"));
+    h.insert("X-Frame-Options",                HeaderValue::from_static("DENY"));
+    h.insert(
+        "Content-Security-Policy",
+        HeaderValue::from_static(
+            "default-src 'self'; \
+             script-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; \
+             style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; \
+             font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; \
+             img-src 'self' data:; \
+             connect-src 'self' ws: wss:; \
+             frame-ancestors 'none'; \
+             base-uri 'self'; \
+             form-action 'self'"
+        ),
+    );
+    h.insert("Referrer-Policy",                HeaderValue::from_static("strict-origin-when-cross-origin"));
+    h.insert("Permissions-Policy",             HeaderValue::from_static("camera=(), microphone=(), geolocation=()"));
+    h.insert("X-XSS-Protection",              HeaderValue::from_static("0"));
+    h.insert("Cross-Origin-Opener-Policy",    HeaderValue::from_static("same-origin"));
+    h.insert(
+        "Cache-Control",
+        HeaderValue::from_static("no-store, no-cache, must-revalidate"),
+    );
+
+    resp
+}
+
+// ── Custom fallback for unmatched routes / framework rejections ──────────────
+
+async fn fallback() -> impl IntoResponse {
+    (StatusCode::NOT_FOUND, Html("<h1>404 — Not Found</h1>"))
+}
+
 use admin::{
     admin_change_password, admin_edit_page, admin_page, admin_tab_page, admin_stop_all,
     api_admin_edit_container, api_create_user, api_delete_user, api_set_user_password,
@@ -36,6 +85,7 @@ use admin::{
     api_get_image_env, api_set_image_env, api_duplicate_image, api_pull_image,
     api_admin_containers, api_admin_overview,
     api_audit_list, api_audit_clear,
+    api_update_check, api_update_apply,
 };
 use dns::{
     api_dns_list_providers, api_dns_add_provider, api_dns_update_provider, api_dns_delete_provider,
@@ -158,6 +208,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/admin/dns/container-records", get(api_dns_container_records))
         .route("/api/admin/audit", get(api_audit_list))
         .route("/api/admin/audit/clear", post(api_audit_clear))
+        .route("/api/admin/updates/check", get(api_update_check))
+        .route("/api/admin/updates/apply", post(api_update_apply))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware::require_admin,
@@ -170,5 +222,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/manifest.json", get(serve_manifest))
         .route("/sw.js", get(serve_sw))
         .nest_service("/static", ServeEmbed::<StaticAssets>::new())
+        .fallback(fallback)
+        .layer(middleware::from_fn(security_headers))
         .with_state(state)
 }

@@ -1,5 +1,5 @@
 use axum::{
-    extract::{ConnectInfo, Path, State},
+    extract::{ConnectInfo, Path, Query, State},
     http::StatusCode,
     http::HeaderMap,
     response::{IntoResponse, Redirect},
@@ -1030,4 +1030,304 @@ pub async fn api_audit_clear(
     let _ = db::audit_clear(&state.db).await;
     let _ = db::audit_log(&state.db, &actor, "audit.clear", "", "", &ip).await;
     Json(serde_json::json!({"ok": true}))
+}
+
+// ── Update check / apply API ──────────────────────────────────────────────────
+
+const GITHUB_REPO: &str = "nestorchurin/yunexal-panel";
+
+#[derive(serde::Deserialize)]
+pub struct UpdateCheckQuery {
+    pub channel: Option<String>,
+}
+
+/// GET /api/admin/updates/check?channel=stable|unstable
+/// Checks the latest version available on GitHub.
+pub async fn api_update_check(
+    Query(q): Query<UpdateCheckQuery>,
+) -> impl IntoResponse {
+    let current = env!("CARGO_PKG_VERSION");
+    let channel = q.channel.as_deref().unwrap_or("stable");
+
+    let client = match reqwest::Client::builder()
+        .user_agent("yunexal-panel")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => return Json(serde_json::json!({"ok": false, "error": e.to_string()})),
+    };
+
+    if channel == "unstable" {
+        // For unstable, check the latest commit on the unstable branch.
+        let url = format!(
+            "https://api.github.com/repos/{}/commits/unstable",
+            GITHUB_REPO
+        );
+        match client.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let body: serde_json::Value = resp.json().await.unwrap_or_default();
+                let sha = body["sha"].as_str().unwrap_or("unknown");
+                let short_sha = if sha.len() >= 7 { &sha[..7] } else { sha };
+                let message = body["commit"]["message"].as_str().unwrap_or("");
+                let date = body["commit"]["committer"]["date"].as_str().unwrap_or("");
+                Json(serde_json::json!({
+                    "ok": true,
+                    "channel": "unstable",
+                    "current_version": current,
+                    "latest_commit": short_sha,
+                    "commit_message": message.lines().next().unwrap_or(""),
+                    "commit_date": date,
+                    "download_url": format!("https://github.com/{}/archive/refs/heads/unstable.zip", GITHUB_REPO),
+                }))
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                Json(serde_json::json!({"ok": false, "error": format!("GitHub API returned {status}")}))
+            }
+            Err(e) => Json(serde_json::json!({"ok": false, "error": e.to_string()})),
+        }
+    } else {
+        // Stable: check latest GitHub release.
+        let url = format!(
+            "https://api.github.com/repos/{}/releases/latest",
+            GITHUB_REPO
+        );
+        match client.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let body: serde_json::Value = resp.json().await.unwrap_or_default();
+                let tag = body["tag_name"].as_str().unwrap_or("unknown");
+                let latest = tag.trim_start_matches('v');
+                let has_update = version_gt(latest, current);
+                let published = body["published_at"].as_str().unwrap_or("");
+                let changelog = body["body"].as_str().unwrap_or("");
+                // Find the linux x86_64 asset download URL
+                let download_url = body["assets"]
+                    .as_array()
+                    .and_then(|assets| {
+                        assets.iter().find_map(|a| {
+                            let name = a["name"].as_str().unwrap_or("");
+                            if name.contains("linux") && name.contains("x86_64") && name.ends_with(".tar.gz") {
+                                a["browser_download_url"].as_str().map(|s| s.to_string())
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .unwrap_or_default();
+
+                Json(serde_json::json!({
+                    "ok": true,
+                    "channel": "stable",
+                    "current_version": current,
+                    "latest_version": latest,
+                    "has_update": has_update,
+                    "published_at": published,
+                    "changelog": changelog,
+                    "download_url": download_url,
+                    "release_url": body["html_url"].as_str().unwrap_or(""),
+                }))
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                Json(serde_json::json!({"ok": false, "error": format!("GitHub API returned {status}")}))
+            }
+            Err(e) => Json(serde_json::json!({"ok": false, "error": e.to_string()})),
+        }
+    }
+}
+
+/// Simple semver comparison: returns true if `a` > `b` (major.minor.patch).
+fn version_gt(a: &str, b: &str) -> bool {
+    let parse = |s: &str| -> (u32, u32, u32) {
+        let mut parts = s.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+        (
+            parts.next().unwrap_or(0),
+            parts.next().unwrap_or(0),
+            parts.next().unwrap_or(0),
+        )
+    };
+    parse(a) > parse(b)
+}
+
+/// POST /api/admin/updates/apply
+/// Downloads the latest release binary and replaces the current one, then signals a restart.
+pub async fn api_update_apply(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<UpdateApplyForm>,
+) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let download_url = body.download_url.trim();
+
+    // Validate URL belongs to our GitHub repo
+    let allowed_prefix = format!("https://github.com/{}/", GITHUB_REPO);
+    if !download_url.starts_with(&allowed_prefix) {
+        return Json(serde_json::json!({"ok": false, "error": "Invalid download URL"}));
+    }
+
+    let _ = db::audit_log(&state.db, &actor, "panel.update", "", &format!("url={download_url}"), &ip).await;
+
+    let client = match reqwest::Client::builder()
+        .user_agent("yunexal-panel")
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => return Json(serde_json::json!({"ok": false, "error": e.to_string()})),
+    };
+
+    // Download to a temp file
+    let resp = match client.get(download_url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => return Json(serde_json::json!({"ok": false, "error": format!("Download failed: HTTP {}", r.status())})),
+        Err(e) => return Json(serde_json::json!({"ok": false, "error": e.to_string()})),
+    };
+
+    let current_exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => return Json(serde_json::json!({"ok": false, "error": format!("Cannot determine binary path: {e}")})),
+    };
+
+    let parent_dir = current_exe.parent().unwrap_or(std::path::Path::new("."));
+    let tmp_archive = parent_dir.join(".yunexal-update.tar.gz");
+    let tmp_extract = parent_dir.join(".yunexal-update-extract");
+
+    let bytes = match resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => return Json(serde_json::json!({"ok": false, "error": format!("Download read failed: {e}")})),
+    };
+
+    if let Err(e) = tokio::fs::write(&tmp_archive, &bytes).await {
+        return Json(serde_json::json!({"ok": false, "error": format!("Write failed: {e}")}));
+    }
+
+    // Extract tar.gz
+    let _ = tokio::fs::remove_dir_all(&tmp_extract).await;
+    if let Err(e) = tokio::fs::create_dir_all(&tmp_extract).await {
+        let _ = tokio::fs::remove_file(&tmp_archive).await;
+        return Json(serde_json::json!({"ok": false, "error": format!("mkdir failed: {e}")}));
+    }
+
+    let archive_path = tmp_archive.clone();
+    let extract_path = tmp_extract.clone();
+    let extract_result = tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+        let decoder = flate2::read::GzDecoder::new(file);
+        let mut archive = tar::Archive::new(decoder);
+        // Prevent path traversal and limit entry count
+        archive.set_overwrite(false);
+        let mut count = 0u32;
+        for entry in archive.entries().map_err(|e| e.to_string())? {
+            let mut entry = entry.map_err(|e| e.to_string())?;
+            count += 1;
+            if count > 500 {
+                return Err("Archive has too many entries".to_string());
+            }
+            entry.unpack_in(&extract_path).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }).await;
+
+    let _ = tokio::fs::remove_file(&tmp_archive).await;
+
+    match extract_result {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            let _ = tokio::fs::remove_dir_all(&tmp_extract).await;
+            return Json(serde_json::json!({"ok": false, "error": format!("Extract failed: {e}")}));
+        }
+        Err(e) => {
+            let _ = tokio::fs::remove_dir_all(&tmp_extract).await;
+            return Json(serde_json::json!({"ok": false, "error": format!("Task failed: {e}")}));
+        }
+    }
+
+    // Find the yunexal-panel binary inside extracted contents
+    let new_binary = find_binary_in_dir(&tmp_extract, "yunexal-panel").await;
+    let new_setup = find_binary_in_dir(&tmp_extract, "yunexal-setup").await;
+
+    if new_binary.is_none() {
+        let _ = tokio::fs::remove_dir_all(&tmp_extract).await;
+        return Json(serde_json::json!({"ok": false, "error": "yunexal-panel binary not found in archive"}));
+    }
+
+    let new_bin_path = new_binary.unwrap();
+
+    // Backup current binary
+    let backup_path = current_exe.with_extension("bak");
+    if let Err(e) = tokio::fs::copy(&current_exe, &backup_path).await {
+        let _ = tokio::fs::remove_dir_all(&tmp_extract).await;
+        return Json(serde_json::json!({"ok": false, "error": format!("Backup failed: {e}")}));
+    }
+
+    // Replace binary
+    if let Err(e) = tokio::fs::copy(&new_bin_path, &current_exe).await {
+        // Restore backup
+        let _ = tokio::fs::copy(&backup_path, &current_exe).await;
+        let _ = tokio::fs::remove_dir_all(&tmp_extract).await;
+        return Json(serde_json::json!({"ok": false, "error": format!("Replace failed: {e}")}));
+    }
+
+    // Ensure the new binary is executable
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o755);
+        if let Err(e) = std::fs::set_permissions(&current_exe, perms) {
+            error!("Failed to set binary permissions: {}", e);
+        }
+    }
+
+    // Also update setup binary if present
+    if let Some(setup_path) = new_setup {
+        let setup_dest = parent_dir.join("yunexal-setup");
+        let _ = tokio::fs::copy(&setup_path, &setup_dest).await;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&setup_dest, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    let _ = tokio::fs::remove_dir_all(&tmp_extract).await;
+
+    let _ = db::audit_log(&state.db, &actor, "panel.updated", "", "binary replaced, restarting", &ip).await;
+
+    // Schedule a graceful restart after responding
+    tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        // If running under systemd, this will trigger a restart
+        std::process::exit(0);
+    });
+
+    Json(serde_json::json!({"ok": true, "message": "Update applied. Panel is restarting…"}))
+}
+
+#[derive(serde::Deserialize)]
+pub struct UpdateApplyForm {
+    pub download_url: String,
+}
+
+/// Walk a directory recursively to find a binary by name.
+async fn find_binary_in_dir(dir: &std::path::Path, name: &str) -> Option<std::path::PathBuf> {
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let mut rd = match tokio::fs::read_dir(&d).await {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        while let Ok(Some(entry)) = rd.next_entry().await {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.file_name().and_then(|n| n.to_str()) == Some(name) {
+                return Some(path);
+            }
+        }
+    }
+    None
 }
