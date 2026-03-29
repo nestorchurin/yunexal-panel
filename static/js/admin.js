@@ -1756,3 +1756,100 @@ _startAdminTimers();
 if (document.getElementById('tab-audit') && document.getElementById('tab-audit').classList.contains('active')) {
     auditLoad();
 }
+
+// ── Update Check / Apply ─────────────────────────────────────────────────────
+
+async function checkForUpdates() {
+    const btn = document.getElementById('update-check-btn');
+    const box = document.getElementById('update-result');
+    const channel = document.getElementById('update-channel').value;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" style="width:.7rem;height:.7rem;"></span> Checking…';
+    box.innerHTML = '';
+    try {
+        const res = await fetch(`/api/admin/updates/check?channel=${channel}`, { credentials: 'same-origin' });
+        const d = await res.json();
+        if (!d.ok) { box.innerHTML = `<span style="color:var(--danger);font-size:.8rem;"><i class="bi bi-x-circle"></i> ${escHtml(d.error)}</span>`; return; }
+
+        if (channel === 'stable') {
+            if (d.has_update) {
+                box.innerHTML = `
+                    <div style="background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:8px;padding:.6rem .8rem;">
+                        <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.35rem;">
+                            <i class="bi bi-arrow-up-circle-fill" style="color:#a78bfa;"></i>
+                            <strong style="color:var(--txt);font-size:.82rem;">v${escHtml(d.latest_version)} available</strong>
+                            <span style="font-size:.72rem;color:var(--muted);">(current: v${escHtml(d.current_version)})</span>
+                        </div>
+                        ${d.published_at ? `<div style="font-size:.72rem;color:var(--muted);margin-bottom:.35rem;">Published: ${escHtml(d.published_at.split('T')[0])}</div>` : ''}
+                        ${d.changelog ? `<details style="margin-bottom:.5rem;"><summary style="font-size:.75rem;color:var(--muted);cursor:pointer;">Changelog</summary><pre style="font-size:.72rem;color:var(--txt);white-space:pre-wrap;margin:.3rem 0 0;max-height:200px;overflow:auto;">${escHtml(d.changelog)}</pre></details>` : ''}
+                        <div style="display:flex;gap:.4rem;flex-wrap:wrap;">
+                            ${d.download_url ? `<button class="btn-yu btn-yu-primary" onclick="applyUpdate('${escAttr(d.download_url)}')" style="font-size:.76rem;padding:.3rem .7rem;"><i class="bi bi-download"></i> Download & Install</button>` : ''}
+                            ${d.release_url ? `<a href="${escAttr(d.release_url)}" target="_blank" class="btn-yu btn-yu-ghost" style="font-size:.76rem;padding:.3rem .7rem;text-decoration:none;"><i class="bi bi-github"></i> View Release</a>` : ''}
+                        </div>
+                    </div>`;
+            } else {
+                box.innerHTML = `<span style="color:var(--success);font-size:.8rem;"><i class="bi bi-check-circle"></i> You're on the latest version (v${escHtml(d.current_version)})</span>`;
+            }
+        } else {
+            box.innerHTML = `
+                <div style="background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.2);border-radius:8px;padding:.6rem .8rem;">
+                    <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.25rem;">
+                        <i class="bi bi-braces" style="color:#fbbf24;"></i>
+                        <strong style="color:var(--txt);font-size:.82rem;">Unstable branch</strong>
+                        <code style="font-size:.72rem;color:#fbbf24;background:rgba(234,179,8,.1);padding:.1rem .4rem;border-radius:4px;">${escHtml(d.latest_commit)}</code>
+                    </div>
+                    <div style="font-size:.75rem;color:var(--muted);">${escHtml(d.commit_message)}</div>
+                    ${d.commit_date ? `<div style="font-size:.72rem;color:var(--muted);margin-top:.15rem;">${escHtml(d.commit_date.split('T')[0])}</div>` : ''}
+                    <div style="margin-top:.4rem;font-size:.72rem;color:var(--muted);">
+                        <i class="bi bi-exclamation-triangle" style="color:#fbbf24;"></i>
+                        Unstable builds require manual compilation from source.
+                        <a href="https://github.com/nestorchurin/yunexal-panel/tree/unstable" target="_blank" style="color:#a78bfa;">View branch</a>
+                    </div>
+                </div>`;
+        }
+    } catch (e) {
+        box.innerHTML = `<span style="color:var(--danger);font-size:.8rem;"><i class="bi bi-x-circle"></i> ${escHtml(e.message)}</span>`;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Check for Updates';
+    }
+}
+
+async function applyUpdate(url) {
+    const box = document.getElementById('update-result');
+    if (!confirm('This will download and replace the panel binary, then restart the service.\n\nContinue?')) return;
+
+    box.innerHTML = `<div style="padding:.5rem;font-size:.8rem;color:var(--txt);"><span class="spinner-border spinner-border-sm" role="status" style="width:.7rem;height:.7rem;"></span> Downloading and applying update…</div>`;
+
+    try {
+        const res = await fetch('/api/admin/updates/apply', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ download_url: url }),
+        });
+        const d = await res.json();
+        if (d.ok) {
+            box.innerHTML = `<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:.6rem .8rem;font-size:.8rem;color:var(--success);"><i class="bi bi-check-circle-fill"></i> ${escHtml(d.message)}<br><span style="font-size:.72rem;color:var(--muted);">Page will reload in a few seconds…</span></div>`;
+            setTimeout(() => location.reload(), 5000);
+        } else {
+            box.innerHTML = `<span style="color:var(--danger);font-size:.8rem;"><i class="bi bi-x-circle"></i> ${escHtml(d.error)}</span>`;
+        }
+    } catch (e) {
+        // Network error after successful POST likely means the panel is restarting
+        if (e.name === 'TypeError' || e.message.includes('fetch')) {
+            box.innerHTML = `<div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:.6rem .8rem;font-size:.8rem;color:var(--success);"><i class="bi bi-check-circle-fill"></i> Update applied. Panel is restarting…<br><span style="font-size:.72rem;color:var(--muted);">Page will reload in a few seconds…</span></div>`;
+            setTimeout(() => location.reload(), 5000);
+        } else {
+            box.innerHTML = `<span style="color:var(--danger);font-size:.8rem;"><i class="bi bi-x-circle"></i> ${escHtml(e.message)}</span>`;
+        }
+    }
+}
+
+function escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+    return escHtml(s).replace(/'/g,'&#39;');
+}

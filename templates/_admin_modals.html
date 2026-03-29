@@ -1,0 +1,91 @@
+    <!-- Change Password Modal (topbar) -->
+    <div id="adminPwModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;backdrop-filter:blur(6px);align-items:center;justify-content:center;">
+        <div class="yu-modal-inner" style="background:var(--surface);border:1px solid var(--bdr);border-radius:16px;padding:2rem;max-width:360px;width:90%;">
+            <div style="display:flex;align-items:center;gap:.55rem;font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.3rem;">
+                <span style="width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 14px var(--accent);flex-shrink:0;display:inline-block;"></span>
+                Change Password
+            </div>
+            <div style="font-size:.825rem;color:var(--muted);margin-bottom:1.75rem;">Enter your current and new password.</div>
+            <div id="apm-alert" style="display:none;border-radius:9px;padding:.65rem 1rem;font-size:.825rem;margin-bottom:1.25rem;align-items:center;gap:.5rem;"></div>
+            <div style="margin-bottom:1.1rem;">
+                <label style="font-size:.8rem;font-weight:500;color:var(--muted);display:block;margin-bottom:.4rem;">Current Password</label>
+                <input type="password" id="apm-current" placeholder="••••••••" style="background:var(--surface2);border:1px solid rgba(255,255,255,.1);color:var(--txt);padding:.65rem 1rem;border-radius:9px;font-size:.875rem;width:100%;outline:none;font-family:'Inter',sans-serif;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='rgba(124,58,237,.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,.12)'" onblur="this.style.borderColor='rgba(255,255,255,.1)';this.style.boxShadow='none'">
+            </div>
+            <div style="margin-bottom:1.1rem;">
+                <label style="font-size:.8rem;font-weight:500;color:var(--muted);display:block;margin-bottom:.4rem;">New Password</label>
+                <input type="password" id="apm-new" placeholder="••••••••" style="background:var(--surface2);border:1px solid rgba(255,255,255,.1);color:var(--txt);padding:.65rem 1rem;border-radius:9px;font-size:.875rem;width:100%;outline:none;font-family:'Inter',sans-serif;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='rgba(124,58,237,.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,.12)'" onblur="this.style.borderColor='rgba(255,255,255,.1)';this.style.boxShadow='none'">
+            </div>
+            <div style="margin-bottom:1.5rem;">
+                <label style="font-size:.8rem;font-weight:500;color:var(--muted);display:block;margin-bottom:.4rem;">Confirm New Password</label>
+                <input type="password" id="apm-confirm" placeholder="••••••••" style="background:var(--surface2);border:1px solid rgba(255,255,255,.1);color:var(--txt);padding:.65rem 1rem;border-radius:9px;font-size:.875rem;width:100%;outline:none;font-family:'Inter',sans-serif;transition:border-color .15s,box-shadow .15s;" onfocus="this.style.borderColor='rgba(124,58,237,.5)';this.style.boxShadow='0 0 0 3px rgba(124,58,237,.12)'" onblur="this.style.borderColor='rgba(255,255,255,.1)';this.style.boxShadow='none'">
+            </div>
+            <button onclick="adminModalChangePw()" style="background:var(--accent);color:#fff;border:none;border-radius:9px;padding:.7rem 1rem;font-size:.875rem;font-weight:600;width:100%;cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:.4rem;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='var(--accent)'">
+                <i class="bi bi-shield-check"></i> Update Password
+            </button>
+            <button onclick="document.getElementById('adminPwModal').style.display='none'" style="background:transparent;border:none;color:var(--muted);font-size:.8rem;font-family:'Inter',sans-serif;cursor:pointer;width:100%;margin-top:.85rem;padding:.3rem;transition:color .15s;" onmouseover="this.style.color='var(--txt)'" onmouseout="this.style.color='var(--muted)'">
+                Cancel
+            </button>
+        </div>
+    </div>
+
+    <!-- Set User Password Modal -->
+    <div id="setPwModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+        <div class="yu-modal-inner" style="background:#111119;border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;max-width:380px;width:90%;">
+            <div style="font-size:.95rem;font-weight:700;margin-bottom:.25rem;"><i class="bi bi-key me-2 text-muted"></i>Set Password</div>
+            <div id="spw-user-lbl" style="font-size:.8rem;color:var(--muted);margin-bottom:1rem;"></div>
+            <div id="spw-alert" style="display:none;margin-bottom:.75rem;"></div>
+            <div class="yu-form-group">
+                <label class="yu-label">New Password</label>
+                <input type="password" class="yu-input" id="spw-new" placeholder="••••••••">
+            </div>
+            <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem;">
+                <button class="btn-yu btn-ghost-yu" onclick="closeSetPwModal()">Cancel</button>
+                <button class="btn-yu btn-primary-yu" onclick="submitSetPw()"><i class="bi bi-check2"></i> Update</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stop All Modal -->
+    <div id="stopAllModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+        <div class="yu-modal-inner" style="background:#111119;border:1px solid rgba(239,68,68,.3);border-radius:14px;padding:1.5rem;max-width:380px;width:90%;">
+            <div style="font-size:.95rem;font-weight:700;color:#ef4444;margin-bottom:.5rem;"><i class="bi bi-exclamation-triangle me-2"></i>Stop All Containers?</div>
+            <p style="font-size:.845rem;color:var(--muted);margin-bottom:1.25rem;">All {{ running_containers }} running containers will be stopped. This may cause data loss.</p>
+            <div style="display:flex;gap:.6rem;justify-content:flex-end;">
+                <button class="btn-yu btn-ghost-yu" onclick="document.getElementById('stopAllModal').style.display='none'">Cancel</button>
+                <button class="btn-yu btn-danger-yu" onclick="stopAll()"><i class="bi bi-stop-circle"></i> Stop All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pull image modal -->
+    <div id="imgPullModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+        <div class="yu-modal-inner" style="background:#111119;border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;max-width:420px;width:90%;">
+            <div style="font-size:.95rem;font-weight:700;margin-bottom:1rem;"><i class="bi bi-cloud-download me-2"></i>Pull Image</div>
+            <div class="mb-3">
+                <label style="font-size:.8rem;color:var(--muted);" class="mb-1">Image reference</label>
+                <input id="imgPullRef" type="text" class="yu-input w-100" placeholder="e.g. ubuntu:22.04" />
+            </div>
+            <div id="imgPullAlert" style="display:none;" class="yu-alert mb-3"></div>
+            <div style="display:flex;gap:.6rem;justify-content:flex-end;">
+                <button class="btn-yu btn-ghost-yu" onclick="closePullModal()">Cancel</button>
+                <button id="imgPullBtn" class="btn-yu btn-primary-yu" onclick="submitPull()"><i class="bi bi-cloud-download"></i> Pull</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image ENV overrides modal -->
+    <div id="imgEnvModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;backdrop-filter:blur(4px);align-items:center;justify-content:center;">
+        <div class="yu-modal-inner" style="background:#111119;border:1px solid var(--bdr);border-radius:14px;padding:1.5rem;max-width:540px;width:95%;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem;">
+                <div style="font-size:.95rem;font-weight:700;"><i class="bi bi-sliders me-2"></i>ENV Overrides</div>
+                <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="addImgEnvRow()"><i class="bi bi-plus-lg"></i> Add</button>
+            </div>
+            <p id="imgEnvCurrent" style="font-size:.75rem;color:var(--muted);margin-bottom:.8rem;word-break:break-all;"></p>
+            <div id="imgEnvRows" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:.4rem;"></div>
+            <div id="imgEnvAlert" style="display:none;" class="yu-alert mt-2 mb-1"></div>
+            <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.9rem;">
+                <button class="btn-yu btn-ghost-yu" onclick="closeEnvModal()">Cancel</button>
+                <button class="btn-yu btn-primary-yu" onclick="submitEnv()"><i class="bi bi-check2"></i> Save</button>
+            </div>
+        </div>
+    </div>

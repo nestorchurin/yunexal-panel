@@ -1,6 +1,6 @@
 # Yunexal Panel
 
-> **v0.3.0** — Self-hosted web panel for managing Docker game-server containers.
+> **v0.2.3** — Self-hosted web panel for managing Docker game-server containers.
 
 Built with **Rust + Axum**, **SQLite**, and **Bollard** (Docker SDK).  
 Templates and static assets are embedded into a single binary — no external files needed.
@@ -13,8 +13,8 @@ Download the latest binary from the [Releases](https://github.com/nestorchurin/y
 
 ```bash
 # 1. Download and extract
-wget https://github.com/nestorchurin/yunexal-panel/releases/latest/download/yunexal-panel-v0.2.3-linux-x86_64.tar.gz
-tar -xzf yunexal-panel-v0.2.3-linux-x86_64.tar.gz
+wget https://github.com/nestorchurin/yunexal-panel/releases/latest/download/yunexal-panel-linux-x86_64.tar.gz
+tar -xzf yunexal-panel-linux-x86_64.tar.gz
 cd yunex-release
 
 # 2. Run the setup wizard (interactive — installs Docker, sets admin credentials, writes .env)
@@ -149,7 +149,7 @@ Full multi-provider DNS management with 5 supported providers:
 - **Type-coloured badges** + search + filter chips in the admin DNS table
 
 ### Admin Panel
-- **Tabs**: Overview, Containers, Images, Users, DNS
+- **Tabs**: Overview, Containers, Images, Users, DNS, Audit Log
 - **User management**: create users, set passwords, delete users
 - **Role-based access**: `admin` vs `user` roles
 - **Container management**: edit any container (image, name, owner); stop all at once
@@ -157,6 +157,7 @@ Full multi-provider DNS management with 5 supported providers:
 - **DNS management**: providers, records, sync, DDNS (see above)
 - **In-place updates** — all admin tabs poll and update without full page reload
 - **Change own password**
+- **Update checker** — check for new stable releases or unstable branch commits from the admin overview; one-click download & install with automatic restart (requires systemd)
 
 ### Authentication & Security
 - Session-based login with encrypted private cookies
@@ -167,6 +168,10 @@ Full multi-provider DNS management with 5 supported providers:
 - Admin-only access for port manipulation and bandwidth control
 - XSS protection: Askama auto-escaping in templates + `escHtml()` / `escAttr()` in JavaScript
 - All `fetch` calls hardened with `credentials: 'same-origin'`
+- **Rate limiting** — 5 failed login attempts per IP → 60 s lockout
+- **Security headers** — CSP, X-Frame-Options, HSTS, Referrer-Policy, Permissions-Policy
+- **SameSite=Strict** session cookies prevent CSRF
+- **Custom error pages** — no framework fingerprinting on 404/500
 
 ### UI / UX
 - Responsive **Bootstrap 5** layout — works on desktop and mobile

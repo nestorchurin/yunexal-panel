@@ -6,6 +6,7 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, PrivateCookieJar, SameSite};
 use time::Duration as TimeDuration;
 use std::net::SocketAddr;
+use tracing::warn;
 use crate::{auth, db, password};
 use crate::state::AppState;
 use super::templates::{render, LoginForm, LoginTemplate};
@@ -22,6 +23,16 @@ pub async fn login_submit(
     Form(form): Form<LoginForm>,
 ) -> impl IntoResponse {
     let ip = auth::client_ip(&headers, addr);
+
+    // ── Rate-limit check ────────────────────────────────────────────────
+    if state.is_login_locked(&ip) {
+        warn!("Login rate-limited for IP {}", ip);
+        return render(LoginTemplate {
+            error: Some("Too many login attempts. Please try again later.".to_string()),
+        })
+        .into_response();
+    }
+
     // Look up user in DB and verify hashed password
     let ok = match db::find_user_by_username(&state.db, &form.username).await {
         Ok(Some(user)) => password::verify(&form.password, &user.password_hash),
@@ -29,15 +40,21 @@ pub async fn login_submit(
     };
 
     if ok {
+        state.clear_login_attempts(&ip);
         let _ = db::audit_log(&state.db, &form.username, "auth.login", "", "", &ip).await;
         let mut cookie = Cookie::new(auth::SESSION_COOKIE, form.username.clone());
         cookie.set_http_only(true);
-        cookie.set_same_site(SameSite::Lax);
+        cookie.set_same_site(SameSite::Strict);
         cookie.set_path("/");
         cookie.set_max_age(TimeDuration::days(7));
         let updated_jar = jar.add(cookie);
         (updated_jar, Redirect::to("/")).into_response()
     } else {
+        let locked = state.record_failed_login(&ip);
+        let _ = db::audit_log(&state.db, &form.username, "auth.login_failed", "", "", &ip).await;
+        if locked {
+            warn!("IP {} locked out after repeated failed logins", ip);
+        }
         render(LoginTemplate {
             error: Some("Invalid username or password.".to_string()),
         })
