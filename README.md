@@ -1,6 +1,6 @@
 # Yunexal Panel
 
-> **v0.2.3** — Self-hosted web panel for managing Docker game-server containers.
+> **v0.3.1** — Self-hosted web panel for managing Docker game-server containers.
 
 Built with **Rust + Axum**, **SQLite**, and **Bollard** (Docker SDK).  
 Templates and static assets are embedded into a single binary — no external files needed.
