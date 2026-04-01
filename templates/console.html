@@ -39,6 +39,10 @@
                                 <div id="terminal"></div>
                             </div>
                         </div>
+                        <div class="con-cmd-bar">
+                            <span class="con-cmd-icon"><i class="bi bi-chevron-right"></i></span>
+                            <input type="text" id="cmd-input" class="con-cmd-input" placeholder="Type a command…" autocomplete="off" spellcheck="false">
+                        </div>
                     </div>
 
                     <!-- Right column: stats + DNS -->
@@ -57,6 +61,16 @@
                             <div class="con-stat-head"><i class="bi bi-arrow-down-up"></i> Network I/O</div>
                             <div class="con-stat-val" id="net-val">—</div>
                             <div class="chart-container"><canvas id="netChart"></canvas></div>
+                        </div>
+                        <div class="con-stat-card">
+                            <div class="con-stat-head"><i class="bi bi-hdd"></i> Disk I/O</div>
+                            <div class="con-stat-val" id="disk-val">—</div>
+                            <div class="chart-container"><canvas id="diskChart"></canvas></div>
+                        </div>
+                        <div class="con-stat-card">
+                            <div class="con-stat-head"><i class="bi bi-hdd-stack"></i> Storage</div>
+                            <div class="con-stat-val" id="disk-space-val" style="font-size:.85rem;">—</div>
+                            <div style="font-size:.72rem;color:var(--muted);padding:.25rem 0;" id="disk-space-fs">—</div>
                         </div>
                     </div>
                 </div>

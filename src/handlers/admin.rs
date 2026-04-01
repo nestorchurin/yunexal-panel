@@ -20,7 +20,7 @@ use super::templates::{
 const VALID_TABS: &[&str] = &[
     "overview", "containers", "users", "images",
     "agents", "dns", "firewall", "backups",
-    "insights", "audit",
+    "insights", "audit", "settings",
     "workspaces", "tickets",
     "billing", "plans", "coupons",
     "notifications", "themes", "apikeys", "nodes",
@@ -151,6 +151,29 @@ async fn build_admin_template(state: &AppState, tab: String, username: String) -
         zram_compr_mb,
         zram_ratio,
         zram_algorithm,
+        cf_token: state.cf_analytics_token.clone(),
+        settings_ufw_enabled: db::get_panel_setting_bool(&state.db, "ufw_enabled").await,
+        settings_bandwidth_enabled: db::get_panel_setting_bool(&state.db, "bandwidth_enabled").await,
+        settings_cf_uam_enabled: db::get_panel_setting_bool(&state.db, "cf_uam_enabled").await,
+        cf_zone_id: db::get_panel_setting(&state.db, "cf_zone_id").await,
+        cf_api_token_set: !db::get_panel_setting(&state.db, "cf_api_token").await.is_empty(),
+        cf_uam_threshold: {
+            let v = db::get_panel_setting(&state.db, "cf_uam_threshold").await;
+            if v.is_empty() { "5".into() } else { v }
+        },
+        cf_uam_cooldown_mins: {
+            let v = db::get_panel_setting(&state.db, "cf_uam_cooldown_mins").await;
+            if v.is_empty() { "10".into() } else { v }
+        },
+        settings_cf_l7_enabled: db::get_panel_setting_bool(&state.db, "cf_l7_enabled").await,
+        cf_l7_threshold: {
+            let v = db::get_panel_setting(&state.db, "cf_l7_threshold").await;
+            if v.is_empty() { "200".into() } else { v }
+        },
+        cf_l7_ips_min: {
+            let v = db::get_panel_setting(&state.db, "cf_l7_ips_min").await;
+            if v.is_empty() { "2".into() } else { v }
+        },
     }
 }
 
@@ -322,7 +345,7 @@ pub async fn admin_stop_all(State(state): State<AppState>, addr: ConnectInfo<Soc
             error!("admin_stop_all: failed to stop {}: {}", c.id, e);
         }
     }
-    let _ = db::audit_log(&state.db, "admin", "admin.stop_all", "", &format!("{} containers", containers.len()), &ip).await;
+    let _ = db::audit_log(&state.db, "admin", "admin.stop_all", "", &format!("{} containers", containers.len()), &ip, &auth::user_agent(&headers)).await;
     Json(serde_json::json!({"ok": true}))
 }
 
@@ -370,7 +393,7 @@ pub async fn admin_change_password(
     match password::hash(&body.new_password) {
         Ok(hash) => match db::update_user_password(&state.db, user.id, &hash).await {
             Ok(_) => {
-                let _ = db::audit_log(&state.db, &session_user, "user.change_password", &session_user, "", &ip).await;
+                let _ = db::audit_log(&state.db, &session_user, "user.change_password", &session_user, "", &ip, &auth::user_agent(&headers)).await;
                 (StatusCode::OK, Json(serde_json::json!({"ok": true})))
             }
             Err(e) => {
@@ -419,7 +442,7 @@ pub async fn api_create_user(
     };
     match db::create_user(&state.db, body.username.trim(), &hash, role).await {
         Ok(id) => {
-            let _ = db::audit_log(&state.db, "admin", "user.create", body.username.trim(), &format!("role={}", role), &ip).await;
+            let _ = db::audit_log(&state.db, "admin", "user.create", body.username.trim(), &format!("role={}", role), &ip, &auth::user_agent(&headers)).await;
             (
                 StatusCode::OK,
                 Json(serde_json::json!({"ok": true, "id": id})),
@@ -443,17 +466,26 @@ pub async fn api_create_user(
 
 pub async fn api_delete_user(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     addr: ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Path(id): Path<i64>,
 ) -> impl IntoResponse {
     let ip = auth::client_ip(&headers, addr);
-    // Prevent deleting root users or the primary admin login
+    let caller = auth::session_username(&jar).unwrap_or_default();
+    let caller_role = db::find_user_by_username(&state.db, &caller)
+        .await.ok().flatten().map(|u| u.role).unwrap_or_default();
     match db::find_user_by_id(&state.db, id).await {
         Ok(Some(u)) if u.role == "root" => {
             return (
                 StatusCode::FORBIDDEN,
                 Json(serde_json::json!({"error": "Cannot delete the root account"})),
+            );
+        }
+        Ok(Some(u)) if u.role == "admin" && caller_role != "root" => {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({"error": "Only root can delete admin accounts"})),
             );
         }
         Ok(None) => {
@@ -473,7 +505,7 @@ pub async fn api_delete_user(
     }
     match db::delete_user(&state.db, id).await {
         Ok(_) => {
-            let _ = db::audit_log(&state.db, "admin", "user.delete", &format!("uid:{}", id), "", &ip).await;
+            let _ = db::audit_log(&state.db, "admin", "user.delete", &format!("uid:{}", id), "", &ip, &auth::user_agent(&headers)).await;
             (StatusCode::OK, Json(serde_json::json!({"ok": true})))
         }
         Err(e) => {
@@ -512,7 +544,7 @@ pub async fn api_set_user_password(
     };
     match db::update_user_password(&state.db, id, &hash).await {
         Ok(_) => {
-            let _ = db::audit_log(&state.db, "admin", "user.set_password", &format!("uid:{}", id), "", &ip).await;
+            let _ = db::audit_log(&state.db, "admin", "user.set_password", &format!("uid:{}", id), "", &ip, &auth::user_agent(&headers)).await;
             (StatusCode::OK, Json(serde_json::json!({"ok": true})))
         },
         Err(e) => {
@@ -579,6 +611,7 @@ pub async fn admin_edit_page(
         },
         users,
         error: None,
+        cf_token: state.cf_analytics_token.clone(),
     }).into_response()
 }
 
@@ -679,7 +712,7 @@ pub async fn api_admin_edit_container(
         }
 
         let short = if new_id.len() >= 12 { &new_id[..12] } else { &new_id };
-        let _ = db::audit_log(&state.db, "admin", "server.edit", &effective_name, &format!("#{} recreated", db_id), &ip).await;
+        let _ = db::audit_log(&state.db, "admin", "server.edit", &effective_name, &format!("#{} recreated", db_id), &ip, &auth::user_agent(&headers)).await;
         return (StatusCode::OK, Json(serde_json::json!({"ok": true, "new_id": db_id, "new_short": short})));
     }
 
@@ -694,7 +727,7 @@ pub async fn api_admin_edit_container(
         error!("api_admin_edit_container update_server_name_and_owner: {}", e);
     }
 
-    let _ = db::audit_log(&state.db, "admin", "server.edit", &effective_name, &format!("#{} updated", db_id), &ip).await;
+    let _ = db::audit_log(&state.db, "admin", "server.edit", &effective_name, &format!("#{} updated", db_id), &ip, &auth::user_agent(&headers)).await;
 
     (StatusCode::OK, Json(serde_json::json!({"ok": true, "new_id": null})))
 }
@@ -762,7 +795,7 @@ pub async fn api_delete_image(
         Ok(_) => {
             state.cache.remove("images_ts");
             let _ = db::delete_image_env(&state.db, &decoded).await;
-            let _ = db::audit_log(&state.db, "admin", "image.delete", &decoded, "", &ip).await;
+            let _ = db::audit_log(&state.db, "admin", "image.delete", &decoded, "", &ip, &auth::user_agent(&headers)).await;
             (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response()
         }
         Err(e) => {
@@ -791,7 +824,7 @@ pub async fn api_pull_image(
     match docker::ensure_image(&state.docker, &image).await {
         Ok(_) => {
             state.cache.remove("images_ts");
-            let _ = db::audit_log(&state.db, "admin", "image.pull", &image, "", &ip).await;
+            let _ = db::audit_log(&state.db, "admin", "image.pull", &image, "", &ip, &auth::user_agent(&headers)).await;
             (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response()
         }
         Err(e) => {
@@ -824,14 +857,19 @@ pub struct SetImageEnvForm {
 
 pub async fn api_set_image_env(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(image_ref): Path<String>,
     Json(body): Json<SetImageEnvForm>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
+    let actor = auth::session_username(&jar).unwrap_or_default();
     let decoded = urlencoding::decode(&image_ref).unwrap_or(std::borrow::Cow::Borrowed(&image_ref)).into_owned();
     match db::set_image_env(&state.db, &decoded, &body.env).await {
         Ok(_) => {
-            // Invalidate image cache so next list reflects the update
             state.cache.remove("images_ts");
+            let _ = db::audit_log(&state.db, &actor, "image.env_set", &decoded, "", &ip, &auth::user_agent(&headers)).await;
             (StatusCode::OK, Json(serde_json::json!({ "ok": true }))).into_response()
         }
         Err(e) => {
@@ -845,8 +883,13 @@ pub async fn api_set_image_env(
 
 pub async fn api_duplicate_image(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(image_ref): Path<String>,
 ) -> impl IntoResponse {
+    let ip = auth::client_ip(&headers, addr);
+    let actor = auth::session_username(&jar).unwrap_or_default();
     let decoded = urlencoding::decode(&image_ref).unwrap_or(std::borrow::Cow::Borrowed(&image_ref)).into_owned();
 
     // Collect source tags and env overrides before any mutation
@@ -886,6 +929,7 @@ pub async fn api_duplicate_image(
             }
 
             state.cache.remove("images_ts");
+            let _ = db::audit_log(&state.db, &actor, "image.duplicate", &decoded, &format!("new_id={}", new_id), &ip, &auth::user_agent(&headers)).await;
             (StatusCode::OK, Json(serde_json::json!({ "ok": true, "new_id": new_id }))).into_response()
         }
         Err(e) => {
@@ -1017,19 +1061,6 @@ pub async fn api_audit_list(
         "page": page,
         "pages": (total as f64 / limit as f64).ceil() as i64,
     }))
-}
-
-pub async fn api_audit_clear(
-    State(state): State<AppState>,
-    jar: PrivateCookieJar,
-    addr: ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
-    let ip = auth::client_ip(&headers, addr);
-    let actor = auth::session_username(&jar).unwrap_or_default();
-    let _ = db::audit_clear(&state.db).await;
-    let _ = db::audit_log(&state.db, &actor, "audit.clear", "", "", &ip).await;
-    Json(serde_json::json!({"ok": true}))
 }
 
 // ── Update check / apply API ──────────────────────────────────────────────────
@@ -1169,7 +1200,7 @@ pub async fn api_update_apply(
         return Json(serde_json::json!({"ok": false, "error": "Invalid download URL"}));
     }
 
-    let _ = db::audit_log(&state.db, &actor, "panel.update", "", &format!("url={download_url}"), &ip).await;
+    let _ = db::audit_log(&state.db, &actor, "panel.update", "", &format!("url={download_url}"), &ip, &auth::user_agent(&headers)).await;
 
     let client = match reqwest::Client::builder()
         .user_agent("yunexal-panel")
@@ -1295,7 +1326,7 @@ pub async fn api_update_apply(
 
     let _ = tokio::fs::remove_dir_all(&tmp_extract).await;
 
-    let _ = db::audit_log(&state.db, &actor, "panel.updated", "", "binary replaced, restarting", &ip).await;
+    let _ = db::audit_log(&state.db, &actor, "panel.updated", "", "binary replaced, restarting", &ip, &auth::user_agent(&headers)).await;
 
     // Schedule a graceful restart after responding
     tokio::spawn(async {
@@ -1331,3 +1362,212 @@ async fn find_binary_in_dir(dir: &std::path::Path, name: &str) -> Option<std::pa
     }
     None
 }
+
+// ── Panel settings API ────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+pub struct AdminSetSettingBody {
+    pub key: String,
+    pub value: String,
+}
+
+pub async fn api_admin_set_setting(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<AdminSetSettingBody>,
+) -> impl IntoResponse {
+    // Only root can change panel settings
+    if !auth::is_root_session(&state, &jar).await {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Root access required"}))).into_response();
+    }
+    // Allowlist of mutable keys
+    const BOOL_KEYS: &[&str] = &[
+        "ufw_enabled", "bandwidth_enabled",
+        "cf_uam_enabled", "cf_l7_enabled",
+    ];
+    const STR_KEYS: &[&str] = &[
+        "cf_zone_id", "cf_api_token",
+        "cf_uam_threshold", "cf_uam_cooldown_mins",
+        "cf_l7_threshold", "cf_l7_ips_min",
+    ];
+    let is_bool = BOOL_KEYS.contains(&body.key.as_str());
+    let is_str  = STR_KEYS.contains(&body.key.as_str());
+    if !is_bool && !is_str {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Unknown setting key"}))).into_response();
+    }
+    // Boolean keys only accept "0" or "1"
+    if is_bool && body.value != "0" && body.value != "1" {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Value must be '0' or '1'"}))).into_response();
+    }
+    match db::set_panel_setting(&state.db, &body.key, &body.value).await {
+        Ok(_) => {
+            let ip = auth::client_ip(&headers, addr);
+            let _ = db::audit_log(&state.db, "admin", "panel.setting", &body.key, &body.value, &ip, &auth::user_agent(&headers)).await;
+            Json(serde_json::json!({"ok": true})).into_response()
+        }
+        Err(e) => {
+            error!("api_admin_set_setting: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response()
+        }
+    }
+}
+
+// ── UFW management (root-only) ───────────────────────────────────────────────
+
+fn ufw_fix_command() -> String {
+    let user = std::env::var("USER").unwrap_or_else(|_| "yunexal".into());
+    format!(
+        "echo '{user} ALL=(ALL) NOPASSWD: /usr/sbin/ufw' | sudo tee /etc/sudoers.d/yunexal-ufw && sudo chmod 440 /etc/sudoers.d/yunexal-ufw"
+    )
+}
+
+/// GET /api/admin/ufw/status — returns whether UFW is active on the host
+pub async fn api_ufw_status(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+) -> impl IntoResponse {
+    if !auth::is_root_session(&state, &jar).await {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Root access required"}))).into_response();
+    }
+    match tokio::process::Command::new("sudo").args(["-n", "ufw", "status"]).output().await {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let active = stdout.contains("Status: active");
+            Json(serde_json::json!({"ok": true, "active": active, "output": stdout.trim()})).into_response()
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            if stderr.contains("password is required") || stderr.contains("Permission denied") || stderr.contains("not allowed") {
+                Json(serde_json::json!({"ok": false, "needs_permission": true, "fix_command": ufw_fix_command()})).into_response()
+            } else {
+                Json(serde_json::json!({"ok": true, "active": false, "output": stderr.trim()})).into_response()
+            }
+        }
+        Err(_) => {
+            Json(serde_json::json!({"ok": true, "active": false, "output": "ufw not found"})).into_response()
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct UfwToggleBody {
+    pub enable: bool,
+}
+
+/// POST /api/admin/ufw/toggle — enable or disable UFW on the host
+pub async fn api_ufw_toggle(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<UfwToggleBody>,
+) -> impl IntoResponse {
+    if !auth::is_root_session(&state, &jar).await {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Root access required"}))).into_response();
+    }
+    let args: Vec<&str> = if body.enable { vec!["-n", "ufw", "--force", "enable"] } else { vec!["-n", "ufw", "disable"] };
+    match tokio::process::Command::new("sudo").args(&args).output().await {
+        Ok(out) if out.status.success() => {
+            let ip = auth::client_ip(&headers, addr);
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let action_detail = if body.enable { "enabled" } else { "disabled" };
+            let _ = db::audit_log(&state.db, &actor, "panel.ufw_toggle", "ufw", action_detail, &ip, &auth::user_agent(&headers)).await;
+            Json(serde_json::json!({"ok": true, "enabled": body.enable})).into_response()
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            if stderr.contains("password is required") || stderr.contains("Permission denied") || stderr.contains("not allowed") {
+                Json(serde_json::json!({"ok": false, "needs_permission": true, "fix_command": ufw_fix_command()})).into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("ufw failed: {}", stderr.trim())}))).into_response()
+            }
+        }
+        Err(e) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("Failed to run ufw: {}", e)}))).into_response()
+        }
+    }
+}
+
+// ── Cloudflare UAM endpoints ─────────────────────────────────────────────────
+
+/// GET /api/admin/cf/status — returns CF security level and auto-UAM state.
+pub async fn api_cf_status(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+) -> impl IntoResponse {
+    if !auth::is_root_session(&state, &jar).await {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Root access required"}))).into_response();
+    }
+    let token = db::get_panel_setting(&state.db, "cf_api_token").await;
+    let zone_id = db::get_panel_setting(&state.db, "cf_zone_id").await;
+    let auto_active = state.cf_uam_triggered_at.lock().await.is_some();
+
+    if token.is_empty() || zone_id.is_empty() {
+        return Json(serde_json::json!({
+            "ok": true,
+            "configured": false,
+            "auto_active": auto_active,
+        })).into_response();
+    }
+
+    match crate::cloudflare::get_security_level(&zone_id, &token).await {
+        Ok(level) => Json(serde_json::json!({
+            "ok": true,
+            "configured": true,
+            "level": level,
+            "under_attack": level == "under_attack",
+            "auto_active": auto_active,
+        })).into_response(),
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(serde_json::json!({
+            "ok": false,
+            "error": e.to_string(),
+            "auto_active": auto_active,
+        }))).into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct CfUamBody {
+    pub enable: bool,
+}
+
+/// POST /api/admin/cf/uam — manually enable or disable Cloudflare Under Attack Mode.
+pub async fn api_cf_uam_set(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<CfUamBody>,
+) -> impl IntoResponse {
+    if !auth::is_root_session(&state, &jar).await {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Root access required"}))).into_response();
+    }
+    let token = db::get_panel_setting(&state.db, "cf_api_token").await;
+    let zone_id = db::get_panel_setting(&state.db, "cf_zone_id").await;
+    if token.is_empty() || zone_id.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "CF credentials not configured"}))).into_response();
+    }
+
+    let result = if body.enable {
+        crate::cloudflare::enable_under_attack(&zone_id, &token).await
+    } else {
+        crate::cloudflare::disable_under_attack(&zone_id, &token).await
+    };
+
+    match result {
+        Ok(()) => {
+            let mut guard = state.cf_uam_triggered_at.lock().await;
+            *guard = if body.enable { Some(std::time::Instant::now()) } else { None };
+            drop(guard);
+            let ip = auth::client_ip(&headers, addr);
+            let actor = auth::session_username(&jar).unwrap_or_default();
+            let detail = if body.enable { "enabled" } else { "disabled" };
+            let _ = db::audit_log(&state.db, &actor, "panel.cf_uam_toggle", "manual", detail, &ip, &auth::user_agent(&headers)).await;
+            Json(serde_json::json!({"ok": true, "enabled": body.enable})).into_response()
+        }
+        Err(e) => (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+

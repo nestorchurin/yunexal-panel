@@ -1,1 +1,2 @@
     <script src="/static/js/footer.js"></script>
+{% if !cf_token.is_empty() %}<!-- Cloudflare Web Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "{{ cf_token }}"}'></script><!-- End Cloudflare Web Analytics -->{% endif %}

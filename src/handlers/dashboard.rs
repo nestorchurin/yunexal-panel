@@ -37,13 +37,14 @@ pub async fn dashboard(
     // Populate db_id and SQLite display name for each container
     let info_map = db::get_server_info_map(&state.db).await.unwrap_or_default();
     for c in &mut containers {
-        if let Some((id, name, _owner)) = info_map.get(&c.id) {
+        if let Some((id, name, owner)) = info_map.get(&c.id) {
             c.db_id = *id;
             c.name = name.clone();
+            c.owner = owner.clone();
         }
     }
     let auth_username = auth::session_username(&jar).unwrap_or_default();
-    render(IndexTemplate { containers, is_admin, auth_username })
+    render(IndexTemplate { containers, is_admin, auth_username, cf_token: state.cf_analytics_token.clone() })
 }
 
 pub async fn server_list_fragment(
@@ -69,9 +70,10 @@ pub async fn server_list_fragment(
     // Populate db_id and SQLite display name for each container
     let info_map = db::get_server_info_map(&state.db).await.unwrap_or_default();
     for c in &mut containers {
-        if let Some((id, name, _owner)) = info_map.get(&c.id) {
+        if let Some((id, name, owner)) = info_map.get(&c.id) {
             c.db_id = *id;
             c.name = name.clone();
+            c.owner = owner.clone();
         }
     }
     render(ServerListTemplate { containers, is_admin })
@@ -125,5 +127,5 @@ pub async fn new_server_page(
             created_at: u.created_at,
         })
         .collect();
-    render(NewServerTemplate { error: None, users })
+    render(NewServerTemplate { error: None, users, cf_token: state.cf_analytics_token.clone() })
 }

@@ -382,11 +382,11 @@ async function togglePort(hp, cp, currentEnabled, btn) {
         // Update button state
         btn.setAttribute('onclick', `togglePort(${hp},${cp},${newEnabled},this)`);
         if (newEnabled) {
-            btn.className = 'btn-yu btn-success-yu btn-sm-yu';
+            btn.className = 'btn-yu btn-yu-icon btn-yu-success';
             btn.title = 'Disable port';
             btn.innerHTML = '<i class="bi bi-toggle-on"></i>';
         } else {
-            btn.className = 'btn-yu btn-ghost-yu btn-sm-yu';
+            btn.className = 'btn-yu btn-yu-icon btn-yu-ghost';
             btn.title = 'Enable port';
             btn.innerHTML = '<i class="bi bi-toggle-off"></i>';
         }
@@ -396,6 +396,49 @@ async function togglePort(hp, cp, currentEnabled, btn) {
         showToast(`Port ${hp} \u2192 ${cp} ${newEnabled ? 'enabled' : 'disabled'}`, 'ok');
     } catch (err) {
         showToast('Failed: ' + err.message, 'err');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ── UFW toggle ────────────────────────────────────────────────────────────────
+function _showUfwPermHint(fixCmd) {
+    const hint = document.getElementById('ufw-perm-hint');
+    const cmd  = document.getElementById('ufw-perm-cmd');
+    if (!hint) return;
+    if (cmd) cmd.textContent = fixCmd;
+    hint.style.display = '';
+}
+
+async function toggleUfw(hp, cp, currentBlocked, btn) {
+    const newBlocked = !currentBlocked;
+    btn.disabled = true;
+    try {
+        const res = await fetch(`/api/servers/${YU_SERVER_ID}/ports/ufw`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({host_port: hp, container_port: cp, block: newBlocked})
+        });
+        const data = await res.json();
+        if (data.needs_permission) {
+            _showUfwPermHint(data.fix_command || '');
+            showToast('Panel has no permission to run UFW', 'err');
+            return;
+        }
+        if (!res.ok || data.error) throw new Error(data.error || 'Unknown error');
+        btn.setAttribute('onclick', `toggleUfw(${hp},${cp},${newBlocked},this)`);
+        if (newBlocked) {
+            btn.className = 'btn-yu btn-yu-icon btn-yu-danger';
+            btn.title = 'Unblock in UFW';
+            btn.innerHTML = '<i class="bi bi-shield-fill"></i>';
+        } else {
+            btn.className = 'btn-yu btn-yu-icon btn-yu-ghost';
+            btn.title = 'Block in UFW';
+            btn.innerHTML = '<i class="bi bi-shield"></i>';
+        }
+        showToast(`Port ${hp} UFW ${newBlocked ? 'blocked' : 'unblocked'}`, 'ok');
+    } catch (err) {
+        showToast('UFW error: ' + err.message, 'err');
     } finally {
         btn.disabled = false;
     }

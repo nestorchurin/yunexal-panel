@@ -71,14 +71,18 @@ function updateCardInPlace(card, c) {
 
     const stripe = card.querySelector('[data-el="stripe"]');
     if (stripe) {
-        const cls = 'card-stripe ' + _stripeClass(c.state);
-        if (stripe.className !== cls) stripe.className = cls;
+        const want = _stripeClass(c.state);
+        if (!stripe.classList.contains(want)) {
+            stripe.className = 'card-stripe ' + want;
+        }
     }
 
     const pill = card.querySelector('[data-el="pill"]');
     if (pill) {
-        const cls = 'status-pill ' + _pillClass(c.state);
-        if (pill.className !== cls) pill.className = cls;
+        const want = _pillClass(c.state);
+        if (!pill.classList.contains(want)) {
+            pill.className = 'status-pill ' + want;
+        }
     }
 
     const statusEl = card.querySelector('[data-el="status"]');
@@ -194,6 +198,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 _startTimers();
+// Run stats immediately on page load (intervals fire only after delay)
+pollStats();
 
 // ── Actions ───────────────────────────────────────────────────────────────
 function dashAction(id, action) {

@@ -4,6 +4,7 @@ mod servers;
 mod ports;
 mod dns;
 mod images;
+mod settings;
 
 pub use audit::*;
 pub use users::*;
@@ -11,6 +12,7 @@ pub use servers::*;
 pub use ports::*;
 pub use dns::*;
 pub use images::*;
+pub use settings::*;
 
 use anyhow::{Context, Result};
 use sqlx::{sqlite::SqliteConnectOptions, FromRow, Pool, Sqlite, SqlitePool};
@@ -192,6 +194,64 @@ pub async fn init_db() -> Result<Pool<Sqlite>> {
     let _ = sqlx::query("ALTER TABLE audit_log ADD COLUMN ip TEXT NOT NULL DEFAULT ''")
         .execute(&pool)
         .await;
+
+    // ── v0.3.2 migrations ─────────────────────────────────────────────────────
+    // No new schema changes in v0.3.2.
+
+    // ── v0.4.0 migrations ─────────────────────────────────────────────────────
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS panel_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .context("Failed to create panel_settings table")?;
+
+    // Seed default settings (no-op if already present)
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO panel_settings (key, value) VALUES ('ufw_enabled', '0')"
+    ).execute(&pool).await;
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO panel_settings (key, value) VALUES ('bandwidth_enabled', '1')"
+    ).execute(&pool).await;
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO panel_settings (key, value) VALUES ('cf_uam_enabled', '0')"
+    ).execute(&pool).await;
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO panel_settings (key, value) VALUES ('cf_zone_id', '')"
+    ).execute(&pool).await;
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO panel_settings (key, value) VALUES ('cf_api_token', '')"
+    ).execute(&pool).await;
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO panel_settings (key, value) VALUES ('cf_uam_threshold', '5')"
+    ).execute(&pool).await;
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO panel_settings (key, value) VALUES ('cf_uam_cooldown_mins', '10')"
+    ).execute(&pool).await;
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO panel_settings (key, value) VALUES ('cf_l7_enabled', '0')"
+    ).execute(&pool).await;
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO panel_settings (key, value) VALUES ('cf_l7_threshold', '200')"
+    ).execute(&pool).await;
+    let _ = sqlx::query(
+        "INSERT OR IGNORE INTO panel_settings (key, value) VALUES ('cf_l7_ips_min', '2')"
+    ).execute(&pool).await;
+
+    // ufw_blocked column for server_ports (no-op if already present)
+    let _ = sqlx::query(
+        "ALTER TABLE server_ports ADD COLUMN ufw_blocked INTEGER NOT NULL DEFAULT 0"
+    ).execute(&pool).await;
+
+    // user_agent column for audit_log (no-op if already present)
+    let _ = sqlx::query(
+        "ALTER TABLE audit_log ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''"
+    ).execute(&pool).await;
 
     info!("Database initialized successfully");
     Ok(pool)

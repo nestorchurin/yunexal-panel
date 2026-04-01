@@ -21,6 +21,12 @@
 .DS_Store
 Thumbs.db
 
+# ── Release output directory ──────────────────────────────────────────────────
+/yunex-release/
+
+# ── Changelog (kept local only) ───────────────────────────────────────────────
+CHANGELOG.md
+
 # ── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 /target/flycheck0/

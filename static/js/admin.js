@@ -1,5 +1,32 @@
 // Admin panel tab switching and actions
 
+// ── Toast ─────────────────────────────────────────────────────────────────────
+(function() {
+    const COLORS = {
+        success: { bg: 'rgba(16,185,129,.15)', color: '#10b981', border: 'rgba(16,185,129,.25)' },
+        danger:  { bg: 'rgba(239,68,68,.15)',  color: '#ef4444', border: 'rgba(239,68,68,.25)' },
+        warning: { bg: 'rgba(251,191,36,.15)', color: '#fbbf24', border: 'rgba(251,191,36,.25)' },
+    };
+    let container;
+    function ensureContainer() {
+        if (!container || !document.body.contains(container)) {
+            container = document.createElement('div');
+            container.style.cssText = 'position:fixed;top:1rem;right:1rem;z-index:9999;display:flex;flex-direction:column;gap:.5rem;pointer-events:none;';
+            document.body.appendChild(container);
+        }
+        return container;
+    }
+    window.showToast = function(type, msg) {
+        const c = COLORS[type] || COLORS.success;
+        const el = document.createElement('div');
+        el.style.cssText = `padding:.65rem 1.1rem;border-radius:8px;font-size:.825rem;font-weight:500;opacity:0;transform:translateX(20px);transition:all .25s;background:${c.bg};color:${c.color};border:1px solid ${c.border};white-space:nowrap;`;
+        el.textContent = msg;
+        ensureContainer().appendChild(el);
+        requestAnimationFrame(() => { requestAnimationFrame(() => { el.style.opacity='1'; el.style.transform='translateX(0)'; }); });
+        setTimeout(() => { el.style.opacity='0'; el.style.transform='translateX(20px)'; setTimeout(() => el.remove(), 300); }, 3200);
+    };
+})();
+
 function openModal(id) {
     const modal = document.getElementById(id);
     modal.style.display = 'flex';
@@ -68,6 +95,7 @@ function switchTab(name, btn) {
     closeSidebar();
     if (name === 'images') loadImages();
     if (name === 'audit') auditLoad();
+    if (name === 'dns') { dnsLoadProviders(); dnsGetPublicIp(); }
 }
 
 // Handle browser back/forward
@@ -80,6 +108,9 @@ window.addEventListener('popstate', (e) => {
     document.querySelectorAll('.yu-nav-item').forEach(b => {
         if ((b.getAttribute('onclick') || '').includes("'" + tab + "'")) b.classList.add('active');
     });
+    if (tab === 'images') loadImages();
+    if (tab === 'audit') auditLoad();
+    if (tab === 'dns') { dnsLoadProviders(); dnsGetPublicIp(); }
 });
 
 
@@ -704,7 +735,6 @@ function dnsSwitchTab(tab, btn) {
     if (tab === 'providers')  dnsLoadProviders();
     if (tab === 'records')    { dnsPopulateProviderDropdown(); if (_dnsCurrentProviderId && _dnsCurrentZoneId) { dnsLoadRemoteRecords(); } }
     if (tab === 'ddns')       { dnsLoadDdns(); dnsGetPublicIp(); }
-    if (tab === 'containers') dnsLoadContainerRecords();
 }
 
 // ── Provider type → credential fields ────────────────────────────────────────
@@ -1496,10 +1526,11 @@ function _buildContainerRow(c) {
 function _updateContainerRowInPlace(row, c) {
     const isRunning    = c.state === 'running';
     const isRestarting = c.state === 'restarting';
-    row.dataset.state = c.state;
+    const prevState    = row.dataset.state;
+    row.dataset.state  = c.state;
 
     const stateCell = row.querySelector('.ac-state-cell');
-    if (stateCell) stateCell.innerHTML = _containerStatePill(c.state);
+    if (stateCell && prevState !== c.state) stateCell.innerHTML = _containerStatePill(c.state);
 
     const statusCell = row.querySelector('[data-el="status"]');
     if (statusCell && statusCell.textContent !== c.status) statusCell.textContent = c.status;
@@ -1588,11 +1619,34 @@ function auditSearchDebounce() {
     _auditSearchTimer = setTimeout(() => { _auditPage = 1; auditLoad(); }, 300);
 }
 
+function toggleAuditFilterDD() {
+    const dd = document.getElementById('audit-filter-dd');
+    if (!dd) return;
+    const open = dd.style.display !== 'none';
+    dd.style.display = open ? 'none' : 'block';
+    if (!open) {
+        setTimeout(() => document.addEventListener('click', _closeAuditDD, { once: true }), 0);
+    }
+}
+function _closeAuditDD(e) {
+    const dd  = document.getElementById('audit-filter-dd');
+    const btn = document.getElementById('audit-filter-btn');
+    if (dd && !dd.contains(e.target) && !btn?.contains(e.target)) dd.style.display = 'none';
+}
+function auditFilterApply() {
+    const checked = Array.from(document.querySelectorAll('#audit-filter-dd input[type=checkbox]:checked'));
+    const label = document.getElementById('audit-filter-label');
+    if (label) label.textContent = checked.length ? `${checked.length} selected` : 'All actions';
+    _auditPage = 1;
+    auditLoad();
+}
+
 function auditLoad(page) {
     if (page !== undefined) _auditPage = page;
-    const action = document.getElementById('audit-filter-action')?.value || '';
+    const checked = Array.from(document.querySelectorAll('#audit-filter-dd input[type=checkbox]:checked'));
+    const action = checked.map(cb => cb.value).join(',');
     const search = document.getElementById('audit-search')?.value.trim() || '';
-    const limit = 50;
+    const limit = 200;
     const params = new URLSearchParams({ page: _auditPage, limit });
     if (action) params.set('action', action);
     if (search) params.set('search', search);
@@ -1607,7 +1661,7 @@ function auditLoad(page) {
             if (!tbody) return;
             const entries = data.entries;
             if (entries.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">No audit entries found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">No audit entries found</td></tr>';
             } else {
                 tbody.innerHTML = entries.map(e => `<tr>
                     <td class="mono" style="white-space:nowrap;">${escHtml(e.created_at)}</td>
@@ -1615,7 +1669,8 @@ function auditLoad(page) {
                     <td class="mono" style="font-size:.8rem;">${escHtml(e.ip)}</td>
                     <td>${_auditActionBadge(e.action)}</td>
                     <td>${escHtml(e.target)}</td>
-                    <td style="color:var(--muted);font-size:.8rem;">${escHtml(e.detail)}</td>
+                    <td style="font-size:.8rem;">${escHtml(e.detail)}</td>
+                    <td style="font-size:.78rem;color:var(--muted);" title="${escHtml(e.user_agent || '')}">${escHtml(_parseUA(e.user_agent))}</td>
                 </tr>`).join('');
             }
             // Pagination
@@ -1637,6 +1692,8 @@ function _auditActionBadge(action) {
     const colors = {
         'auth.login':            ['#10b981', 'rgba(16,185,129,.12)'],
         'auth.logout':           ['var(--muted)', 'rgba(255,255,255,.05)'],
+        'auth.login_failed':     ['#f87171', 'rgba(239,68,68,.12)'],
+        'auth.login_locked':     ['#ef4444', 'rgba(239,68,68,.18)'],
         'server.create':         ['#a78bfa', 'rgba(124,58,237,.12)'],
         'server.delete':         ['#ef4444', 'rgba(239,68,68,.18)'],
         'server.start':          ['#10b981', 'rgba(16,185,129,.12)'],
@@ -1645,6 +1702,8 @@ function _auditActionBadge(action) {
         'server.kill':           ['#ef4444', 'rgba(239,68,68,.18)'],
         'server.edit':           ['#60a5fa', 'rgba(96,165,250,.12)'],
         'server.rename':         ['#60a5fa', 'rgba(96,165,250,.12)'],
+        'server.factory_reset':  ['#ef4444', 'rgba(239,68,68,.18)'],
+        'server.factory_reset_failed': ['#f87171', 'rgba(239,68,68,.12)'],
         'user.create':           ['#a78bfa', 'rgba(124,58,237,.12)'],
         'user.delete':           ['#f87171', 'rgba(239,68,68,.12)'],
         'user.change_password':  ['#fbbf24', 'rgba(251,191,36,.12)'],
@@ -1677,19 +1736,34 @@ function _auditActionBadge(action) {
         'file.bulk_delete':      ['#ef4444', 'rgba(239,68,68,.18)'],
         'image.delete':          ['#f87171', 'rgba(239,68,68,.12)'],
         'image.pull':            ['#10b981', 'rgba(16,185,129,.12)'],
+        'image.env_set':         ['#60a5fa', 'rgba(96,165,250,.12)'],
+        'image.duplicate':       ['#a78bfa', 'rgba(124,58,237,.12)'],
         'admin.stop_all':        ['#ef4444', 'rgba(239,68,68,.18)'],
-        'audit.clear':           ['var(--muted)', 'rgba(255,255,255,.05)'],
+        'console.connect':       ['#2dd4bf', 'rgba(45,212,191,.12)'],
+        'console.command':       ['#94a3b8', 'rgba(148,163,184,.10)'],
+        'panel.update':          ['#fbbf24', 'rgba(251,191,36,.12)'],
+        'panel.updated':         ['#10b981', 'rgba(16,185,129,.12)'],
+        'panel.setting':         ['#60a5fa', 'rgba(96,165,250,.12)'],
     };
     const [c, bg] = colors[action] || ['var(--muted)', 'rgba(255,255,255,.05)'];
     return `<span style="display:inline-block;padding:.2rem .5rem;border-radius:5px;font-size:.75rem;font-weight:600;letter-spacing:.02em;color:${c};background:${bg};">${escHtml(action)}</span>`;
 }
 
-function auditClear() {
-    if (!confirm('Clear all audit log entries?')) return;
-    fetch('/api/admin/audit/clear', { method: 'POST', credentials: 'same-origin' })
-        .then(r => r.json())
-        .then(data => { if (data.ok) { _auditPage = 1; auditLoad(); } })
-        .catch(() => {});
+function _parseUA(ua) {
+    if (!ua) return '';
+    let browser = '', os = '';
+    if (/Edg\//i.test(ua)) browser = 'Edge';
+    else if (/OPR|Opera/i.test(ua)) browser = 'Opera';
+    else if (/Chrome/i.test(ua)) browser = 'Chrome';
+    else if (/Firefox/i.test(ua)) browser = 'Firefox';
+    else if (/Safari/i.test(ua)) browser = 'Safari';
+    else browser = 'Other';
+    if (/Windows/i.test(ua)) os = 'Win';
+    else if (/Android/i.test(ua)) os = 'Android';
+    else if (/iPhone|iPad/i.test(ua)) os = 'iOS';
+    else if (/Mac/i.test(ua)) os = 'Mac';
+    else if (/Linux/i.test(ua)) os = 'Linux';
+    return os ? `${browser}/${os}` : browser;
 }
 
 // ── Real-time Overview ────────────────────────────────────────────────────────

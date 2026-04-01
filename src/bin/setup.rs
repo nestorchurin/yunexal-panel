@@ -386,8 +386,8 @@ async fn step_admin_user(non_interactive: bool, dir: &Path, real_user: &str) -> 
 
     let pool = db::init_db().await.context("Database initialization failed")?;
     let hash = password::hash(&pass).context("Failed to hash password")?;
-    db::seed_root_user(&pool, &username, &hash, "admin").await?;
-    ok!("Admin user '{}' created/updated.", username);
+    db::seed_root_user(&pool, &username, &hash, "root").await?;
+    ok!("Root user '{}' created/updated.", username);
 
     // Fix ownership: DB files were created by root, but the service runs as real_user.
     let owner_arg = format!("{}:{}", real_user, real_user);

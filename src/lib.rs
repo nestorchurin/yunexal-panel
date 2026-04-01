@@ -6,3 +6,4 @@ pub mod compose;
 pub mod auth;
 pub mod password;
 pub mod handlers;
+pub mod cloudflare;

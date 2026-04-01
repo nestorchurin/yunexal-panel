@@ -17,9 +17,9 @@ body { overflow: hidden; }
 .yu-sb-overlay.open { display: block; }
 
 /* ── Admin Sidebar ── */
-.yu-sidebar { width: 220px; min-width: 220px; background: #0e0e18; border-right: 1px solid var(--bdr); display: flex; flex-direction: column; padding: .5rem .6rem; overflow: hidden; z-index: 360; transition: transform .25s ease; animation: yu-fade-in .3s ease both; }
-.yu-sidebar-top { flex: 1; min-height: 0; overflow-y: hidden; display: flex; flex-direction: column; gap: .04rem; }
-.yu-sidebar-bottom { display: flex; flex-direction: column; gap: .04rem; padding-top: .5rem; border-top: 1px solid var(--bdr); flex-shrink: 0; }
+.yu-sidebar { width: 220px; min-width: 220px; background: #0e0e18; border-right: 1px solid var(--bdr); display: grid; grid-template-rows: 1fr auto; padding: .5rem .6rem; overflow: hidden; z-index: 360; transition: transform .25s ease; animation: yu-fade-in .3s ease both; }
+.yu-sidebar-top { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: .04rem; }
+.yu-sidebar-bottom { display: flex; flex-direction: column; gap: .04rem; padding-top: .5rem; border-top: 1px solid var(--bdr); }
 
 .yu-nav-label { font-size: .6rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding: .35rem .75rem .12rem; opacity: .55; }
 .yu-nav-label:not(:first-child) { margin-top: .25rem; }
@@ -57,7 +57,7 @@ body { overflow: hidden; }
 
 /* ── Main area ── */
 .yu-main { flex: 1; overflow-y: auto; padding: 1.75rem; }
-.yu-page-hd { margin-bottom: 1.5rem; animation: yu-fade-up .28s .05s ease both; }
+.yu-page-hd { margin-bottom: 1.5rem; animation: yu-fade-up .28s .05s ease both; position: relative; z-index: 50; }
 
 /* ── Tab panels ── */
 .yu-tab-panel { display: none; }
@@ -129,6 +129,11 @@ body { overflow: hidden; }
 .yu-input:focus { border-color: rgba(124,58,237,.5); box-shadow: 0 0 0 3px rgba(124,58,237,.12); }
 .yu-label { font-size: .8rem; font-weight: 500; color: var(--muted); display: block; margin-bottom: .4rem; }
 .yu-form-group { margin-bottom: 1rem; }
+
+/* ── Audit filter dropdown ── */
+#audit-filter-dd label { transition: background .1s; }
+#audit-filter-dd label:hover { background: rgba(255,255,255,.05); }
+#audit-filter-dd input[type=checkbox] { accent-color: var(--accent); width: 13px; height: 13px; flex-shrink: 0; cursor: pointer; }
 
 /* ── Alerts ── */
 .yu-alert { border-radius: 9px; padding: .75rem 1rem; font-size: .845rem; display: flex; align-items: center; gap: .6rem; margin-bottom: 1rem; animation: yu-fade-up .22s ease both; }

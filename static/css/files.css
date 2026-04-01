@@ -128,13 +128,28 @@
     flex-shrink: 0;
     font-size: 1rem;
 }
-.fb-icon-dir   { background: rgba(251,191,36,.13); color: #fbbf24; }
-.fb-icon-code  { background: rgba(124,58,237,.13);  color: #a78bfa; }
-.fb-icon-config{ background: rgba(14,165,233,.13);  color: #38bdf8; }
-.fb-icon-archive{ background: rgba(245,158,11,.13); color: #f59e0b; }
-.fb-icon-text  { background: rgba(160,160,160,.1);  color: #9ca3af; }
-.fb-icon-back  { background: rgba(255,255,255,.05); color: var(--muted); }
-.fb-icon-jar   { background: rgba(239,68,68,.1);    color: #f87171; }
+.fb-icon-dir     { background: rgba(251,191,36,.13);  color: #fbbf24; }
+.fb-icon-code    { background: rgba(124,58,237,.13);  color: #a78bfa; }
+.fb-icon-config  { background: rgba(14,165,233,.13);  color: #38bdf8; }
+.fb-icon-archive { background: rgba(245,158,11,.13);  color: #f59e0b; }
+.fb-icon-text    { background: rgba(160,160,160,.1);  color: #9ca3af; }
+.fb-icon-back    { background: rgba(255,255,255,.05); color: var(--muted); }
+.fb-icon-jar     { background: rgba(239,68,68,.1);    color: #f87171; }
+/* Extended icon palette */
+.fb-icon-image   { background: rgba(251,113,133,.12); color: #fb7185; }
+.fb-icon-audio   { background: rgba(45,212,191,.12);  color: #2dd4bf; }
+.fb-icon-video   { background: rgba(99,102,241,.15);  color: #818cf8; }
+.fb-icon-binary  { background: rgba(239,68,68,.12);   color: #f87171; }
+.fb-icon-lock    { background: rgba(52,211,153,.12);  color: #34d399; }
+.fb-icon-shell   { background: rgba(163,230,53,.12);  color: #a3e635; }
+.fb-icon-python  { background: rgba(250,204,21,.12);  color: #facc15; }
+.fb-icon-java    { background: rgba(251,146,60,.13);  color: #fb923c; }
+.fb-icon-html    { background: rgba(249,115,22,.12);  color: #f97316; }
+.fb-icon-css     { background: rgba(56,189,248,.12);  color: #60cdff; }
+.fb-icon-markdown{ background: rgba(148,163,184,.12); color: #cbd5e1; }
+.fb-icon-log     { background: rgba(251,146,60,.12);  color: #fb923c; }
+.fb-icon-pdf     { background: rgba(220,38,38,.13);   color: #ef4444; }
+.fb-icon-data    { background: rgba(34,211,238,.12);  color: #22d3ee; }
 
 /* Name */
 .fb-name {

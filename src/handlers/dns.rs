@@ -77,7 +77,7 @@ pub async fn api_dns_add_provider(
     let creds_str = body.credentials.to_string();
     match db::dns_add_provider(&state.db, &body.name, &body.provider_type, &creds_str).await {
         Ok(id) => {
-            let _ = db::audit_log(&state.db, "admin", "dns.provider_add", &body.name, &body.provider_type, &ip).await;
+            let _ = db::audit_log(&state.db, "admin", "dns.provider_add", &body.name, &body.provider_type, &ip, &auth::user_agent(&headers)).await;
             Json(json!({ "ok": true, "id": id }))
         }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
@@ -120,7 +120,7 @@ pub async fn api_dns_update_provider(
 
     match db::dns_update_provider(&state.db, id, &body.name, &creds_str, body.enabled).await {
         Ok(_) => {
-            let _ = db::audit_log(&state.db, "admin", "dns.provider_edit", &body.name, &format!("id={}", id), &ip).await;
+            let _ = db::audit_log(&state.db, "admin", "dns.provider_edit", &body.name, &format!("id={}", id), &ip, &auth::user_agent(&headers)).await;
             Json(json!({ "ok": true }))
         }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
@@ -138,7 +138,7 @@ pub async fn api_dns_delete_provider(
     let ip = auth::client_ip(&headers, addr);
     match db::dns_delete_provider(&state.db, id).await {
         Ok(_) => {
-            let _ = db::audit_log(&state.db, "admin", "dns.provider_delete", "", &format!("id={}", id), &ip).await;
+            let _ = db::audit_log(&state.db, "admin", "dns.provider_delete", "", &format!("id={}", id), &ip, &auth::user_agent(&headers)).await;
             Json(json!({ "ok": true }))
         }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
@@ -316,7 +316,7 @@ pub async fn api_dns_add_record(
         body.container_id, ddns, interval,
     ).await {
         Ok(id) => {
-            let _ = db::audit_log(&state.db, "admin", "dns.record_add", &body.name, &format!("{} {}", body.record_type, body.value), &ip).await;
+            let _ = db::audit_log(&state.db, "admin", "dns.record_add", &body.name, &format!("{} {}", body.record_type, body.value), &ip, &auth::user_agent(&headers)).await;
             Json(json!({ "ok": true, "id": id, "remote_id": remote_id }))
         }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
@@ -378,7 +378,7 @@ pub async fn api_dns_update_record(
 
     match db::dns_update_record(&state.db, id, &body.name, &body.value, ttl, priority, proxied, ddns, interval).await {
         Ok(_)  => {
-            let _ = db::audit_log(&state.db, "admin", "dns.record_edit", &body.name, &format!("id={}", id), &ip).await;
+            let _ = db::audit_log(&state.db, "admin", "dns.record_edit", &body.name, &format!("id={}", id), &ip, &auth::user_agent(&headers)).await;
             Json(json!({ "ok": true }))
         }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
@@ -418,7 +418,7 @@ pub async fn api_dns_delete_record(
 
     match db::dns_delete_record(&state.db, id).await {
         Ok(_)  => {
-            let _ = db::audit_log(&state.db, "admin", "dns.record_delete", "", &format!("id={}", id), &ip).await;
+            let _ = db::audit_log(&state.db, "admin", "dns.record_delete", "", &format!("id={}", id), &ip, &auth::user_agent(&headers)).await;
             Json(json!({ "ok": true }))
         }
         Err(e) => { error!("{}", e); Json(json!({ "ok": false, "error": e.to_string() })) }
@@ -469,7 +469,7 @@ pub async fn api_dns_set_proxy(
             }
         }
     }
-    let _ = db::audit_log(&state.db, "admin", "dns.proxy_toggle", "", &format!("id={} proxied={}", id, body.proxied), &ip).await;
+    let _ = db::audit_log(&state.db, "admin", "dns.proxy_toggle", "", &format!("id={} proxied={}", id, body.proxied), &ip, &auth::user_agent(&headers)).await;
     Json(json!({ "ok": true, "proxied": body.proxied }))
 }
 
@@ -518,7 +518,7 @@ pub async fn api_dns_sync(State(state): State<AppState>, addr: ConnectInfo<Socke
         }
     }
 
-    let _ = db::audit_log(&state.db, "admin", "dns.sync", "", &format!("ip={} synced={}", ip, synced), &req_ip).await;
+    let _ = db::audit_log(&state.db, "admin", "dns.sync", "", &format!("ip={} synced={}", ip, synced), &req_ip, &auth::user_agent(&headers)).await;
 
     Json(json!({
         "ok":     true,
@@ -588,7 +588,7 @@ pub async fn api_dns_sync_records(
         }
     }
 
-    let _ = db::audit_log(&state.db, "admin", "dns.sync_records", "", &format!("provider={} synced={}", pid, synced), &ip).await;
+    let _ = db::audit_log(&state.db, "admin", "dns.sync_records", "", &format!("provider={} synced={}", pid, synced), &ip, &auth::user_agent(&headers)).await;
 
     Json(json!({ "ok": true, "synced": synced }))
 }
@@ -728,7 +728,7 @@ pub async fn api_server_dns_add(
     ).await {
         Ok(id) => {
             let actor = auth::session_username(&jar).unwrap_or_default();
-            let _ = db::audit_log(&state.db, &actor, "dns.server_record_add", &body.name, &format!("server={}", server_id), &ip).await;
+            let _ = db::audit_log(&state.db, &actor, "dns.server_record_add", &body.name, &format!("server={}", server_id), &ip, &auth::user_agent(&headers)).await;
             Json(json!({ "ok": true, "id": id, "remote_id": remote_id }))
         }
         Err(e) => Json(json!({ "ok": false, "error": e.to_string() })),
@@ -775,7 +775,7 @@ pub async fn api_server_dns_delete(
     match db::dns_delete_record(&state.db, record_id).await {
         Ok(()) => {
             let actor = auth::session_username(&jar).unwrap_or_default();
-            let _ = db::audit_log(&state.db, &actor, "dns.server_record_delete", &rec.name, &format!("server={}", server_id), &ip).await;
+            let _ = db::audit_log(&state.db, &actor, "dns.server_record_delete", &rec.name, &format!("server={}", server_id), &ip, &auth::user_agent(&headers)).await;
             Json(json!({ "ok": true }))
         }
         Err(e) => Json(json!({ "ok": false, "error": e.to_string() })),
