@@ -76,19 +76,6 @@
                             <div class="info-row"><span class="info-key">Auth User</span><span class="info-val">{{ auth_username }}</span></div>
                             <div class="info-row"><span class="info-key">Listen Address</span><span class="info-val">{{ listen_addr }}</span></div>
                             <div class="info-row"><span class="info-key">Volumes Path</span><span class="info-val">./volumes</span></div>
-                            <!-- Update check -->
-                            <div style="border-top:1px solid var(--bdr);margin-top:.5rem;padding-top:.6rem;">
-                                <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
-                                    <select id="update-channel" class="form-select" style="width:auto;font-size:.78rem;padding:.3rem .6rem;background:var(--surface2);border:1px solid var(--bdr);color:var(--txt);border-radius:6px;">
-                                        <option value="stable">Stable</option>
-                                        <option value="unstable">Unstable</option>
-                                    </select>
-                                    <button class="btn-yu btn-yu-ghost" onclick="checkForUpdates()" id="update-check-btn" style="font-size:.78rem;padding:.3rem .75rem;">
-                                        <i class="bi bi-arrow-repeat"></i> Check for Updates
-                                    </button>
-                                </div>
-                                <div id="update-result" style="margin-top:.5rem;"></div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -116,7 +103,14 @@
                             <div class="info-row"><span class="info-key">Compressed</span><span class="info-val">{{ zram_compr_mb }} MB</span></div>
                             <div class="info-row"><span class="info-key">Ratio</span><span class="info-val" style="color:#10b981;">{{ zram_ratio }}</span></div>
                             {% else %}
-                            <div style="color:var(--muted);font-size:.825rem;padding:.5rem 0;">ZRAM not active on this host</div>
+                            <div style="color:var(--muted);font-size:.825rem;padding:.35rem 0 .6rem;">ZRAM not active on this host</div>
+                            <button class="btn-yu btn-yu-ghost" style="font-size:.78rem;padding:.3rem .75rem;" onclick="document.getElementById('zram-setup-hint').style.display=document.getElementById('zram-setup-hint').style.display==='none'?'':'none'">
+                                <i class="bi bi-info-circle"></i> How to enable ZRAM
+                            </button>
+                            <div id="zram-setup-hint" style="display:none;margin-top:.6rem;padding:.6rem .75rem;border-radius:6px;background:rgba(0,0,0,.25);border:1px solid var(--bdr);font-size:.75rem;">
+                                <p style="color:var(--muted);margin:0 0 .4rem;">Run on the host to enable ZRAM:</p>
+                                <code style="display:block;color:#e2e8f0;user-select:all;word-break:break-all;">apt install zram-tools &amp;&amp; echo 'ALGO=zstd' &gt;&gt; /etc/default/zramswap &amp;&amp; systemctl enable --now zramswap</code>
+                            </div>
                             {% endif %}
                         </div>
                     </div>
@@ -338,7 +332,6 @@
                 <button class="yu-inner-tab active" onclick="dnsSwitchTab('providers', this)">Providers</button>
                 <button class="yu-inner-tab" onclick="dnsSwitchTab('records', this)">Records</button>
                 <button class="yu-inner-tab" onclick="dnsSwitchTab('ddns', this)">DDNS</button>
-                <button class="yu-inner-tab" onclick="dnsSwitchTab('containers', this)"><i class="bi bi-boxes me-1"></i>Containers</button>
             </div>
 
             <!-- ── SUB-TAB: Providers ── -->
@@ -501,37 +494,6 @@
                 </div>
             </div>
 
-            <!-- ── SUB-TAB: Containers ── -->
-            <div id="dns-tab-containers" class="dns-subtab">
-                <div class="yu-card">
-                    <div class="yu-card-hd">
-                        <span><i class="bi bi-boxes me-2 text-muted"></i>Container-linked DNS Records</span>
-                        <div style="display:flex;align-items:center;gap:.75rem;">
-                            <span id="dns-containers-count" style="font-size:.75rem;color:var(--muted);"></span>
-                            <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="dnsLoadContainerRecords()" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
-                        </div>
-                    </div>
-                    <div style="overflow-x:auto;">
-                        <table class="yu-table">
-                            <thead>
-                                <tr>
-                                    <th>Server</th>
-                                    <th>Type</th>
-                                    <th>Name</th>
-                                    <th>Value</th>
-                                    <th>Zone</th>
-                                    <th>Remote ID</th>
-                                    <th style="text-align:right;">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="dns-containers-tbody">
-                                <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Switch to this tab to load.</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div><!-- /dns-tab-containers -->
-
         </div><!-- /tab-dns -->
 
         <!-- ── DNS: Add/Edit Record Modal ── -->
@@ -635,6 +597,204 @@
 
         {% include "_admin_coming_soon.html" %}
 
+        <!-- ─── PANEL: Panel Settings ─── -->
+        <div id="tab-settings" class="yu-tab-panel{% if tab == "settings" %} active{% endif %}">
+        {% if auth_role == "root" %}
+            <div class="yu-page-hd">
+                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Panel Settings</div>
+                <p style="font-size:.825rem;color:var(--muted);margin:0;">System-wide configuration for this panel instance. <span style="color:#f87171;">Root only.</span></p>
+            </div>
+
+            <div class="yu-panel" style="margin-top:1.5rem;">
+                <div class="yu-panel-hd"><i class="bi bi-shield-shaded text-muted"></i> Firewall (UFW)</div>
+                <div class="yu-panel-bd">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+                        <div>
+                            <p style="font-size:.875rem;font-weight:600;margin-bottom:.25rem;">Allow panel to manage UFW rules</p>
+                            <p style="font-size:.825rem;color:var(--muted);margin:0;">When enabled, root can block individual ports at the UFW firewall level.</p>
+                        </div>
+                        <label class="yu-toggle" title="Toggle UFW support">
+                            <input type="checkbox" id="setting-ufw-enabled" {% if settings_ufw_enabled %}checked{% endif %}
+                                   onchange="adminSetSetting('ufw_enabled', this.checked ? '1' : '0')">
+                            <span class="yu-toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--bdr);">
+                        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:.75rem;">
+                            <div>
+                                <p style="font-size:.875rem;font-weight:600;margin-bottom:.25rem;">System Firewall</p>
+                                <p style="font-size:.825rem;color:var(--muted);margin:0;">Enable or disable UFW on the host machine directly from the panel.</p>
+                            </div>
+                            <span id="ufw-status-badge" style="font-size:.75rem;font-weight:600;padding:.25rem .6rem;border-radius:6px;background:rgba(255,255,255,.05);color:var(--muted);">checking…</span>
+                        </div>
+                        <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+                            <button class="btn-yu btn-success-yu btn-sm-yu" id="ufw-toggle-btn" onclick="ufwSystemToggle()" title="Enable UFW"><i class="bi bi-shield-check" id="ufw-toggle-icon"></i> <span id="ufw-toggle-label">Enable UFW</span></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="yu-panel" style="margin-top:1rem;">
+                <div class="yu-panel-hd"><i class="bi bi-speedometer2 text-muted"></i> Bandwidth Control</div>
+                <div class="yu-panel-bd">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+                        <div>
+                            <p style="font-size:.875rem;font-weight:600;margin-bottom:.25rem;">Allow panel to use bandwidth limiting</p>
+                            <p style="font-size:.825rem;color:var(--muted);margin:0;">When enabled, the bandwidth limiter is shown on the networking page. Requires tc/wondershaper to be installed on the host.</p>
+                        </div>
+                        <label class="yu-toggle" title="Toggle bandwidth control">
+                            <input type="checkbox" id="setting-bandwidth-enabled" {% if settings_bandwidth_enabled %}checked{% endif %}
+                                   onchange="adminSetSetting('bandwidth_enabled', this.checked ? '1' : '0')">
+                            <span class="yu-toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="yu-panel" style="margin-top:1rem;">
+                <div class="yu-panel-hd"><i class="bi bi-eye text-muted"></i> Sidebar Visibility</div>
+                <div class="yu-panel-bd">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+                        <div>
+                            <p style="font-size:.875rem;font-weight:600;margin-bottom:.25rem;">Show upcoming features</p>
+                            <p style="font-size:.825rem;color:var(--muted);margin:0;">Items marked <span style="font-size:.7rem;font-weight:600;padding:.1rem .35rem;border-radius:4px;background:rgba(124,58,237,.18);color:#a78bfa;border:1px solid rgba(124,58,237,.3);">SOON</span> are hidden in the sidebar by default. Toggle to show or hide them.</p>
+                        </div>
+                        <button onclick="toggleSoon()" class="btn-yu btn-yu-ghost" style="font-size:.8rem;padding:.4rem .9rem;white-space:nowrap;">
+                            <i class="bi bi-eye" id="soon-toggle-icon"></i> <span id="soon-toggle-lbl">Show upcoming</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="yu-panel" style="margin-top:1rem;">
+                <div class="yu-panel-hd"><i class="bi bi-arrow-repeat text-muted"></i> Panel Updates</div>
+                <div class="yu-panel-bd">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;">
+                        <div>
+                            <p style="font-size:.875rem;font-weight:600;margin-bottom:.25rem;">Current version: <span style="color:#a78bfa;">{{ panel_version }}</span></p>
+                            <p style="font-size:.825rem;color:var(--muted);margin:0;">Check for newer releases on the configured update channel.</p>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:.5rem;">
+                            <select id="update-channel" style="font-size:.8rem;padding:.35rem .6rem;background:var(--surface2);border:1px solid var(--bdr);color:var(--txt);border-radius:6px;">
+                                <option value="stable">Stable</option>
+                                <option value="unstable">Unstable</option>
+                            </select>
+                            <button class="btn-yu btn-yu-ghost" onclick="checkForUpdates()" id="update-check-btn" style="font-size:.8rem;padding:.4rem .9rem;">
+                                <i class="bi bi-arrow-repeat"></i> Check for Updates
+                            </button>
+                        </div>
+                    </div>
+                    <div id="update-result" style="margin-top:.75rem;"></div>
+                </div>
+            </div>
+
+            <div class="yu-panel" style="margin-top:1rem;">
+                <div class="yu-panel-hd"><i class="bi bi-cloud-slash text-muted"></i> Cloudflare Under Attack Mode</div>
+                <div class="yu-panel-bd">
+
+                    <!-- ── Setup instructions ──────────────────────────── -->
+                    <div style="margin-bottom:1.1rem;">
+                        <button type="button" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('i').className='bi bi-'+(this.nextElementSibling.style.display==='none'?'info-circle':'chevron-up')" style="background:none;border:1px solid var(--bdr);color:var(--muted);font-size:.8rem;padding:.35rem .75rem;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:.4rem;">
+                            <i class="bi bi-info-circle"></i> How to set up
+                        </button>
+                        <div style="display:none;margin-top:.75rem;padding:.85rem 1rem;background:rgba(255,255,255,.03);border:1px solid var(--bdr);border-radius:8px;font-size:.8rem;line-height:1.65;">
+                            <p style="margin:0 0 .5rem;font-weight:600;">1. Find your Zone ID</p>
+                            <p style="margin:0 0 .85rem;color:var(--muted);">Log in to the <a href="https://dash.cloudflare.com" target="_blank" rel="noopener" style="color:var(--accent);">Cloudflare Dashboard</a>, select your domain. On the <strong>Overview</strong> page, scroll down to the right-hand <em>API</em> section — copy the <strong>Zone ID</strong>.</p>
+                            <p style="margin:0 0 .5rem;font-weight:600;">2. Create an API Token</p>
+                            <p style="margin:0 0 .4rem;color:var(--muted);">Go to <strong>My Profile → API Tokens → Create Token</strong>.</p>
+                            <p style="margin:0 0 .4rem;color:var(--muted);">Use the <em>"Edit zone DNS"</em> template as a starting point, then change the permission to:</p>
+                            <code style="display:block;background:rgba(0,0,0,.3);padding:.4rem .65rem;border-radius:5px;margin:.35rem 0 .75rem;font-size:.78rem;color:#a5f3fc;">Zone &rarr; Security Level &rarr; Edit</code>
+                            <p style="margin:0 0 .4rem;color:var(--muted);">Restrict <strong>Zone Resources</strong> to the specific zone if you prefer. Click <em>Create Token</em> and copy the token — it is shown only once.</p>
+                            <p style="margin:0 0 .5rem;font-weight:600;">3. Enter values above and save</p>
+                            <p style="margin:0;color:var(--muted);">Paste the Zone ID and API Token into the fields below, then click <i class="bi bi-floppy"></i>. The panel will confirm the token is stored (it is never displayed again).</p>
+                        </div>
+                    </div>
+
+                    <!-- ── Brute-force (multi-IP login) toggle ─────────── -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:1.1rem;">
+                        <div>
+                            <p style="font-size:.875rem;font-weight:600;margin-bottom:.25rem;">Auto Under Attack Mode — Brute Force</p>
+                            <p style="font-size:.825rem;color:var(--muted);margin:0;">When multiple distinct IPs fail authentication simultaneously, automatically enables Cloudflare Under Attack Mode, then disables it once the storm calms.</p>
+                        </div>
+                        <label class="yu-toggle" title="Toggle CF UAM auto">
+                            <input type="checkbox" id="setting-cf-uam-enabled" {% if settings_cf_uam_enabled %}checked{% endif %}
+                                   onchange="adminSetSetting('cf_uam_enabled', this.checked ? '1' : '0')">
+                            <span class="yu-toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- ── L7 HTTP-flood toggle ────────────────────────── -->
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;padding:.85rem 1rem;background:rgba(255,255,255,.025);border:1px solid var(--bdr);border-radius:8px;margin-bottom:1.1rem;">
+                        <div>
+                            <p style="font-size:.875rem;font-weight:600;margin-bottom:.25rem;">Auto Under Attack Mode — L7 HTTP Flood</p>
+                            <p style="font-size:.825rem;color:var(--muted);margin:0;">Tracks every HTTP request per IP. When several IPs exceed the per-minute threshold simultaneously (volumetric flood), UAM is triggered the same way as on brute force. Both conditions are checked independently when deciding to auto-disable.</p>
+                        </div>
+                        <label class="yu-toggle" title="Toggle L7 detection">
+                            <input type="checkbox" id="setting-cf-l7-enabled" {% if settings_cf_l7_enabled %}checked{% endif %}
+                                   onchange="adminSetSetting('cf_l7_enabled', this.checked ? '1' : '0')">
+                            <span class="yu-toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- ── Credentials ────────────────────────────────── -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1rem;">
+                        <div>
+                            <label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:.35rem;">Zone ID</label>
+                            <div style="display:flex;gap:.4rem;">
+                                <input type="text" id="cf-zone-id-input" class="yu-input" placeholder="abc123…" value="{{ cf_zone_id }}" style="font-size:.8rem;">
+                                <button class="btn-yu btn-yu-ghost" style="padding:.4rem .65rem;font-size:.8rem;" onclick="saveCfCreds()" title="Save"><i class="bi bi-floppy"></i></button>
+                            </div>
+                        </div>
+                        <div>
+                            <label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:.35rem;">API Token</label>
+                            <div style="display:flex;gap:.4rem;">
+                                <input type="password" id="cf-api-token-input" class="yu-input" placeholder="{% if cf_api_token_set %}Stored — enter to replace{% else %}CF API token…{% endif %}" style="font-size:.8rem;">
+                                <button class="btn-yu btn-yu-ghost" style="padding:.4rem .65rem;font-size:.8rem;" onclick="saveCfCreds()" title="Save"><i class="bi bi-floppy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ── Thresholds ─────────────────────────────────── -->
+                    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
+                        <div>
+                            <label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:.35rem;">Brute-force trigger (distinct IPs)</label>
+                            <input type="number" id="cf-threshold-input" class="yu-input" min="2" max="50" value="{{ cf_uam_threshold }}" style="width:90px;font-size:.8rem;" onchange="adminSetSetting('cf_uam_threshold', this.value)">
+                        </div>
+                        <div>
+                            <label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:.35rem;">L7 req/min per IP trigger</label>
+                            <input type="number" id="cf-l7-threshold-input" class="yu-input" min="10" max="10000" value="{{ cf_l7_threshold }}" style="width:110px;font-size:.8rem;" onchange="adminSetSetting('cf_l7_threshold', this.value)">
+                        </div>
+                        <div>
+                            <label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:.35rem;">L7 min. flooding IPs</label>
+                            <input type="number" id="cf-l7-ips-input" class="yu-input" min="1" max="50" value="{{ cf_l7_ips_min }}" style="width:90px;font-size:.8rem;" onchange="adminSetSetting('cf_l7_ips_min', this.value)">
+                        </div>
+                        <div>
+                            <label style="font-size:.8rem;font-weight:600;display:block;margin-bottom:.35rem;">Cooldown (minutes before auto-disable)</label>
+                            <input type="number" id="cf-cooldown-input" class="yu-input" min="1" max="120" value="{{ cf_uam_cooldown_mins }}" style="width:90px;font-size:.8rem;" onchange="adminSetSetting('cf_uam_cooldown_mins', this.value)">
+                        </div>
+                    </div>
+
+                    <!-- ── Status + manual toggle ─────────────────────── -->
+                    <div style="padding-top:.75rem;border-top:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;">
+                        <div style="display:flex;align-items:center;gap:.6rem;">
+                            <span style="font-size:.8rem;color:var(--muted);">CF Security:</span>
+                            <span id="cf-uam-badge" style="font-size:.75rem;font-weight:600;padding:.25rem .6rem;border-radius:6px;background:rgba(255,255,255,.05);color:var(--muted);">checking…</span>
+                        </div>
+                        <button class="btn-yu btn-yu-warning" style="font-size:.8rem;padding:.4rem .9rem;" id="cf-uam-toggle-btn" onclick="cfUamToggle()" disabled>
+                            <i class="bi bi-cloud-slash" id="cf-uam-icon"></i> <span id="cf-uam-label">Enable UAM</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="yu-page-hd">
+                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Panel Settings</div>
+                <p style="font-size:.825rem;color:var(--muted);margin:0;">Only the root user can access panel settings.</p>
+            </div>
+        {% endif %}
+        </div><!-- /tab-settings -->
+
         <!-- ─── PANEL: Audit Log ─── -->
         <div id="tab-audit" class="yu-tab-panel{% if tab == "audit" %} active{% endif %}">
             <div class="yu-page-hd" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;">
@@ -644,68 +804,74 @@
                 </div>
                 <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
                     <input type="text" id="audit-search" class="yu-input" placeholder="Search…" style="width:180px;font-size:.8rem;padding:.4rem .7rem;" oninput="auditSearchDebounce()">
-                    <select id="audit-filter-action" class="yu-input" style="width:auto;min-width:140px;font-size:.8rem;padding:.4rem .7rem;" onchange="auditLoad()">
-                        <option value="">All actions</option>
-                        <optgroup label="Auth">
-                            <option value="auth.login">Login</option>
-                            <option value="auth.logout">Logout</option>
-                        </optgroup>
-                        <optgroup label="Servers">
-                            <option value="server.create">Create</option>
-                            <option value="server.delete">Delete</option>
-                            <option value="server.start">Start</option>
-                            <option value="server.stop">Stop</option>
-                            <option value="server.restart">Restart</option>
-                            <option value="server.kill">Kill</option>
-                            <option value="server.edit">Edit</option>
-                            <option value="server.rename">Rename</option>
-                        </optgroup>
-                        <optgroup label="Users">
-                            <option value="user.create">User create</option>
-                            <option value="user.delete">User delete</option>
-                            <option value="user.change_password">Password change</option>
-                            <option value="user.set_password">Password set</option>
-                        </optgroup>
-                        <optgroup label="DNS">
-                            <option value="dns.provider_add">Provider add</option>
-                            <option value="dns.provider_edit">Provider edit</option>
-                            <option value="dns.provider_delete">Provider delete</option>
-                            <option value="dns.record_add">Record add</option>
-                            <option value="dns.record_edit">Record edit</option>
-                            <option value="dns.record_delete">Record delete</option>
-                            <option value="dns.proxy_toggle">Proxy toggle</option>
-                            <option value="dns.sync">DDNS sync</option>
-                            <option value="dns.sync_records">Sync records</option>
-                            <option value="dns.server_record_add">Server DNS add</option>
-                            <option value="dns.server_record_delete">Server DNS delete</option>
-                        </optgroup>
-                        <optgroup label="Network">
-                            <option value="net.bandwidth">Bandwidth</option>
-                            <option value="net.port_add">Port add</option>
-                            <option value="net.port_remove">Port remove</option>
-                            <option value="net.port_tag">Port tag</option>
-                            <option value="net.port_toggle">Port toggle</option>
-                        </optgroup>
-                        <optgroup label="Files">
-                            <option value="file.save">File save</option>
-                            <option value="file.create">File create</option>
-                            <option value="file.delete">File delete</option>
-                            <option value="file.rename">File rename</option>
-                            <option value="file.copy">File copy</option>
-                            <option value="file.move">File move</option>
-                            <option value="file.upload">File upload</option>
-                            <option value="file.extract">Extract archive</option>
-                            <option value="file.archive">Create archive</option>
-                            <option value="file.bulk_delete">Bulk delete</option>
-                        </optgroup>
-                        <optgroup label="Admin">
-                            <option value="image.delete">Image delete</option>
-                            <option value="image.pull">Image pull</option>
-                            <option value="admin.stop_all">Stop all</option>
-                            <option value="audit.clear">Audit clear</option>
-                        </optgroup>
-                    </select>
-                    <button class="btn-yu btn-danger-yu btn-sm-yu" onclick="auditClear()" title="Clear all logs"><i class="bi bi-trash3"></i></button>
+                    <div style="position:relative;">
+                        <button type="button" id="audit-filter-btn" class="yu-input" onclick="toggleAuditFilterDD()" style="width:auto;min-width:160px;font-size:.8rem;padding:.4rem .7rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem;cursor:pointer;">
+                            <span id="audit-filter-label">All actions</span>
+                            <i class="bi bi-chevron-down" style="font-size:.65rem;flex-shrink:0;"></i>
+                        </button>
+                        <div id="audit-filter-dd" style="display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:200;background:var(--surface);border:1px solid var(--bdr);border-radius:8px;padding:.4rem 0;min-width:210px;max-height:340px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.6);">
+                            <div style="padding:.25rem .75rem;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Auth</div>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="auth.login" onchange="auditFilterApply()"> Login</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="auth.logout" onchange="auditFilterApply()"> Logout</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="auth.login_failed" onchange="auditFilterApply()"> Login failed</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="auth.login_locked" onchange="auditFilterApply()"> IP locked</label>
+                            <div style="padding:.25rem .75rem;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:.3rem;">Servers</div>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="server.create" onchange="auditFilterApply()"> Create</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="server.delete" onchange="auditFilterApply()"> Delete</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="server.start" onchange="auditFilterApply()"> Start</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="server.stop" onchange="auditFilterApply()"> Stop</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="server.restart" onchange="auditFilterApply()"> Restart</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="server.kill" onchange="auditFilterApply()"> Kill</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="server.edit" onchange="auditFilterApply()"> Edit</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="server.rename" onchange="auditFilterApply()"> Rename</label>
+                            <div style="padding:.25rem .75rem;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:.3rem;">Users</div>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="user.create" onchange="auditFilterApply()"> User create</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="user.delete" onchange="auditFilterApply()"> User delete</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="user.change_password" onchange="auditFilterApply()"> Password change</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="user.set_password" onchange="auditFilterApply()"> Password set</label>
+                            <div style="padding:.25rem .75rem;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:.3rem;">DNS</div>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="dns.provider_add" onchange="auditFilterApply()"> Provider add</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="dns.provider_edit" onchange="auditFilterApply()"> Provider edit</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="dns.provider_delete" onchange="auditFilterApply()"> Provider delete</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="dns.record_add" onchange="auditFilterApply()"> Record add</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="dns.record_edit" onchange="auditFilterApply()"> Record edit</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="dns.record_delete" onchange="auditFilterApply()"> Record delete</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="dns.proxy_toggle" onchange="auditFilterApply()"> Proxy toggle</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="dns.sync" onchange="auditFilterApply()"> DDNS sync</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="dns.sync_records" onchange="auditFilterApply()"> Sync records</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="dns.server_record_add" onchange="auditFilterApply()"> Server DNS add</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="dns.server_record_delete" onchange="auditFilterApply()"> Server DNS delete</label>
+                            <div style="padding:.25rem .75rem;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:.3rem;">Network</div>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="net.bandwidth" onchange="auditFilterApply()"> Bandwidth</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="net.port_add" onchange="auditFilterApply()"> Port add</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="net.port_remove" onchange="auditFilterApply()"> Port remove</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="net.port_tag" onchange="auditFilterApply()"> Port tag</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="net.port_toggle" onchange="auditFilterApply()"> Port toggle</label>
+                            <div style="padding:.25rem .75rem;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:.3rem;">Files</div>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="file.save" onchange="auditFilterApply()"> File save</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="file.create" onchange="auditFilterApply()"> File create</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="file.delete" onchange="auditFilterApply()"> File delete</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="file.rename" onchange="auditFilterApply()"> File rename</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="file.copy" onchange="auditFilterApply()"> File copy</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="file.move" onchange="auditFilterApply()"> File move</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="file.upload" onchange="auditFilterApply()"> File upload</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="file.extract" onchange="auditFilterApply()"> Extract archive</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="file.archive" onchange="auditFilterApply()"> Create archive</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="file.bulk_delete" onchange="auditFilterApply()"> Bulk delete</label>
+                            <div style="padding:.25rem .75rem;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:.3rem;">Admin</div>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="image.delete" onchange="auditFilterApply()"> Image delete</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="image.pull" onchange="auditFilterApply()"> Image pull</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="image.env_set" onchange="auditFilterApply()"> Image env set</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="image.duplicate" onchange="auditFilterApply()"> Image duplicate</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="admin.stop_all" onchange="auditFilterApply()"> Stop all</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="audit.clear" onchange="auditFilterApply()"> Audit clear</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="panel.update" onchange="auditFilterApply()"> Panel update</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="panel.updated" onchange="auditFilterApply()"> Panel updated</label>
+                            <div style="padding:.25rem .75rem;font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:.3rem;">Console</div>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="console.connect" onchange="auditFilterApply()"> Connect</label>
+                            <label style="display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem;cursor:pointer;font-size:.82rem;"><input type="checkbox" value="console.command" onchange="auditFilterApply()"> Command</label>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -719,11 +885,12 @@
                                 <th style="width:120px;">IP</th>
                                 <th style="width:160px;">Action</th>
                                 <th>Target</th>
-                                <th>Detail</th>
+                                <th style="font-weight:700;letter-spacing:.04em;">DETAIL</th>
+                                <th style="width:140px;">Device</th>
                             </tr>
                         </thead>
                         <tbody id="audit-tbody">
-                            <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">Loading…</td></tr>
+                            <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem;">Loading…</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -739,7 +906,246 @@
     {% include "_admin_modals.html" %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/admin.js?v=14"></script>
+    <script src="/static/js/admin.js?v=15"></script>
+    <script>
+    async function adminSetSetting(key, value) {
+        const r = await fetch('/api/admin/settings', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({key, value})
+        });
+        const d = await r.json();
+        if (r.ok) showToast('success', d.message || 'Setting saved');
+        else showToast('danger', d.error || 'Failed to save setting');
+    }
+
+    let _ufwActive = false;
+
+    function ufwUpdateBadge(active) {
+        _ufwActive = active;
+        const badge = document.getElementById('ufw-status-badge');
+        if (badge) {
+            if (active) {
+                badge.textContent = 'ACTIVE';
+                badge.style.background = 'rgba(16,185,129,.12)';
+                badge.style.color = '#10b981';
+            } else {
+                badge.textContent = 'INACTIVE';
+                badge.style.background = 'rgba(239,68,68,.12)';
+                badge.style.color = '#f87171';
+            }
+        }
+        const btn  = document.getElementById('ufw-toggle-btn');
+        const icon = document.getElementById('ufw-toggle-icon');
+        const lbl  = document.getElementById('ufw-toggle-label');
+        if (!btn) return;
+        if (active) {
+            btn.className  = 'btn-yu btn-danger-yu btn-sm-yu';
+            btn.title      = 'Disable UFW';
+            if (icon) icon.className = 'bi bi-shield-slash';
+            if (lbl)  lbl.textContent = 'Disable UFW';
+        } else {
+            btn.className  = 'btn-yu btn-success-yu btn-sm-yu';
+            btn.title      = 'Enable UFW';
+            if (icon) icon.className = 'bi bi-shield-check';
+            if (lbl)  lbl.textContent = 'Enable UFW';
+        }
+    }
+
+    function ufwShowNoAccess(fixCmd) {
+        const badge = document.getElementById('ufw-status-badge');
+        if (badge) {
+            badge.textContent = 'NO ACCESS';
+            badge.style.background = 'rgba(251,191,36,.12)';
+            badge.style.color = '#fbbf24';
+        }
+        let hint = document.getElementById('ufw-permission-hint');
+        if (!hint) {
+            hint = document.createElement('div');
+            hint.id = 'ufw-permission-hint';
+            hint.style.cssText = 'margin-top:.75rem;padding:.75rem 1rem;border-radius:8px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.18);font-size:.8rem;';
+            const btnWrap = document.querySelector('#ufw-toggle-btn')?.parentElement;
+            if (btnWrap) btnWrap.parentElement.appendChild(hint);
+        }
+        hint.innerHTML = '<p style="margin:0 0 .4rem;color:#fbbf24;font-weight:600;"><i class="bi bi-exclamation-triangle"></i> Panel has no permission to manage UFW</p>'
+            + '<p style="margin:0 0 .4rem;color:var(--muted);">Run this command on the host to grant access:</p>'
+            + '<code style="display:block;padding:.5rem .75rem;background:rgba(0,0,0,.25);border-radius:6px;font-size:.75rem;word-break:break-all;color:#e2e8f0;user-select:all;">'
+            + fixCmd.replace(/</g,'&lt;') + '</code>';
+        const btn = document.getElementById('ufw-toggle-btn');
+        if (btn) { btn.disabled = true; btn.style.opacity = '.4'; }
+    }
+
+    function ufwClearNoAccess() {
+        const hint = document.getElementById('ufw-permission-hint');
+        if (hint) hint.remove();
+        const btn = document.getElementById('ufw-toggle-btn');
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    }
+
+    function ufwCheckStatus() {
+        fetch('/api/admin/ufw/status', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(d => {
+                if (d.needs_permission) {
+                    ufwShowNoAccess(d.fix_command || '');
+                } else if (d.ok) {
+                    ufwClearNoAccess();
+                    ufwUpdateBadge(d.active);
+                }
+            })
+            .catch(() => {});
+    }
+
+    async function ufwSystemToggle() {
+        const enable = !_ufwActive;
+        const btn = document.getElementById('ufw-toggle-btn');
+        if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
+        try {
+            const r = await fetch('/api/admin/ufw/toggle', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({enable})
+            });
+            const d = await r.json();
+            if (d.needs_permission) {
+                ufwShowNoAccess(d.fix_command || '');
+                return;
+            }
+            if (r.ok && d.ok) {
+                showToast('success', enable ? 'UFW enabled successfully' : 'UFW disabled successfully');
+                ufwClearNoAccess();
+                ufwUpdateBadge(enable);
+                setTimeout(ufwCheckStatus, 600);
+            } else {
+                showToast('danger', d.error || 'Failed to toggle UFW');
+            }
+        } catch(e) { showToast('danger', 'Network error'); }
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        ufwCheckStatus();
+        cfCheckStatus();
+        applySoonVisibility();
+    });
+
+    // ── Cloudflare UAM ────────────────────────────────────────────────────────
+    let _cfUamActive = false;
+
+    function cfUpdateBadge(level, autoActive) {
+        _cfUamActive = (level === 'under_attack');
+        const badge = document.getElementById('cf-uam-badge');
+        const btn   = document.getElementById('cf-uam-toggle-btn');
+        const icon  = document.getElementById('cf-uam-icon');
+        const lbl   = document.getElementById('cf-uam-label');
+        if (badge) {
+            if (_cfUamActive) {
+                badge.textContent = 'UNDER ATTACK' + (autoActive ? ' (auto)' : '');
+                badge.style.background = 'rgba(239,68,68,.12)';
+                badge.style.color = '#f87171';
+            } else {
+                badge.textContent = level || 'NORMAL';
+                badge.style.background = 'rgba(16,185,129,.12)';
+                badge.style.color = '#10b981';
+            }
+        }
+        if (btn) {
+            btn.disabled = false;
+            if (_cfUamActive) {
+                btn.className = 'btn-yu btn-yu-success';
+                btn.style.cssText = 'font-size:.8rem;padding:.4rem .9rem;';
+                if (icon) icon.className = 'bi bi-cloud-check';
+                if (lbl) lbl.textContent = 'Disable UAM';
+            } else {
+                btn.className = 'btn-yu btn-yu-danger';
+                btn.style.cssText = 'font-size:.8rem;padding:.4rem .9rem;';
+                if (icon) icon.className = 'bi bi-cloud-slash';
+                if (lbl) lbl.textContent = 'Enable UAM';
+            }
+        }
+    }
+
+    function cfCheckStatus() {
+        fetch('/api/admin/cf/status', { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(d => {
+                const badge = document.getElementById('cf-uam-badge');
+                if (!d.ok) {
+                    if (badge) { badge.textContent = d.error || 'CF Error'; badge.style.color = '#f87171'; }
+                    return;
+                }
+                if (!d.configured) {
+                    if (badge) { badge.textContent = 'Not configured'; badge.style.color = 'var(--muted)'; }
+                    const btn = document.getElementById('cf-uam-toggle-btn');
+                    if (btn) btn.disabled = true;
+                    return;
+                }
+                cfUpdateBadge(d.level, d.auto_active);
+            })
+            .catch(() => {});
+    }
+
+    async function cfUamToggle() {
+        const btn = document.getElementById('cf-uam-toggle-btn');
+        if (btn) { btn.disabled = true; btn.style.opacity = '.5'; }
+        try {
+            const r = await fetch('/api/admin/cf/uam', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({enable: !_cfUamActive})
+            });
+            const d = await r.json();
+            if (r.ok && d.ok) {
+                showToast('success', !_cfUamActive ? 'Under Attack Mode enabled' : 'Under Attack Mode disabled');
+                setTimeout(cfCheckStatus, 800);
+            } else {
+                showToast('danger', d.error || 'CF request failed');
+            }
+        } catch(e) { showToast('danger', 'Network error'); }
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    }
+
+    async function saveCfCreds() {
+        const zoneId = document.getElementById('cf-zone-id-input')?.value.trim() || '';
+        const token  = document.getElementById('cf-api-token-input')?.value.trim() || '';
+        const saves = [];
+        if (zoneId) saves.push(adminSetSetting('cf_zone_id', zoneId));
+        if (token)  saves.push(adminSetSetting('cf_api_token', token));
+        if (saves.length) {
+            await Promise.all(saves);
+            document.getElementById('cf-api-token-input').value = '';
+            document.getElementById('cf-api-token-input').placeholder = 'Stored — enter to replace';
+            setTimeout(cfCheckStatus, 300);
+        }
+    }
+
+    // ── SOON visibility toggle ────────────────────────────────────────────────
+    function applySoonVisibility() {
+        const hide = localStorage.getItem('adminHideSoon') !== 'false'; // default: hide
+        document.querySelectorAll('.yu-nav-item').forEach(item => {
+            if (item.querySelector('.yu-soon-badge')) item.style.display = hide ? 'none' : '';
+        });
+        // Hide nav-label if all its items are hidden
+        document.querySelectorAll('.yu-nav-label').forEach(label => {
+            let sib = label.nextElementSibling;
+            let hasVisible = false;
+            while (sib && !sib.classList.contains('yu-nav-label')) {
+                if (sib.classList.contains('yu-nav-item') && sib.style.display !== 'none') hasVisible = true;
+                sib = sib.nextElementSibling;
+            }
+            label.style.display = hasVisible ? '' : 'none';
+        });
+        const icon = document.getElementById('soon-toggle-icon');
+        const lbl  = document.getElementById('soon-toggle-lbl');
+        if (icon) icon.className = hide ? 'bi bi-eye' : 'bi bi-eye-slash';
+        if (lbl)  lbl.textContent = hide ? 'Show upcoming' : 'Hide upcoming';
+    }
+
+    function toggleSoon() {
+        const hidden = localStorage.getItem('adminHideSoon') !== 'false';
+        localStorage.setItem('adminHideSoon', hidden ? 'false' : 'true');
+        applySoonVisibility();
+    }</script>
     {% include "_script_footer.html" %}
 </body>
 </html>

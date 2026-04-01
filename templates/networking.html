@@ -17,6 +17,7 @@
                 <h1 style="font-size:1.25rem;font-weight:700;letter-spacing:-.02em;margin-bottom:1.5rem;">Networking</h1>
 
                 <!-- Bandwidth limiter -->
+                {% if bandwidth_enabled %}
                 <div class="yu-panel" style="overflow:visible;">
                     <div class="yu-panel-hd"><i class="bi bi-speedometer2 text-muted"></i> Bandwidth Limit</div>
                     <div class="yu-panel-bd">
@@ -83,6 +84,7 @@
                     </div>
                 </div>
 
+                {% endif %}
                 <!-- Network info (static, for reference) -->
                 <div class="yu-panel">
                     <div class="yu-panel-hd"><i class="bi bi-info-circle text-muted"></i> Container State</div>
@@ -107,6 +109,11 @@
                         </span>
                     </div>
                     <div class="yu-panel-bd">
+                        <div id="ufw-perm-hint" style="display:none;margin-bottom:1rem;padding:.75rem 1rem;border-radius:8px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.18);font-size:.8rem;">
+                            <p style="margin:0 0 .35rem;color:#fbbf24;font-weight:600;"><i class="bi bi-exclamation-triangle"></i> Panel has no permission to manage UFW</p>
+                            <p style="margin:0 0 .4rem;color:var(--muted);">Run this on the host to grant access:</p>
+                            <code id="ufw-perm-cmd" style="display:block;padding:.45rem .75rem;background:rgba(0,0,0,.3);border-radius:6px;font-size:.75rem;word-break:break-all;color:#e2e8f0;user-select:all;"></code>
+                        </div>
                         <div style="overflow-x:auto;margin-bottom:1.25rem;">
                             <table class="yu-table">
                                 <thead>
@@ -114,12 +121,13 @@
                                         <th>Host Port</th>
                                         <th>Container Port</th>
                                         <th>Description</th>
+                                        {% if ufw_enabled %}<th style="text-align:center;">UFW</th>{% endif %}
                                         <th style="text-align:right;">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="ports-tbody">
                                     {% if ports.is_empty() %}
-                                    <tr id="ports-empty-row"><td colspan="4" style="color:var(--muted);text-align:center;padding:1rem;">No ports allocated</td></tr>
+                                    <tr id="ports-empty-row"><td colspan="{% if ufw_enabled %}5{% else %}4{% endif %}" style="color:var(--muted);text-align:center;padding:1rem;">No ports allocated</td></tr>
                                     {% else %}
                                     {% for p in ports %}
                                     <tr id="port-row-{{ p.host_port }}-{{ p.container_port }}"{% if !p.enabled %} style="opacity:.55"{% endif %}>
@@ -128,18 +136,27 @@
                                         <td id="tag-{{ p.host_port }}-{{ p.container_port }}">
                                             {% if p.tag.is_empty() %}<span style="color:var(--muted);font-style:italic;">—</span>{% else %}{{ p.tag }}{% endif %}
                                         </td>
+                                        {% if ufw_enabled %}
+                                        <td style="text-align:center;">
+                                            <button class="btn-yu btn-yu-icon {% if p.ufw_blocked %}btn-yu-danger{% else %}btn-yu-ghost{% endif %}"
+                                                    title="{% if p.ufw_blocked %}Unblock in UFW{% else %}Block in UFW{% endif %}"
+                                                    onclick="toggleUfw({{ p.host_port }},{{ p.container_port }},{{ p.ufw_blocked }},this)">
+                                                <i class="bi bi-shield{% if p.ufw_blocked %}-fill{% endif %}"></i>
+                                            </button>
+                                        </td>
+                                        {% endif %}
                                         <td style="text-align:right;">
                                             <div style="display:flex;gap:.35rem;justify-content:flex-end;">
-                                                <button class="btn-yu btn-sm-yu {% if p.enabled %}btn-success-yu{% else %}btn-ghost-yu{% endif %}"
+                                                <button class="btn-yu btn-yu-icon {% if p.enabled %}btn-yu-success{% else %}btn-yu-ghost{% endif %}"
                                                         title="{% if p.enabled %}Disable port{% else %}Enable port{% endif %}"
                                                         onclick="togglePort({{ p.host_port }},{{ p.container_port }},{{ p.enabled }},this)">
                                                     <i class="bi bi-toggle-{% if p.enabled %}on{% else %}off{% endif %}"></i>
                                                 </button>
                                                 {% if is_admin %}
-                                                <button class="btn-yu btn-ghost-yu btn-sm-yu" title="Edit description"
+                                                <button class="btn-yu btn-yu-icon btn-yu-ghost" title="Edit description"
                                                         onclick="openTagEdit({{ p.host_port }},{{ p.container_port }},this.dataset.tag)"
                                                         data-tag="{{ p.tag }}"><i class="bi bi-pencil"></i></button>
-                                                <button class="btn-yu btn-danger-yu btn-sm-yu" title="Close port"
+                                                <button class="btn-yu btn-yu-icon btn-yu-danger" title="Close port"
                                                         onclick="removePort({{ p.host_port }},{{ p.container_port }},this)"><i class="bi bi-x-lg"></i></button>
                                                 {% endif %}
                                             </div>

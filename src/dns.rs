@@ -124,13 +124,32 @@ impl DnsClient {
                     return Err(anyhow!("Cloudflare: {}", resp["errors"]));
                 }
                 Ok(resp["result"].as_array().map(|arr| arr.iter().filter_map(|r| {
+                    let record_type = r["type"].as_str()?.to_string();
+                    // SRV records: Cloudflare returns content as "priority weight port target"
+                    // but we store value as "weight port target" (priority is a separate field).
+                    // Reconstruct from the structured `data` object when available.
+                    let value = if record_type == "SRV" {
+                        if let Some(data) = r.get("data") {
+                            let w = data["weight"].as_u64().unwrap_or(0);
+                            let p = data["port"].as_u64().unwrap_or(0);
+                            let t = data["target"].as_str().unwrap_or(".");
+                            format!("{} {} {}", w, p, t)
+                        } else {
+                            // Fallback: strip leading priority from content
+                            let content = r["content"].as_str().unwrap_or("");
+                            let parts: Vec<&str> = content.splitn(2, ' ').collect();
+                            parts.get(1).unwrap_or(&content).to_string()
+                        }
+                    } else {
+                        r["content"].as_str()?.to_string()
+                    };
                     Some(RemoteDnsRecord {
                         id:          r["id"].as_str()?.to_string(),
                         zone_id:     zone_id.to_string(),
                         zone_name:   r["zone_name"].as_str().unwrap_or(zone_id).to_string(),
                         name:        r["name"].as_str()?.to_string(),
-                        record_type: r["type"].as_str()?.to_string(),
-                        value:       r["content"].as_str()?.to_string(),
+                        record_type,
+                        value,
                         ttl:         r["ttl"].as_i64().unwrap_or(1),
                         priority:    r["priority"].as_i64().unwrap_or(0),
                         proxied:     r["proxied"].as_bool().unwrap_or(false),

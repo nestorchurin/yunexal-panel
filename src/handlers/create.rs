@@ -34,7 +34,7 @@ pub async fn create_server(
 
     macro_rules! err {
         ($msg:expr) => {{
-            return render(NewServerTemplate { users: users.clone(), error: Some($msg) })
+            return render(NewServerTemplate { users: users.clone(), error: Some($msg), cf_token: state.cf_analytics_token.clone() })
                 .into_response();
         }};
     }
@@ -154,6 +154,7 @@ pub async fn create_server(
         Ok(true) => return render(NewServerTemplate {
             users: users.clone(),
             error: Some(format!("A server named '{}' already exists. Choose a different name.", raw_name)),
+            cf_token: state.cf_analytics_token.clone(),
         }).into_response(),
         Err(e) => warn!("server_name_exists check failed: {}", e),
         Ok(false) => {}
@@ -356,7 +357,12 @@ pub async fn create_server(
                                 _      => &["tcp", "udp"], // "both" or "1" (legacy)
                             };
                             for proto in protos {
-                                let full_name = format!("{}._", base_name) + proto;
+                                let full_name = if !a_subdomain.is_empty() {
+                                    // e.g. "_minecraft._tcp.user" → resolves as _minecraft._tcp.user.zone.com
+                                    format!("{}._{}.{}", base_name, proto, a_subdomain)
+                                } else {
+                                    format!("{}._", base_name) + proto
+                                };
                                 let srv_value = format!("{} {} {}", weight, port, target);
                                 let srv_remote_id = client.create_record(&zone_id, &dns_lib::DnsRecordInput {
                                     record_type: "SRV".to_string(),
@@ -380,7 +386,7 @@ pub async fn create_server(
             }
         }
         let actor = auth::session_username(&jar).unwrap_or_default();
-        let _ = db::audit_log(&state.db, &actor, "server.create", &form.name, &format!("#{}", db_id), &ip).await;
+        let _ = db::audit_log(&state.db, &actor, "server.create", &form.name, &format!("#{}", db_id), &ip, &auth::user_agent(&headers)).await;
         Redirect::to(&format!("/servers/{}/console", db_id)).into_response()
     } else {
         Redirect::to(&format!("/servers/{}/console", short_id)).into_response()

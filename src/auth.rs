@@ -29,6 +29,15 @@ pub fn client_ip(headers: &HeaderMap, addr: ConnectInfo<SocketAddr>) -> String {
     addr.0.ip().to_string()
 }
 
+/// Extract User-Agent header as a string (truncated to 256 chars).
+pub fn user_agent(headers: &HeaderMap) -> String {
+    headers.get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| if s.len() > 256 { &s[..256] } else { s })
+        .unwrap_or("")
+        .to_string()
+}
+
 /// Returns the username stored in the session cookie, if any.
 pub fn session_username(jar: &PrivateCookieJar) -> Option<String> {
     jar.get(SESSION_COOKIE)
@@ -55,6 +64,18 @@ pub async fn is_admin_session(state: &AppState, jar: &PrivateCookieJar) -> bool 
     matches!(
         db::find_user_by_username(&state.db, &username).await,
         Ok(Some(u)) if db::is_admin_role(&u.role)
+    )
+}
+
+/// Returns true if the current session belongs to the root user.
+pub async fn is_root_session(state: &AppState, jar: &PrivateCookieJar) -> bool {
+    let username = match session_username(jar) {
+        Some(u) => u,
+        None => return false,
+    };
+    matches!(
+        db::find_user_by_username(&state.db, &username).await,
+        Ok(Some(u)) if u.role == "root"
     )
 }
 

@@ -20,6 +20,8 @@ use axum_embed::ServeEmbed;
 use rust_embed::Embed;
 use crate::auth as auth_middleware;
 use crate::state::AppState;
+use std::net::SocketAddr;
+use axum::extract::ConnectInfo;
 
 #[derive(Embed, Clone)]
 #[folder = "static/"]
@@ -34,6 +36,34 @@ async fn serve_embedded(path: &str, content_type: &'static str) -> impl IntoResp
 }
 async fn serve_manifest() -> impl IntoResponse { serve_embedded("manifest.json", "application/json").await }
 async fn serve_sw()       -> impl IntoResponse { serve_embedded("sw.js", "application/javascript").await }
+
+// ── L7 request-rate tracking middleware ─────────────────────────────────────
+
+async fn track_requests(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> impl IntoResponse {
+    let ip = req.headers()
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim().to_string())
+        .or_else(|| {
+            req.headers()
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.trim().to_string())
+        })
+        .or_else(|| {
+            req.extensions()
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|ci| ci.0.ip().to_string())
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+    state.record_request(&ip);
+    next.run(req).await
+}
 
 // ── Security headers middleware ───────────────────────────────────────────────
 
@@ -84,8 +114,11 @@ use admin::{
     api_list_images, api_delete_image,
     api_get_image_env, api_set_image_env, api_duplicate_image, api_pull_image,
     api_admin_containers, api_admin_overview,
-    api_audit_list, api_audit_clear,
+    api_audit_list,
     api_update_check, api_update_apply,
+    api_admin_set_setting,
+    api_ufw_status, api_ufw_toggle,
+    api_cf_status, api_cf_uam_set,
 };
 use dns::{
     api_dns_list_providers, api_dns_add_provider, api_dns_update_provider, api_dns_delete_provider,
@@ -99,10 +132,10 @@ use auth::{login_page, login_submit, logout};
 use create::{api_image_env, api_image_env_overrides, api_local_images, create_server};
 use dashboard::{api_dashboard_json, dashboard, new_server_page, server_list_fragment};
 use files::{bulk_delete, copy_file, create_archive, create_new_file, delete_file, edit_file_page, extract_archive, list_files_api, list_files_json, move_file, rename_file, save_file_content, upload_files};
-use network::{api_add_port, api_get_bandwidth, api_remove_port, api_set_bandwidth, api_tag_port, api_toggle_port, networking_page};
+use network::{api_add_port, api_get_bandwidth, api_remove_port, api_set_bandwidth, api_tag_port, api_toggle_port, api_toggle_port_ufw, api_server_disk, networking_page};
 use servers::{
     console_page, delete_server, files_page, get_server_stats, kill_server, rename_server,
-    restart_server, settings_page, start_server, stop_server,
+    restart_server, settings_page, start_server, stop_server, api_update_env, api_factory_reset,
 };
 use ws::console_ws;
 
@@ -135,6 +168,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/servers/{id}/ports/remove", post(api_remove_port))
         .route("/api/servers/{id}/ports/tag", post(api_tag_port))
         .route("/api/servers/{id}/ports/toggle", post(api_toggle_port))
+        .route("/api/servers/{id}/ports/ufw", post(api_toggle_port_ufw))
+        .route("/api/servers/{id}/disk", get(api_server_disk))
+        .route("/api/servers/{id}/env", post(api_update_env))
+        .route("/api/servers/{id}/factory-reset", post(api_factory_reset))
         // File manager
         .route("/servers/{id}/files/edit", get(edit_file_page))
         .route("/api/servers/{id}/files/list", get(list_files_api))
@@ -207,9 +244,13 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/admin/dns/providers/{id}/sync-records", post(api_dns_sync_records))
         .route("/api/admin/dns/container-records", get(api_dns_container_records))
         .route("/api/admin/audit", get(api_audit_list))
-        .route("/api/admin/audit/clear", post(api_audit_clear))
         .route("/api/admin/updates/check", get(api_update_check))
         .route("/api/admin/updates/apply", post(api_update_apply))
+        .route("/api/admin/settings", post(api_admin_set_setting))
+        .route("/api/admin/ufw/status", get(api_ufw_status))
+        .route("/api/admin/ufw/toggle", post(api_ufw_toggle))
+        .route("/api/admin/cf/status", get(api_cf_status))
+        .route("/api/admin/cf/uam", post(api_cf_uam_set))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth_middleware::require_admin,
@@ -223,6 +264,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/sw.js", get(serve_sw))
         .nest_service("/static", ServeEmbed::<StaticAssets>::new())
         .fallback(fallback)
+        .layer(middleware::from_fn_with_state(state.clone(), track_requests))
         .layer(middleware::from_fn(security_headers))
         .with_state(state)
 }

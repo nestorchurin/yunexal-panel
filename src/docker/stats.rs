@@ -9,6 +9,8 @@ pub struct ContainerStatsRaw {
      pub ram_limit: u64,
      pub net_rx: u64,
      pub net_tx: u64,
+     pub blk_read: u64,
+     pub blk_write: u64,
 }
 
 pub async fn get_container_stats_raw(docker: &Docker, id: &str) -> Result<ContainerStatsRaw> {
@@ -48,12 +50,28 @@ pub async fn get_container_stats_raw(docker: &Docker, id: &str) -> Result<Contai
             }
         }
 
+        let mut blk_read: u64 = 0;
+        let mut blk_write: u64 = 0;
+        if let Some(blkio) = &stats.blkio_stats {
+            if let Some(entries) = &blkio.io_service_bytes_recursive {
+                for e in entries {
+                    match e.op.as_deref().unwrap_or("").to_lowercase().as_str() {
+                        "read"  => blk_read  += e.value.unwrap_or(0),
+                        "write" => blk_write += e.value.unwrap_or(0),
+                        _ => {}
+                    }
+                }
+            }
+        }
+
         return Ok(ContainerStatsRaw {
             cpu_usage,
             ram_usage: memory_usage,
             ram_limit: memory_limit,
             net_rx: rx,
             net_tx: tx,
+            blk_read,
+            blk_write,
         });
     }
     

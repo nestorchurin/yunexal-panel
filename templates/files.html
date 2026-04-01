@@ -16,9 +16,15 @@
                 <div class="yu-panel">
                     <div class="yu-panel-hd">
                         <span><i class="bi bi-folder2-open me-2 text-muted"></i>File Browser</span>
-                        <button class="btn-yu btn-yu-primary" onclick="fbOpenCreate()">
-                            <i class="bi bi-plus-lg"></i> New File
-                        </button>
+                        <div class="d-flex gap-2">
+                            <button class="btn-yu btn-yu-ghost" onclick="document.getElementById('fb-file-input').click()">
+                                <i class="bi bi-upload"></i> Upload
+                            </button>
+                            <input type="file" id="fb-file-input" multiple style="display:none" onchange="fbUploadFiles(this.files); this.value='';">
+                            <button class="btn-yu btn-yu-primary" onclick="fbOpenCreate()">
+                                <i class="bi bi-plus-lg"></i> New File
+                            </button>
+                        </div>
                     </div>
                     <div class="yu-panel-bd" id="fb-drop-zone">
                         <div id="fb-drop-overlay"><i class="bi bi-cloud-upload"></i><div>Drop files to upload</div></div>

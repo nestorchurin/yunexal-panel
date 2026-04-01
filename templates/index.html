@@ -108,6 +108,38 @@
             setTimeout(() => { document.getElementById('dashPwModal').style.display = 'none'; }, 1500);
         } else show(data.error || 'Failed to update password.', false);
     }
+
+    const _dashUser = '{{ auth_username }}';
+    let _dashMyOnly = true;
+
+    function dashFilterOwner() {
+        const btn  = document.getElementById('dash-my-only-btn');
+        const icon = document.getElementById('dash-my-only-icon');
+        const lbl  = document.getElementById('dash-my-only-lbl');
+        if (btn) {
+            if (_dashMyOnly) {
+                btn.style.background = 'rgba(124,58,237,.15)';
+                btn.style.borderColor = 'rgba(124,58,237,.35)';
+                btn.style.color = '#a78bfa';
+            } else {
+                btn.style.background = 'rgba(255,255,255,.04)';
+                btn.style.borderColor = 'var(--bdr)';
+                btn.style.color = 'var(--muted)';
+            }
+            if (icon) icon.className = _dashMyOnly ? 'bi bi-person-check' : 'bi bi-people';
+            if (lbl)  lbl.textContent = _dashMyOnly ? 'My only' : 'All servers';
+        }
+        document.querySelectorAll('#server-list > [data-owner]').forEach(el => {
+            el.style.display = (_dashMyOnly && el.dataset.owner !== _dashUser) ? 'none' : '';
+        });
+    }
+
+    function dashToggleOwner() {
+        _dashMyOnly = !_dashMyOnly;
+        dashFilterOwner();
+    }
+
+    document.addEventListener('DOMContentLoaded', dashFilterOwner);
     </script>
 </body>
 </html>

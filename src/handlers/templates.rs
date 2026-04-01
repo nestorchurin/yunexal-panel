@@ -25,6 +25,7 @@ pub struct IndexTemplate {
     pub containers: Vec<ContainerInfo>,
     pub is_admin: bool,
     pub auth_username: String,
+    pub cf_token: String,
 }
 
 #[derive(Template)]
@@ -46,6 +47,7 @@ pub struct ServerCardTemplate {
 pub struct NewServerTemplate {
     pub error: Option<String>,
     pub users: Vec<UserInfo>,
+    pub cf_token: String,
 }
 
 #[derive(Template)]
@@ -60,6 +62,7 @@ pub struct ConsoleTemplate {
     pub id: i64,
     pub container: ContainerInfo,
     pub active_tab: &'static str,
+    pub cf_token: String,
 }
 
 #[derive(Template)]
@@ -68,6 +71,7 @@ pub struct FilesTemplate {
     pub id: i64,
     pub container: ContainerInfo,
     pub active_tab: &'static str,
+    pub cf_token: String,
 }
 
 #[derive(Template)]
@@ -80,6 +84,7 @@ pub struct FileEditTemplate {
     pub content: String,
     pub ace_mode: String,
     pub active_tab: &'static str,
+    pub cf_token: String,
 }
 
 #[derive(Template)]
@@ -90,6 +95,8 @@ pub struct SettingsTemplate {
     pub container: ContainerInfo,
     pub is_admin: bool,
     pub active_tab: &'static str,
+    pub cf_token: String,
+    pub env: String,
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +105,7 @@ pub struct PortRow {
     pub container_port: u16,
     pub tag: String,
     pub enabled: bool,
+    pub ufw_blocked: bool,
 }
 
 #[derive(Template)]
@@ -110,6 +118,9 @@ pub struct NetworkingTemplate {
     pub is_admin: bool,
     pub ports: Vec<PortRow>,
     pub active_tab: &'static str,
+    pub cf_token: String,
+    pub ufw_enabled: bool,
+    pub bandwidth_enabled: bool,
 }
 
 #[derive(Template)]
@@ -150,6 +161,17 @@ pub struct AdminTemplate {
     pub zram_compr_mb: String,
     pub zram_ratio: String,
     pub zram_algorithm: String,
+    pub cf_token: String,
+    pub settings_ufw_enabled: bool,
+    pub settings_bandwidth_enabled: bool,
+    pub settings_cf_uam_enabled: bool,
+    pub cf_zone_id: String,
+    pub cf_api_token_set: bool,
+    pub cf_uam_threshold: String,
+    pub cf_uam_cooldown_mins: String,
+    pub settings_cf_l7_enabled: bool,
+    pub cf_l7_threshold: String,
+    pub cf_l7_ips_min: String,
 }
 
 #[derive(Template)]
@@ -160,6 +182,7 @@ pub struct AdminEditTemplate {
     pub edit: ContainerEditInfo,
     pub users: Vec<UserInfo>,
     pub error: Option<String>,
+    pub cf_token: String,
 }
 
 /// Container config extracted from Docker inspect for the edit form.

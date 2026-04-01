@@ -33,18 +33,124 @@ fn format_size(bytes: u64) -> String {
 
 /// Returns (bootstrap-icon-class, color-class) for a filename based on its extension.
 fn file_icon(name: &str) -> (&'static str, &'static str) {
-    let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
-    match ext.as_str() {
-        "json"|"js"|"ts"|"java"|"py"|"rs"|"go"|"c"|"cpp"|"h"|"lua"|"rb"|"php"|"sql"
+    let lower = name.to_lowercase();
+    // Special exact filenames (no or irrelevant extension)
+    match lower.as_str() {
+        "makefile" | "gnumakefile" | "dockerfile" | "containerfile"
+        | "jenkinsfile" | "vagrantfile" | "procfile"
+            => return ("bi-file-earmark-code", "fb-icon-shell"),
+        "readme" | "changelog" | "changes" | "history" | "todo"
+            => return ("bi-file-earmark-richtext", "fb-icon-markdown"),
+        "license" | "licence" | "copying" | "notice" | "authors"
+            => return ("bi-file-earmark-text", "fb-icon-text"),
+        _ => {}
+    }
+    let ext = lower.rsplit('.').next().unwrap_or("");
+    match ext {
+        // ── General code ───────────────────────────────────────────────────
+        "js"|"mjs"|"cjs"|"jsx"
+        |"ts"|"tsx"
+        |"rs"|"go"
+        |"c"|"h"|"cpp"|"cc"|"cxx"|"hpp"|"hxx"
+        |"cs"|"vb"|"fs"|"fsx"
+        |"swift"|"dart"|"zig"|"nim"
+        |"lua"|"rb"|"rake"|"gemspec"
+        |"php"|"phtml"
+        |"ex"|"exs"|"erl"|"hrl"
+        |"clj"|"cljs"|"cljc"
+        |"r"|"m"|"mm"
+        |"elm"|"hs"|"lhs"
+        |"pl"|"pm"|"tcl"
+        |"coffee"|"litcoffee"
+        |"json"|"jsonl"|"ndjson"|"geojson"
             => ("bi-file-earmark-code", "fb-icon-code"),
-        "yaml"|"yml"|"toml"|"properties"|"conf"|"cfg"|"ini"|"env"|"xml"|"html"|"htm"
+        // ── Python ─────────────────────────────────────────────────────────
+        "py"|"pyw"|"pyi"|"ipynb"
+            => ("bi-file-earmark-code", "fb-icon-python"),
+        // ── Java / JVM ─────────────────────────────────────────────────────
+        "java"|"class"
+        |"kt"|"kts"
+        |"scala"|"sc"
+        |"groovy"|"gradle"
+            => ("bi-file-earmark-code", "fb-icon-java"),
+        // ── Shell / scripts ────────────────────────────────────────────────
+        "sh"|"bash"|"zsh"|"fish"|"ksh"|"csh"
+        |"bat"|"cmd"
+        |"ps1"|"psm1"|"psd1"
+            => ("bi-file-earmark-code", "fb-icon-shell"),
+        // ── HTML / templates ───────────────────────────────────────────────
+        "html"|"htm"|"xhtml"
+        |"jinja"|"jinja2"|"j2"|"njk"|"hbs"|"ejs"|"twig"|"erb"|"mustache"
+            => ("bi-file-earmark-code", "fb-icon-html"),
+        // ── CSS / styles ───────────────────────────────────────────────────
+        "css"|"scss"|"sass"|"less"|"styl"
+            => ("bi-file-earmark-code", "fb-icon-css"),
+        // ── SQL / Database ─────────────────────────────────────────────────
+        "sql"|"db"|"sqlite"|"sqlite3"
+            => ("bi-file-earmark-code", "fb-icon-data"),
+        // ── Config / markup ────────────────────────────────────────────────
+        "yaml"|"yml"|"toml"
+        |"properties"|"conf"|"cfg"|"config"|"ini"
+        |"env"|"envrc"
+        |"xml"|"xsd"|"xsl"|"xslt"|"dtd"|"wsdl"|"plist"
+        |"csproj"|"vbproj"|"fsproj"|"proj"|"targets"|"props"
+        |"gitignore"|"gitattributes"|"gitmodules"
+        |"hgignore"|"npmrc"|"nvmrc"
+        |"editorconfig"|"babelrc"|"eslintrc"|"prettierrc"
+        |"stylelintrc"|"dockerignore"|"slugignore"
             => ("bi-file-earmark-ruled", "fb-icon-config"),
-        "jar"|"zip"|"tar"|"gz"|"bz2"|"xz"|"7z"|"rar"|"war"
-            => ("bi-file-earmark-zip", "fb-icon-archive"),
-        "log"|"txt"|"md"|"rst"|"nfo"
+        // ── Data files ─────────────────────────────────────────────────────
+        "csv"|"tsv"|"psv"
+            => ("bi-file-earmark-spreadsheet", "fb-icon-data"),
+        // ── Text / plain docs ──────────────────────────────────────────────
+        "txt"|"text"|"nfo"|"rst"|"adoc"|"asciidoc"
             => ("bi-file-earmark-text", "fb-icon-text"),
+        "md"|"markdown"|"mdown"|"mkd"|"rmd"
+            => ("bi-file-earmark-richtext", "fb-icon-markdown"),
+        "log"|"logs"
+            => ("bi-file-earmark-text", "fb-icon-log"),
+        // ── Office / documents ─────────────────────────────────────────────
+        "pdf"
+            => ("bi-file-earmark-pdf", "fb-icon-pdf"),
+        "doc"|"docx"|"odt"
+            => ("bi-file-earmark-word", "fb-icon-config"),
+        "xls"|"xlsx"|"ods"
+            => ("bi-file-earmark-spreadsheet", "fb-icon-data"),
+        "ppt"|"pptx"|"odp"
+            => ("bi-file-earmark-ppt", "fb-icon-log"),
+        // ── Archives ───────────────────────────────────────────────────────
+        "zip"|"tar"|"gz"|"bz2"|"xz"|"7z"|"rar"
+        |"tgz"|"tbz2"|"txz"
+        |"cab"|"iso"|"z"|"lz"|"lzma"|"zst"
+            => ("bi-file-earmark-zip", "fb-icon-archive"),
+        "jar"|"war"|"ear"
+        |"apk"|"deb"|"rpm"|"pkg"
+            => ("bi-file-earmark-zip", "fb-icon-jar"),
+        // ── Images ─────────────────────────────────────────────────────────
         "png"|"jpg"|"jpeg"|"gif"|"ico"|"svg"|"webp"
-            => ("bi-file-earmark-image", "fb-icon-config"),
+        |"bmp"|"tiff"|"tif"|"avif"|"heic"|"heif"
+        |"raw"|"dng"|"psd"|"ai"|"eps"|"xcf"
+            => ("bi-file-earmark-image", "fb-icon-image"),
+        // ── Audio ──────────────────────────────────────────────────────────
+        "mp3"|"wav"|"ogg"|"flac"|"aac"|"m4a"
+        |"wma"|"opus"|"aiff"|"au"|"mid"|"midi"
+            => ("bi-file-earmark-music", "fb-icon-audio"),
+        // ── Video ──────────────────────────────────────────────────────────
+        "mp4"|"avi"|"mkv"|"mov"|"wmv"|"flv"
+        |"webm"|"m4v"|"3gp"|"ogv"
+            => ("bi-file-earmark-play", "fb-icon-video"),
+        // ── Binary / Executable ────────────────────────────────────────────
+        "exe"|"dll"|"so"|"dylib"
+        |"bin"|"elf"|"o"|"a"|"obj"|"lib"|"out"
+        |"wasm"
+            => ("bi-file-earmark-binary", "fb-icon-binary"),
+        // ── Certificates / Keys ────────────────────────────────────────────
+        "pem"|"crt"|"cer"|"key"|"pub"
+        |"p12"|"pfx"|"jks"|"keystore"
+            => ("bi-file-earmark-lock", "fb-icon-lock"),
+        // ── Fonts ──────────────────────────────────────────────────────────
+        "ttf"|"otf"|"woff"|"woff2"|"eot"
+            => ("bi-file-earmark-font", "fb-icon-code"),
         _ => ("bi-file-earmark", "fb-icon-text"),
     }
 }
@@ -55,6 +161,8 @@ fn is_extractable(name: &str) -> bool {
     || n.ends_with(".tar.bz2") || n.ends_with(".tbz2")
     || n.ends_with(".tar.xz") || n.ends_with(".txz")
     || n.ends_with(".tar") || n.ends_with(".zip") || n.ends_with(".jar")
+    || n.ends_with(".rar") || n.ends_with(".7z")
+    || n.ends_with(".gz") || n.ends_with(".bz2") || n.ends_with(".xz")
 }
 
 /// Builds a breadcrumb bar HTML for the given path.
@@ -250,6 +358,7 @@ pub async fn edit_file_page(
         content,
         ace_mode,
         active_tab: "files",
+        cf_token: state.cf_analytics_token.clone(),
     })
     .into_response()
 }
@@ -288,7 +397,7 @@ pub async fn save_file_content(
     match tokio::fs::write(&file_path, form.content.as_bytes()).await {
         Ok(_) => {
             let actor = auth::session_username(&jar).unwrap_or_default();
-            let _ = db::audit_log(&state.db, &actor, "file.save", &form.path, &format!("#{}", db_id), &ip).await;
+            let _ = db::audit_log(&state.db, &actor, "file.save", &form.path, &format!("#{}", db_id), &ip, &auth::user_agent(&headers)).await;
             return (StatusCode::OK, "ok").into_response();
         }
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
@@ -320,7 +429,7 @@ pub async fn save_file_content(
     match child.wait_with_output().await {
         Ok(out) if out.status.success() => {
             let actor = auth::session_username(&jar).unwrap_or_default();
-            let _ = db::audit_log(&state.db, &actor, "file.save", &form.path, &format!("#{}", db_id), &ip).await;
+            let _ = db::audit_log(&state.db, &actor, "file.save", &form.path, &format!("#{}", db_id), &ip, &auth::user_agent(&headers)).await;
             (StatusCode::OK, "ok").into_response()
         }
         Ok(out) => (StatusCode::INTERNAL_SERVER_ERROR,
@@ -404,7 +513,7 @@ pub async fn create_new_file(
     }
 
     let actor = auth::session_username(&jar).unwrap_or_default();
-    let _ = db::audit_log(&state.db, &actor, "file.create", name, &format!("#{}", db_id), &ip).await;
+    let _ = db::audit_log(&state.db, &actor, "file.create", name, &format!("#{}", db_id), &ip, &auth::user_agent(&headers)).await;
 
     [(
         axum::http::header::HeaderName::from_static("hx-trigger"),
@@ -585,7 +694,7 @@ pub async fn delete_file(
     match result {
         Ok(_) => {
             let actor = auth::session_username(&jar).unwrap_or_default();
-            let _ = db::audit_log(&state.db, &actor, "file.delete", &query.path, &format!("#{}", db_id), &ip).await;
+            let _ = db::audit_log(&state.db, &actor, "file.delete", &query.path, &format!("#{}", db_id), &ip, &auth::user_agent(&headers)).await;
             (
                 StatusCode::OK,
                 axum::http::HeaderMap::from_iter([(
@@ -641,7 +750,7 @@ pub async fn rename_file(
     match tokio::fs::rename(&src, &dst).await {
         Ok(_) => {
             let actor = auth::session_username(&jar).unwrap_or_default();
-            let _ = db::audit_log(&state.db, &actor, "file.rename", &form.path, &format!("#{} -> {}", db_id, new_name), &ip).await;
+            let _ = db::audit_log(&state.db, &actor, "file.rename", &form.path, &format!("#{} -> {}", db_id, new_name), &ip, &auth::user_agent(&headers)).await;
             (
                 StatusCode::OK,
                 axum::http::HeaderMap::from_iter([(
@@ -730,7 +839,7 @@ pub async fn copy_file(
     }
 
     let actor = auth::session_username(&jar).unwrap_or_default();
-    let _ = db::audit_log(&state.db, &actor, "file.copy", &form.src, &format!("#{} -> {}", db_id, form.dst_dir), &ip).await;
+    let _ = db::audit_log(&state.db, &actor, "file.copy", &form.src, &format!("#{} -> {}", db_id, form.dst_dir), &ip, &auth::user_agent(&headers)).await;
 
     (
         StatusCode::OK,
@@ -885,7 +994,7 @@ pub async fn upload_files(
     }
 
     let actor = auth::session_username(&jar).unwrap_or_default();
-    let _ = db::audit_log(&state.db, &actor, "file.upload", &query.path, &format!("#{} count={}", db_id, saved), &ip).await;
+    let _ = db::audit_log(&state.db, &actor, "file.upload", &query.path, &format!("#{} count={}", db_id, saved), &ip, &auth::user_agent(&headers)).await;
 
     (
         StatusCode::OK,
@@ -954,6 +1063,16 @@ pub async fn extract_archive(
         format!("{} && tar xf '{}'", cd_part, sh_esc(&arch_name))
     } else if name_lower.ends_with(".zip") || name_lower.ends_with(".jar") {
         format!("{} && unzip -o '{}'", cd_part, sh_esc(&arch_name))
+    } else if name_lower.ends_with(".rar") {
+        format!("{} && apk add --no-cache unrar >/dev/null 2>&1 && unrar x -o+ '{}'", cd_part, sh_esc(&arch_name))
+    } else if name_lower.ends_with(".7z") {
+        format!("{} && apk add --no-cache p7zip >/dev/null 2>&1 && 7z x -aoa '{}'", cd_part, sh_esc(&arch_name))
+    } else if name_lower.ends_with(".gz") {
+        format!("{} && gunzip -k '{}'", cd_part, sh_esc(&arch_name))
+    } else if name_lower.ends_with(".bz2") {
+        format!("{} && bunzip2 -k '{}'", cd_part, sh_esc(&arch_name))
+    } else if name_lower.ends_with(".xz") {
+        format!("{} && unxz -k '{}'", cd_part, sh_esc(&arch_name))
     } else {
         return (StatusCode::BAD_REQUEST, "Unsupported archive format").into_response();
     };
@@ -961,7 +1080,7 @@ pub async fn extract_archive(
     match docker_volume_cmd(&volume_path, &sh_cmd).await {
         Ok(_) => {
             let actor = auth::session_username(&jar).unwrap_or_default();
-            let _ = db::audit_log(&state.db, &actor, "file.extract", &form.path, &format!("#{}", db_id), &ip).await;
+            let _ = db::audit_log(&state.db, &actor, "file.extract", &form.path, &format!("#{}", db_id), &ip, &auth::user_agent(&headers)).await;
             (
                 StatusCode::OK,
                 axum::http::HeaderMap::from_iter([(
@@ -1047,7 +1166,7 @@ pub async fn create_archive(
     match docker_volume_cmd(&volume_path, &sh_cmd).await {
         Ok(_) => {
             let actor = auth::session_username(&jar).unwrap_or_default();
-            let _ = db::audit_log(&state.db, &actor, "file.archive", &archive_name, &format!("#{} items={}", db_id, names.len()), &ip).await;
+            let _ = db::audit_log(&state.db, &actor, "file.archive", &archive_name, &format!("#{} items={}", db_id, names.len()), &ip, &auth::user_agent(&headers)).await;
             (
                 StatusCode::OK,
                 axum::http::HeaderMap::from_iter([(
@@ -1102,7 +1221,7 @@ pub async fn bulk_delete(
     }
     let count = form.paths.lines().filter(|l| !l.trim().is_empty()).count();
     let actor = auth::session_username(&jar).unwrap_or_default();
-    let _ = db::audit_log(&state.db, &actor, "file.bulk_delete", "", &format!("#{} count={}", db_id, count), &ip).await;
+    let _ = db::audit_log(&state.db, &actor, "file.bulk_delete", "", &format!("#{} count={}", db_id, count), &ip, &auth::user_agent(&headers)).await;
     (
         StatusCode::OK,
         axum::http::HeaderMap::from_iter([(
@@ -1172,7 +1291,7 @@ pub async fn move_file(
         }
     }
     let actor = auth::session_username(&jar).unwrap_or_default();
-    let _ = db::audit_log(&state.db, &actor, "file.move", &form.src, &format!("#{} -> {}", db_id, form.dst_dir), &ip).await;
+    let _ = db::audit_log(&state.db, &actor, "file.move", &form.src, &format!("#{} -> {}", db_id, form.dst_dir), &ip, &auth::user_agent(&headers)).await;
     (
         StatusCode::OK,
         axum::http::HeaderMap::from_iter([(

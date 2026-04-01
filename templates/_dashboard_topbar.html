@@ -2,6 +2,12 @@
         <div class="yu-brand"><span class="dot"></span>Yunexal Panel</div>
         <div class="ms-auto d-flex gap-2 align-items-center">
             {% if is_admin %}
+            <button id="dash-my-only-btn" onclick="dashToggleOwner()"
+                    style="display:inline-flex;align-items:center;gap:.45rem;padding:.35rem .75rem;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;border:1px solid rgba(124,58,237,.35);background:rgba(124,58,237,.15);color:#a78bfa;transition:all .15s;user-select:none;"
+                    title="Show only my servers">
+                <i class="bi bi-person-check" id="dash-my-only-icon"></i>
+                <span id="dash-my-only-lbl">My only</span>
+            </button>
             <a id="topbar-new-btn" href="/servers/new" class="btn-yu btn-yu-primary"><i class="bi bi-plus-lg"></i> New Server</a>
             {% endif %}
             <button id="amoled-btn" class="btn-yu btn-yu-ghost d-sm-none" onclick="toggleAmoled()" title="AMOLED mode"><i class="bi bi-circle-fill"></i></button>

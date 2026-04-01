@@ -135,6 +135,37 @@ button.con-btn-kill:hover:not(:disabled)    { background: rgba(239,68,68,.2); }
 }
 .con-term-bd #terminal { width: 100%; height: 100%; }
 
+/* ── Command input bar ── */
+.con-cmd-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .45rem .7rem;
+    background: var(--surface);
+    border: 1px solid var(--bdr);
+    border-radius: 9px;
+    margin-top: .45rem;
+}
+.con-cmd-icon {
+    color: var(--accent);
+    font-size: .8rem;
+    flex-shrink: 0;
+    line-height: 1;
+}
+.con-cmd-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--txt);
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    font-size: .82rem;
+    line-height: 1.4;
+    padding: 0;
+}
+.con-cmd-input::placeholder { color: var(--muted); opacity: .6; }
+
 /* ── Right column ── */
 .con-right-col {
     display: flex;

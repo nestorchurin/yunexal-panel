@@ -204,3 +204,11 @@ a { text-decoration: none; color: inherit; }
 .yu-topbar-user:hover { background: rgba(255,255,255,.09); color: var(--txt); }
 .yu-topbar-user.active { background: rgba(124,58,237,.15); border-color: rgba(124,58,237,.35); color: var(--txt); }
 .yu-topbar-uname { font-size: .825rem; font-weight: 500; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Toggle switch ── */
+.yu-toggle { position: relative; display: inline-flex; align-items: center; width: 44px; height: 24px; cursor: pointer; flex-shrink: 0; }
+.yu-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.yu-toggle-slider { position: absolute; inset: 0; background: rgba(255,255,255,.12); border-radius: 24px; transition: background .2s; }
+.yu-toggle-slider::before { content: ''; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; background: #fff; border-radius: 50%; transition: transform .2s; }
+.yu-toggle input:checked ~ .yu-toggle-slider { background: var(--primary, #7c3aed); }
+.yu-toggle input:checked ~ .yu-toggle-slider::before { transform: translateX(20px); }

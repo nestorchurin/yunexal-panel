@@ -1,4 +1,4 @@
-<div class="col-md-6 col-xl-4" id="container-{{ container.db_id }}" data-dash-id="{{ container.db_id }}" data-state="{{ container.state }}">
+<div class="col-md-6 col-xl-4" id="container-{{ container.db_id }}" data-dash-id="{{ container.db_id }}" data-state="{{ container.state }}" data-owner="{{ container.owner }}">
     <div class="yu-card h-100">
         <div class="card-stripe
             {% if container.state == "running" %}stripe-running
@@ -7,7 +7,12 @@
         </div>
         <div class="p-3">
             <div class="d-flex align-items-start justify-content-between mb-2">
-                <div style="font-size:.95rem;font-weight:600;letter-spacing:-.015em;">{{ container.name }}</div>
+                <div>
+                    <div style="font-size:.95rem;font-weight:600;letter-spacing:-.015em;">{{ container.name }}</div>
+                    {% if is_admin && container.owner != "" %}
+                    <div style="font-size:.7rem;color:var(--muted);margin-top:.15rem;"><i class="bi bi-person"></i> {{ container.owner }}</div>
+                    {% endif %}
+                </div>
                 <div class="status-pill
                     {% if container.state == "running" %}pill-running
                     {% else if container.state == "restarting" %}pill-other
