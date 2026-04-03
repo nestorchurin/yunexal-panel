@@ -225,10 +225,23 @@
                     <i class="bi bi-chevron-down" id="dns-srv-chevron" style="margin-left:auto;color:var(--muted);transition:transform .2s;"></i>
                 </div>
                 <div class="sec-bd" id="dns-srv-body" style="display:none;padding-top:0;">
-                    <label style="display:flex;align-items:center;gap:.55rem;cursor:pointer;font-size:.86rem;margin-bottom:.9rem;">
-                        <input type="checkbox" id="srv-enable-chk" onchange="onSrvToggle()" style="width:15px;height:15px;">
-                        Enable auto SRV record
+                    <label class="yu-toggle-card">
+                        <div class="yu-toggle-left">
+                            <div class="yu-toggle-icon">
+                                <i class="bi bi-hdd-rack-fill"></i>
+                            </div>
+                            <div class="yu-toggle-info">
+                                <div class="yu-toggle-title">Enable auto SRV record</div>
+                                <div class="yu-toggle-sub">Automatically create and manage the SRV DNS entry</div>
+                            </div>
+                        </div>
+
+                        <div class="yu-toggle-right">
+                            <input type="checkbox" id="srv-enable-chk" onchange="onSrvToggle()">
+                            <span class="yu-toggle-slider"></span>
+                        </div>
                     </label>
+                    <!---->
                     <div id="srv-fields" style="display:none;">
                         <!-- Provider + Domain -->
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.7rem;">

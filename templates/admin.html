@@ -132,9 +132,11 @@
                         <a href="/servers/new" class="btn-yu btn-primary-yu btn-sm-yu"><i class="bi bi-plus-lg"></i> New</a>
                     </div>
                 </div>
-                <div class="yu-search-bar">
-                    <i class="bi bi-search"></i>
-                    <input id="containers-search" type="text" placeholder="Search by name, ID or state…" oninput="filterTableRows(this.value, 'containers-tbody')">
+                <div class="search-wrap">
+                    <div class="yu-search-bar">
+                        <i class="bi bi-search"></i>
+                        <input id="containers-search" type="text" placeholder="Search by name, ID or state…" oninput="filterTableRows(this.value, 'containers-tbody')">
+                    </div>
                 </div>
                 <div style="overflow-x:auto;">
                     <table class="yu-table">
@@ -206,7 +208,7 @@
                         <button class="btn-yu btn-ghost-yu btn-sm-yu" onclick="loadImages()" title="Refresh"><i class="bi bi-arrow-clockwise"></i></button>
                     </div>
                 </div>
-                <div class="img-search-wrap">
+                <div class="search-wrap">
                     <div class="yu-search-bar">
                         <i class="bi bi-search"></i>
                         <input id="img-search" type="text" placeholder="Search by tag, ID or size…" oninput="filterTableRows(this.value, 'img-tbody')">
