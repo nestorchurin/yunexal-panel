@@ -356,3 +356,110 @@ a { text-decoration: none; color: inherit; }
     font-size: .75rem !important;
     padding: .28rem .4rem !important;
 }
+
+/* ── Toggle card ──────────────────────────────── */
+.yu-toggle-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    width: 100%;
+    margin-top: 1rem;
+    padding: 1rem 1.05rem;
+    border-radius: 14px;
+    background: var(--surface2);
+    border: 1px solid rgba(255,255,255,.07);
+    transition: all .18s ease;
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: .9rem;
+}
+
+.yu-toggle-card:hover {
+    border-color: rgba(124,58,237,.24);
+    background: rgba(124,58,237,.05);
+    box-shadow: 0 0 0 1px rgba(124,58,237,.06) inset;
+}
+
+.yu-toggle-left {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    min-width: 0;
+}
+
+.yu-toggle-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    background: var(--accent-dim);
+    border: 1px solid rgba(124,58,237,.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-l);
+    font-size: .95rem;
+    flex-shrink: 0;
+}
+
+.yu-toggle-info {
+    min-width: 0;
+}
+
+.yu-toggle-title {
+    font-size: .83rem;
+    font-weight: 600;
+    color: var(--txt);
+    letter-spacing: -.01em;
+    line-height: 1.2;
+}
+
+.yu-toggle-sub {
+    font-size: .72rem;
+    color: var(--muted);
+    margin-top: .18rem;
+    line-height: 1.35;
+}
+
+.yu-toggle-right {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.yu-toggle-right input {
+    display: none;
+}
+
+.yu-toggle-slider {
+    position: relative;
+    width: 50px;
+    height: 28px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.10);
+    border: 1px solid rgba(255,255,255,.08);
+    display: block;
+    transition: all .22s ease;
+}
+
+.yu-toggle-slider::before {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    transition: all .22s ease;
+    box-shadow: 0 2px 10px rgba(0,0,0,.22);
+}
+
+.yu-toggle-right input:checked + .yu-toggle-slider {
+    background: linear-gradient(135deg, var(--accent), var(--accent-l));
+    border-color: rgba(124,58,237,.35);
+    box-shadow: 0 0 0 4px rgba(124,58,237,.14);
+}
+
+.yu-toggle-right input:checked + .yu-toggle-slider::before {
+    transform: translateX(22px);
+}
