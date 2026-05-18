@@ -5,6 +5,7 @@ use std::io::{self, BufRead, Write};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
+use sqlx::{Pool, Sqlite};
 use yunexal_panel::{db, host, password};
 
 // ── Colour / print helpers ────────────────────────────────────────────────────
@@ -367,6 +368,410 @@ fn gen_secret() -> Result<String> {
     Ok(buf.iter().map(|b| format!("{:02x}", b)).collect())
 }
 
+const USER_UID_MIN_LEN: usize = 9;
+const USER_UID_MAX_LEN: usize = 16;
+const USER_NICK_MAX_LEN: usize = 24;
+
+fn trim_to_len_chars(input: &str, max_chars: usize) -> String {
+    input.trim().chars().take(max_chars).collect()
+}
+
+fn validate_user_fields(uid: &str, nickname: &str, username: &str) -> Result<()> {
+    let uid_len = uid.chars().count();
+    if uid_len < USER_UID_MIN_LEN || uid_len > USER_UID_MAX_LEN {
+        anyhow::bail!("UID must be between {} and {} characters", USER_UID_MIN_LEN, USER_UID_MAX_LEN);
+    }
+
+    let nick_len = nickname.chars().count();
+    if nick_len == 0 || nick_len > USER_NICK_MAX_LEN {
+        anyhow::bail!("Nickname must be between 1 and {} characters", USER_NICK_MAX_LEN);
+    }
+
+    if username.trim().is_empty() {
+        anyhow::bail!("Username cannot be empty");
+    }
+
+    Ok(())
+}
+
+fn print_users_table(users: &[db::User]) {
+    println!();
+    println!("\x1b[1mCurrent users:\x1b[0m");
+    println!("  {:<4} {:<16} {:<24} {:<18} {:<10} {}", "ID", "UID", "Nickname", "Username", "Role", "Created");
+    println!("  {}", "─".repeat(92));
+    for u in users {
+        println!(
+            "  {:<4} {:<16} {:<24} {:<18} {:<10} {}",
+            u.id,
+            trim_to_len_chars(&u.uid, 16),
+            trim_to_len_chars(&u.nickname, 24),
+            trim_to_len_chars(&u.username, 18),
+            trim_to_len_chars(&u.role, 10),
+            u.created_at
+        );
+    }
+    println!();
+}
+
+async fn prompt_role_with_default(pool: &Pool<Sqlite>, default_role: &str) -> Result<String> {
+    let roles = db::list_roles(pool).await.context("Failed to list roles")?;
+    let mut role_names: Vec<String> = roles.into_iter().map(|r| r.name).collect();
+    role_names.sort();
+    println!("Available roles: {}", role_names.join(", "));
+
+    loop {
+        let raw = prompt("Role", Some(default_role))?;
+        let role = raw.trim().to_lowercase();
+        if role.is_empty() {
+            return Ok(default_role.to_string());
+        }
+        if db::role_exists(pool, &role).await? {
+            return Ok(role);
+        }
+        eprintln!("\x1b[31m[ERROR]\x1b[0m Role '{}' does not exist.", role);
+    }
+}
+
+fn map_user_db_error(e: anyhow::Error, action: &str) -> anyhow::Error {
+    let msg = e.to_string().to_lowercase();
+    if msg.contains("users.username") || msg.contains("idx_users_username") {
+        anyhow::anyhow!("{} failed: username already exists", action)
+    } else if msg.contains("users.uid") || msg.contains("idx_users_uid") {
+        anyhow::anyhow!("{} failed: uid already exists", action)
+    } else if msg.contains("uid must be 9-16") {
+        anyhow::anyhow!("{} failed: uid must be between 9 and 16 characters", action)
+    } else if msg.contains("nickname") {
+        anyhow::anyhow!("{} failed: invalid nickname value", action)
+    } else {
+        e
+    }
+}
+
+async fn setup_add_user(pool: &Pool<Sqlite>) -> Result<()> {
+    let uid = prompt("UID (9-16 chars)", None)?;
+    let nickname = prompt("Nickname", None)?;
+    let username = prompt("Username", None)?;
+    let role = prompt_role_with_default(pool, "user").await?;
+
+    let pass = loop {
+        let p = prompt_password("Password (min 8 chars)")?;
+        if p.len() < 8 {
+            eprintln!("\x1b[31m[ERROR]\x1b[0m Password too short (minimum 8 characters).");
+            continue;
+        }
+        let p2 = prompt_password("Confirm password")?;
+        if p != p2 {
+            eprintln!("\x1b[31m[ERROR]\x1b[0m Passwords do not match.");
+            continue;
+        }
+        break p;
+    };
+
+    let uid = uid.trim().to_string();
+    let nickname = trim_to_len_chars(&nickname, USER_NICK_MAX_LEN);
+    let username = username.trim().to_string();
+    validate_user_fields(&uid, &nickname, &username)?;
+
+    let hash = password::hash(&pass).context("Failed to hash password")?;
+    db::create_user(pool, &uid, &nickname, &username, &hash, &role)
+        .await
+        .map_err(|e| map_user_db_error(e, "Create user"))?;
+
+    ok!("User '{}' created.", username);
+    Ok(())
+}
+
+async fn setup_edit_user(pool: &Pool<Sqlite>) -> Result<()> {
+    let id_raw = prompt("User ID to edit", None)?;
+    let id: i64 = id_raw.trim().parse().context("Invalid user ID")?;
+
+    let user = db::find_user_by_id(pool, id)
+        .await
+        .context("Failed to find user")?
+        .ok_or_else(|| anyhow::anyhow!("User not found"))?;
+
+    let next_uid = {
+        let raw = prompt("UID", Some(&user.uid))?;
+        if raw.trim().is_empty() { user.uid.clone() } else { raw.trim().to_string() }
+    };
+    let next_nickname = {
+        let raw = prompt("Nickname", Some(&user.nickname))?;
+        if raw.trim().is_empty() { user.nickname.clone() } else { trim_to_len_chars(&raw, USER_NICK_MAX_LEN) }
+    };
+    let next_username = {
+        let raw = prompt("Username", Some(&user.username))?;
+        if raw.trim().is_empty() { user.username.clone() } else { raw.trim().to_string() }
+    };
+
+    validate_user_fields(&next_uid, &next_nickname, &next_username)?;
+
+    db::update_user_profile(pool, id, &next_uid, &next_nickname, &next_username)
+        .await
+        .map_err(|e| map_user_db_error(e, "Update user"))?;
+
+    if user.role != "root" {
+        let next_role = prompt_role_with_default(pool, &user.role).await?;
+        if next_role != user.role {
+            db::update_user_role(pool, id, &next_role)
+                .await
+                .context("Failed to update user role")?;
+        }
+    } else {
+        info!("Root role cannot be changed; keeping role='root'.");
+    }
+
+    if prompt_yn("Change password?", false)? {
+        let new_password = loop {
+            let p = prompt_password("New password (min 8 chars)")?;
+            if p.len() < 8 {
+                eprintln!("\x1b[31m[ERROR]\x1b[0m Password too short (minimum 8 characters).");
+                continue;
+            }
+            let p2 = prompt_password("Confirm new password")?;
+            if p != p2 {
+                eprintln!("\x1b[31m[ERROR]\x1b[0m Passwords do not match.");
+                continue;
+            }
+            break p;
+        };
+        let hash = password::hash(&new_password).context("Failed to hash password")?;
+        db::update_user_password(pool, id, &hash)
+            .await
+            .context("Failed to update password")?;
+        let _ = db::revoke_all_user_sessions(pool, id).await;
+    }
+
+    ok!("User '{}' updated.", next_username);
+    Ok(())
+}
+
+async fn setup_delete_user(pool: &Pool<Sqlite>) -> Result<()> {
+    let id_raw = prompt("User ID to delete", None)?;
+    let id: i64 = id_raw.trim().parse().context("Invalid user ID")?;
+
+    let user = db::find_user_by_id(pool, id)
+        .await
+        .context("Failed to find user")?
+        .ok_or_else(|| anyhow::anyhow!("User not found"))?;
+
+    if user.role == "root" {
+        anyhow::bail!("Cannot delete the root account");
+    }
+
+    if !prompt_yn(&format!("Delete user '{}' (id={})?", user.username, user.id), false)? {
+        info!("Delete cancelled.");
+        return Ok(());
+    }
+
+    db::delete_user(pool, id)
+        .await
+        .context("Failed to delete user")?;
+    ok!("User '{}' deleted.", user.username);
+    Ok(())
+}
+
+async fn step_manage_users(confirm_first: bool) -> Result<()> {
+    if confirm_first && !prompt_yn("Open user management now (add/edit/delete users)?", true)? {
+        info!("Skipping user management.");
+        return Ok(());
+    }
+
+    let pool = db::init_db().await.context("Database initialization failed")?;
+
+    loop {
+        let users = db::list_users(&pool)
+            .await
+            .context("Failed to load users")?;
+        print_users_table(&users);
+        println!("Actions: [a]dd  [e]dit  [d]elete  [q]uit");
+
+        let action = prompt("Select action", Some("q"))?.to_lowercase();
+        match action.trim() {
+            "a" | "add" => {
+                if let Err(e) = setup_add_user(&pool).await {
+                    eprintln!("\x1b[31m[ERROR]\x1b[0m {}", e);
+                }
+            }
+            "e" | "edit" => {
+                if let Err(e) = setup_edit_user(&pool).await {
+                    eprintln!("\x1b[31m[ERROR]\x1b[0m {}", e);
+                }
+            }
+            "d" | "delete" => {
+                if let Err(e) = setup_delete_user(&pool).await {
+                    eprintln!("\x1b[31m[ERROR]\x1b[0m {}", e);
+                }
+            }
+            "q" | "quit" | "" => {
+                info!("Finished user management.");
+                break;
+            }
+            _ => warn!("Unknown action. Use a/e/d/q."),
+        }
+    }
+
+    Ok(())
+}
+
+fn print_main_menu() {
+    println!();
+    println!("\x1b[1mMain menu\x1b[0m");
+    println!("  1 - install");
+    println!("  2 - User Management");
+    println!("  3 - uninstall panel");
+    println!("  0 - quit");
+}
+
+async fn run_install_flow(
+    script_dir: &Path,
+    real_user: &str,
+    platform: &SetupPlatform,
+    opt_reset: bool,
+    opt_non_interactive: bool,
+) -> Result<()> {
+    // ── Step 1: Reset ───────────────────────────────────────────────────────
+    header!("Step 1: Reset");
+
+    let do_reset = if opt_reset {
+        true
+    } else {
+        prompt_yn("Wipe existing database and .env?", false)?
+    };
+
+    if do_reset {
+        step_reset(script_dir, platform.service_manager).await;
+    } else {
+        info!("Skipping reset.");
+    }
+
+    // ── Step 2: Docker ──────────────────────────────────────────────────────
+    header!("Step 2: Docker");
+    step_docker(real_user, platform).await?;
+
+    // ── Step 3: .env ────────────────────────────────────────────────────────
+    header!("Step 3: Environment (.env)");
+    step_env(script_dir, real_user)?;
+
+    // ── Step 4: Admin user ──────────────────────────────────────────────────
+    header!("Step 4: Admin user");
+    step_admin_user(opt_non_interactive, script_dir, real_user).await?;
+
+    // ── Step 5: Import containers ───────────────────────────────────────────
+    header!("Step 5: Import Docker containers");
+    step_import_containers(script_dir).await;
+
+    // ── Step 6: Service setup ───────────────────────────────────────────────
+    header!("Step 6: Service setup ({})", service_manager_label(platform.service_manager));
+    step_panel_service(script_dir, real_user, platform)?;
+
+    // ── Step 7: nginx reverse proxy ─────────────────────────────────────────
+    header!("Step 7: nginx reverse proxy");
+    step_nginx(script_dir, platform)?;
+
+    // ── Summary ──────────────────────────────────────────────────────────────
+    let panel_port = read_env_port(script_dir).unwrap_or_else(|| "3000".to_string());
+    println!();
+    println!("\x1b[1m\x1b[32m╔══════════════════════════════════════════╗\x1b[0m");
+    println!("\x1b[1m\x1b[32m║            Setup complete!               ║\x1b[0m");
+    println!("\x1b[1m\x1b[32m╚══════════════════════════════════════════╝\x1b[0m");
+    println!();
+    println!("  Panel URL  : \x1b[1mhttp://localhost:{}\x1b[0m", panel_port);
+    println!("  Service    : \x1b[1m{}\x1b[0m", service_status_hint(platform.service_manager));
+    println!("  Logs       : \x1b[1mtail -f /var/log/yunexal-panel.log\x1b[0m");
+    println!();
+
+    Ok(())
+}
+
+fn step_uninstall_panel(script_dir: &Path, platform: &SetupPlatform) -> Result<()> {
+    warn!("This will remove panel service integration and nginx panel config.");
+    if !prompt_yn("Continue uninstall?", false)? {
+        info!("Uninstall cancelled.");
+        return Ok(());
+    }
+
+    info!("Stopping yunexal-panel service...");
+    service_stop(platform.service_manager, "yunexal-panel");
+
+    match platform.service_manager {
+        ServiceManager::OpenRc => {
+            let _ = std::process::Command::new("rc-update")
+                .args(["del", "yunexal-panel", "default"])
+                .status();
+            let init_path = PathBuf::from("/etc/init.d/yunexal-panel");
+            if init_path.exists() {
+                let _ = std::fs::remove_file(&init_path);
+                info!("Removed {}", init_path.display());
+            }
+        }
+        ServiceManager::Systemd => {
+            let _ = std::process::Command::new("systemctl")
+                .args(["disable", "--now", "yunexal-panel"])
+                .status();
+            let unit_path = PathBuf::from("/etc/systemd/system/yunexal-panel.service");
+            if unit_path.exists() {
+                let _ = std::fs::remove_file(&unit_path);
+                info!("Removed {}", unit_path.display());
+            }
+            let _ = std::process::Command::new("systemctl")
+                .arg("daemon-reload")
+                .status();
+        }
+    }
+
+    let launcher = script_dir.join("yunexal-panel-launcher.sh");
+    if launcher.exists() {
+        let _ = std::fs::remove_file(&launcher);
+        info!("Removed {}", launcher.display());
+    }
+
+    match platform.service_manager {
+        ServiceManager::OpenRc => {
+            let conf = PathBuf::from("/etc/nginx/http.d/yunexal-panel.conf");
+            if conf.exists() {
+                let _ = std::fs::remove_file(&conf);
+                info!("Removed {}", conf.display());
+            }
+        }
+        ServiceManager::Systemd => {
+            let conf = PathBuf::from("/etc/nginx/sites-available/yunexal-panel.conf");
+            let enabled = PathBuf::from("/etc/nginx/sites-enabled/yunexal-panel.conf");
+            if enabled.exists() {
+                let _ = std::fs::remove_file(&enabled);
+                info!("Removed {}", enabled.display());
+            }
+            if conf.exists() {
+                let _ = std::fs::remove_file(&conf);
+                info!("Removed {}", conf.display());
+            }
+        }
+    }
+
+    if command_exists("nginx") {
+        let test = std::process::Command::new("nginx").arg("-t").output();
+        if let Ok(o) = test {
+            if o.status.success() {
+                if service_is_active(platform.service_manager, "nginx") {
+                    service_reload(platform.service_manager, "nginx");
+                }
+            }
+        }
+    }
+
+    if prompt_yn("Remove panel data files (.env and yunexal.db*)?", false)? {
+        for f in &["yunexal.db", "yunexal.db-shm", "yunexal.db-wal", ".env"] {
+            let p = script_dir.join(f);
+            if p.exists() {
+                let _ = std::fs::remove_file(&p);
+                info!("Removed {}", f);
+            }
+        }
+    }
+
+    ok!("Panel uninstall completed.");
+    Ok(())
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 #[tokio::main]
@@ -380,6 +785,12 @@ async fn main() -> Result<()> {
         println!();
         println!("  --reset              Wipe DB and .env without prompting");
         println!("  --non-interactive    Read credentials from PANEL_USERNAME / PANEL_PASSWORD env vars");
+        println!();
+        println!("Interactive menu:");
+        println!("  1 - install");
+        println!("  2 - User Management");
+        println!("  3 - uninstall panel");
+        println!("  0 - quit");
         return Ok(());
     }
 
@@ -415,56 +826,32 @@ async fn main() -> Result<()> {
     let script_dir = std::env::current_dir()
         .context("Failed to determine working directory")?;
 
-    // ── Step 1: Reset ─────────────────────────────────────────────────────────
-    header!("Step 1: Reset");
-
-    let do_reset = if opt_reset {
-        true
-    } else {
-        prompt_yn("Wipe existing database and .env?", false)?
-    };
-
-    if do_reset {
-        step_reset(&script_dir, platform.service_manager).await;
-    } else {
-        info!("Skipping reset.");
+    // Preserve previous CLI behavior for automation flags.
+    if opt_reset || opt_non_interactive {
+        run_install_flow(&script_dir, &real_user, &platform, opt_reset, opt_non_interactive).await?;
+        return Ok(());
     }
 
-    // ── Step 2: Docker ────────────────────────────────────────────────────────
-    header!("Step 2: Docker");
-    step_docker(&real_user, &platform).await?;
-
-    // ── Step 3: .env ─────────────────────────────────────────────────────────
-    header!("Step 3: Environment (.env)");
-    step_env(&script_dir, &real_user)?;
-
-    // ── Step 4: Admin user ───────────────────────────────────────────────────
-    header!("Step 4: Admin user");
-    step_admin_user(opt_non_interactive, &script_dir, &real_user).await?;
-
-    // ── Step 5: Import containers ─────────────────────────────────────────────
-    header!("Step 5: Import Docker containers");
-    step_import_containers(&script_dir).await;
-
-    // ── Step 6: Service setup ─────────────────────────────────────────────────
-    header!("Step 6: Service setup ({})", service_manager_label(platform.service_manager));
-    step_panel_service(&script_dir, &real_user, &platform)?;
-
-    // ── Step 7: nginx reverse proxy ───────────────────────────────────────────
-    header!("Step 7: nginx reverse proxy");
-    step_nginx(&script_dir, &platform)?;
-
-    // ── Summary ───────────────────────────────────────────────────────────────
-    let panel_port = read_env_port(&script_dir).unwrap_or_else(|| "3000".to_string());
-    println!();
-    println!("\x1b[1m\x1b[32m╔══════════════════════════════════════════╗\x1b[0m");
-    println!("\x1b[1m\x1b[32m║            Setup complete!               ║\x1b[0m");
-    println!("\x1b[1m\x1b[32m╚══════════════════════════════════════════╝\x1b[0m");
-    println!();
-    println!("  Panel URL  : \x1b[1mhttp://localhost:{}\x1b[0m", panel_port);
-    println!("  Service    : \x1b[1m{}\x1b[0m", service_status_hint(platform.service_manager));
-    println!("  Logs       : \x1b[1mtail -f /var/log/yunexal-panel.log\x1b[0m");
-    println!();
+    loop {
+        print_main_menu();
+        let choice = prompt("Choose action", Some("1"))?;
+        match choice.trim() {
+            "1" => run_install_flow(&script_dir, &real_user, &platform, false, false).await?,
+            "2" => {
+                header!("User management");
+                step_manage_users(false).await?;
+            }
+            "3" => {
+                header!("Uninstall panel");
+                step_uninstall_panel(&script_dir, &platform)?;
+            }
+            "0" => {
+                info!("Bye.");
+                break;
+            }
+            _ => warn!("Unknown option. Use 1/2/3/0."),
+        }
+    }
 
     Ok(())
 }

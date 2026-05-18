@@ -140,3 +140,21 @@ pub async fn update_user_role(
         .context("Failed to update user role")?;
     Ok(())
 }
+
+    pub async fn update_user_profile(
+        pool: &Pool<Sqlite>,
+        id: i64,
+        uid: &str,
+        nickname: &str,
+        username: &str,
+    ) -> Result<()> {
+        sqlx::query("UPDATE users SET uid = ?, nickname = ?, username = ? WHERE id = ?")
+            .bind(uid)
+            .bind(nickname)
+            .bind(username)
+            .bind(id)
+            .execute(pool)
+            .await
+            .context("Failed to update user profile")?;
+        Ok(())
+    }

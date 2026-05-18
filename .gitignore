@@ -1,42 +1,36 @@
-# ── Rust build artefacts ──────────────────────────────────────────────────────
+# Rust
 /target/
 
-# ── Environment & secrets ─────────────────────────────────────────────────────
+# Environment and secrets
 .env
+.env.*
+!.env.example
 
-# ── Database ──────────────────────────────────────────────────────────────────
+# Local databases
 *.db
 *.db-shm
 *.db-wal
 
-# ── Volume data (Docker server files) ────────────────────────────────────────
+# Project local data
 /volumes/
 /bw/
+/scripts/
 
-# ── Editor / OS ───────────────────────────────────────────────────────────────
+# Build/release artifacts
+/yunex-release/
+/.build/
+/out/
+
+# Logs and temporary files
+*.log
+/target/flycheck0/
+*.tmp
+*.bak
+
+# Editor/OS
 .vscode/
 .idea/
 *.swp
 *.swo
 .DS_Store
 Thumbs.db
-
-# ── Release output directory ──────────────────────────────────────────────────
-/yunex-release/
-
-# ── Changelogs (kept local only) ───────────────────────────────────────────────
-/CHANGELOGS/
-
-# ── Logs ─────────────────────────────────────────────────────────────────────
-*.log
-/target/flycheck0/
-
-# ── ISO build artefacts ──────────────────────────────────────────────────────
-/.build/
-/out/
-
-# ── Scripts (kept local, not tracked) ────────────────────────────
-/scripts/
-
-# ── build artefacts ─────────────────────────────────────────────────────────────
-.build/
