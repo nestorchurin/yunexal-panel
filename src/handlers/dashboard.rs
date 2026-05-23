@@ -162,7 +162,7 @@ pub async fn api_user_devices(
     };
 
     let current_session_id = auth::session_id(&jar).unwrap_or_default();
-    let sessions = match db::list_user_sessions(&state.db, user_id).await {
+    let sessions = match db::list_user_sessions(&state.db, user_id, &state.db_key).await {
         Ok(v) => v,
         Err(e) => {
             error!("api_user_devices: {}", e);

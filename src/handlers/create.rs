@@ -279,7 +279,7 @@ pub async fn create_server(
 
     // Apply image ENV overrides stored in the panel DB.
     // DB values take precedence over YAML-supplied env (admin-defined defaults win).
-    let db_env_str = db::get_image_env(&state.db, target_image).await.unwrap_or_default();
+    let db_env_str = db::get_image_env(&state.db, target_image, &state.db_key).await.unwrap_or_default();
     if !db_env_str.is_empty() {
         let db_overrides: Vec<String> = db_env_str
             .lines()
@@ -570,7 +570,7 @@ pub async fn api_image_env_overrides(
     match docker::get_image_info(&state.docker, &q.image).await {
         Ok(info) => {
             let full_id = info.id.unwrap_or_default();
-            match db::get_image_env(&state.db, &full_id).await {
+            match db::get_image_env(&state.db, &full_id, &state.db_key).await {
                 Ok(env) => Json(serde_json::json!({ "ok": true, "env": env })),
                 Err(_)  => Json(serde_json::json!({ "ok": true, "env": "" })),
             }

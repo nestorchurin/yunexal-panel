@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use tracing::{info, warn};
 use axum_extra::extract::cookie::Key;
-use yunexal_panel::{db, docker, handlers, password};
+use yunexal_panel::{crypto, db, docker, handlers, password};
 use yunexal_panel::state::AppState;
 
 async fn auto_migrate_legacy_labels(pool: &sqlx::Pool<sqlx::Sqlite>, docker_client: &bollard::Docker) {
@@ -96,9 +96,16 @@ async fn main() -> Result<()> {
         .context("COOKIE_SECRET not set in .env")?;
     // Key::from requires ≥64 bytes; our hex-encoded 64-byte secret is 128 ASCII chars → 128 bytes.
     let cookie_key = Key::from(cookie_secret.as_bytes());
+    let db_key = crypto::derive_db_key(&cookie_secret);
 
     // 4. Initialize Database
     let pool = db::init_db().await.context("Database initialization failed")?;
+
+    // Verify the DB encryption key matches the canary — fails hard if COOKIE_SECRET was rotated
+    // without re-encrypting the DB first.
+    db::verify_or_init_canary(&pool, &db_key)
+        .await
+        .context("DB encryption key check failed — run: yunexal-setup --rekey --old-secret <prev>")?;
 
     // 5. Initialize Docker Client
     let docker_client = docker::get_docker_client().await.context("Docker client init failed")?;
@@ -111,7 +118,7 @@ async fn main() -> Result<()> {
     auto_migrate_legacy_labels(&pool, &docker_client).await;
 
     // 6. Create App State
-    let state = AppState::new(pool, docker_client, cookie_key, listen_addr.clone());
+    let state = AppState::new(pool, docker_client, cookie_key, db_key, listen_addr.clone());
 
     // 7. Setup Router
     let app = handlers::create_router(state);

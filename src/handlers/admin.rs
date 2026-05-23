@@ -1796,7 +1796,7 @@ pub async fn api_get_image_env(
     Path(image_ref): Path<String>,
 ) -> impl IntoResponse {
     let decoded = urlencoding::decode(&image_ref).unwrap_or(std::borrow::Cow::Borrowed(&image_ref)).into_owned();
-    match db::get_image_env(&state.db, &decoded).await {
+    match db::get_image_env(&state.db, &decoded, &state.db_key).await {
         Ok(env) => (StatusCode::OK, Json(serde_json::json!({ "ok": true, "env": env }))).into_response(),
         Err(e) => {
             error!("api_get_image_env: {}", e);
@@ -1821,7 +1821,7 @@ pub async fn api_set_image_env(
     let ip = auth::client_ip(&headers, addr);
     let actor = auth::session_username(&jar).unwrap_or_default();
     let decoded = urlencoding::decode(&image_ref).unwrap_or(std::borrow::Cow::Borrowed(&image_ref)).into_owned();
-    match db::set_image_env(&state.db, &decoded, &body.env).await {
+    match db::set_image_env(&state.db, &decoded, &body.env, &state.db_key).await {
         Ok(_) => {
             state.cache.remove("images_ts");
             let _ = db::audit_log(&state.db, &actor, "image.env_set", &decoded, "", &ip, &auth::user_agent(&headers)).await;
@@ -1855,7 +1855,7 @@ pub async fn api_duplicate_image(
         .into_iter()
         .filter(|t| t != "<none>:<none>")
         .collect();
-    let src_env = db::get_image_env(&state.db, &decoded).await.unwrap_or_default();
+    let src_env = db::get_image_env(&state.db, &decoded, &state.db_key).await.unwrap_or_default();
 
     match docker::duplicate_docker_image(&state.docker, &decoded).await {
         Ok(new_id) => {
@@ -1878,7 +1878,7 @@ pub async fn api_duplicate_image(
 
             // Copy DB env overrides to the new image ID
             if !src_env.is_empty() {
-                if let Err(e) = db::set_image_env(&state.db, &new_id, &src_env).await {
+                if let Err(e) = db::set_image_env(&state.db, &new_id, &src_env, &state.db_key).await {
                     error!("api_duplicate_image: copy env to {}: {}", new_id, e);
                 }
             }
@@ -2465,7 +2465,12 @@ pub async fn api_admin_set_setting(
         }
     }
 
-    match db::set_panel_setting(&state.db, &body.key, &body.value).await {
+    let result = if body.key == "service_api_key" {
+        db::set_service_api_key(&state.db, &body.value, &state.db_key).await
+    } else {
+        db::set_panel_setting(&state.db, &body.key, &body.value).await
+    };
+    match result {
         Ok(_) => {
             let ip = auth::client_ip(&headers, addr);
             let _ = db::audit_log(&state.db, "admin", "panel.setting", &body.key, &body.value, &ip, &auth::user_agent(&headers)).await;

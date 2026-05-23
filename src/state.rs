@@ -21,6 +21,8 @@ pub struct AppState {
     #[allow(dead_code)]
     pub cache: Arc<DashMap<String, String>>,
     pub cookie_key: Key,
+    /// Derived AES-256 key for column encryption (SHA-256 of COOKIE_SECRET).
+    pub db_key: [u8; 32],
     /// The address the server is listening on, e.g. "0.0.0.0:3000".
     pub listen_addr: String,
     /// Per-IP failed-login counter for brute-force protection.
@@ -32,6 +34,7 @@ impl AppState {
         db: Pool<Sqlite>,
         docker: Docker,
         cookie_key: Key,
+        db_key: [u8; 32],
         listen_addr: String,
     ) -> Self {
         Self {
@@ -39,6 +42,7 @@ impl AppState {
             docker,
             cache: Arc::new(DashMap::new()),
             cookie_key,
+            db_key,
             listen_addr,
             login_attempts: Arc::new(DashMap::new()),
         }

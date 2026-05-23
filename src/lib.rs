@@ -1,4 +1,5 @@
 pub mod state;
+pub mod crypto;
 pub mod db;
 pub mod docker;
 pub mod host;

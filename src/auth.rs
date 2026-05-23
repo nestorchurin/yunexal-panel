@@ -306,7 +306,7 @@ pub async fn is_service_api_request_authorized(state: &AppState, headers: &Heade
         None => return false,
     };
 
-    let configured_db = db::get_panel_setting(&state.db, "service_api_key").await;
+    let configured_db = db::get_service_api_key(&state.db, &state.db_key).await;
     let configured = if !configured_db.trim().is_empty() {
         configured_db
     } else {

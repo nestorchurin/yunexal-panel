@@ -1,0 +1,16 @@
+# Rust build artifacts
+/target/
+
+# ISO build workspace
+/.build/
+/out/
+
+# Runtime data
+/volumes/
+/yunexal.db
+/yunexal.db-shm
+/yunexal.db-wal
+/.env
+
+# Dev tooling
+/.cargo/

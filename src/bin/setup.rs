@@ -6,7 +6,7 @@ use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use sqlx::{Pool, Sqlite};
-use yunexal_panel::{db, host, password};
+use yunexal_panel::{crypto, db, host, password};
 
 // ── Colour / print helpers ────────────────────────────────────────────────────
 
@@ -780,11 +780,29 @@ async fn main() -> Result<()> {
     let opt_reset          = args.iter().any(|a| a == "--reset");
     let opt_non_interactive = args.iter().any(|a| a == "--non-interactive");
 
+    // --rekey --old-secret <secret>
+    if let Some(rekey_idx) = args.iter().position(|a| a == "--rekey") {
+        let old_secret_idx = args.iter().position(|a| a == "--old-secret")
+            .and_then(|i| args.get(i + 1));
+        let old_secret = match old_secret_idx {
+            Some(s) => s.clone(),
+            None => {
+                eprintln!("\x1b[31m[ERROR]\x1b[0m --rekey requires --old-secret <previous_COOKIE_SECRET>");
+                std::process::exit(1);
+            }
+        };
+        let _ = rekey_idx;
+        let script_dir = std::env::current_dir()
+            .context("Failed to determine working directory")?;
+        return do_rekey(&old_secret, &script_dir).await;
+    }
+
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("Usage: yunexal-setup [--reset] [--non-interactive]");
+        println!("Usage: yunexal-setup [--reset] [--non-interactive] [--rekey --old-secret <key>]");
         println!();
-        println!("  --reset              Wipe DB and .env without prompting");
-        println!("  --non-interactive    Read credentials from PANEL_USERNAME / PANEL_PASSWORD env vars");
+        println!("  --reset                  Wipe DB and .env without prompting");
+        println!("  --non-interactive        Read credentials from PANEL_USERNAME / PANEL_PASSWORD env vars");
+        println!("  --rekey --old-secret X   Re-encrypt the database after rotating COOKIE_SECRET");
         println!();
         println!("Interactive menu:");
         println!("  1 - install");
@@ -1473,4 +1491,92 @@ fn read_env_port(dir: &Path) -> Option<String> {
         }
     }
     None
+}
+
+// ── Re-encryption ─────────────────────────────────────────────────────────────
+
+async fn do_rekey(old_secret: &str, dir: &Path) -> Result<()> {
+    dotenvy::from_path(dir.join(".env")).ok();
+    let new_secret = std::env::var("COOKIE_SECRET")
+        .context("COOKIE_SECRET not found in .env — run yunexal-setup to configure it first")?;
+
+    if old_secret == new_secret {
+        anyhow::bail!("Old and new secrets are identical — nothing to do.");
+    }
+
+    let old_key = crypto::derive_db_key(old_secret);
+    let new_key = crypto::derive_db_key(&new_secret);
+
+    let pool = db::init_db().await.context("Database init failed")?;
+
+    // Verify old key is correct before touching anything.
+    db::verify_or_init_canary(&pool, &old_key)
+        .await
+        .context("Old secret does not match the stored canary — check --old-secret value")?;
+
+    info!("Old secret verified. Re-encrypting columns...");
+
+    // Re-encrypt image_env_overrides.env
+    let img_rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT image_id, env FROM image_env_overrides WHERE env != '' AND env != 'enc:v1:'"
+    )
+    .fetch_all(&pool)
+    .await
+    .context("Failed to read image_env_overrides")?;
+    let img_count = img_rows.len();
+    for (image_id, raw) in img_rows {
+        let plain = crypto::decrypt_if_encrypted(&raw, &old_key)?;
+        let enc = crypto::encrypt(&plain, &new_key);
+        sqlx::query("UPDATE image_env_overrides SET env = ? WHERE image_id = ?")
+            .bind(&enc).bind(&image_id)
+            .execute(&pool).await?;
+    }
+    info!("Re-encrypted {} image env rows.", img_count);
+
+    // Re-encrypt service_api_key
+    let api_raw: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM panel_settings WHERE key = 'service_api_key'"
+    )
+    .fetch_optional(&pool)
+    .await
+    .context("Failed to read service_api_key")?;
+    if let Some(raw) = api_raw {
+        if !raw.trim().is_empty() {
+            let plain = crypto::decrypt_if_encrypted(&raw, &old_key)?;
+            let enc = crypto::encrypt(&plain, &new_key);
+            sqlx::query("UPDATE panel_settings SET value = ? WHERE key = 'service_api_key'")
+                .bind(&enc)
+                .execute(&pool).await?;
+            info!("Re-encrypted service_api_key.");
+        }
+    }
+
+    // Re-encrypt user_sessions.ip
+    let sess_rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT session_id, ip FROM user_sessions WHERE ip != ''"
+    )
+    .fetch_all(&pool)
+    .await
+    .context("Failed to read user_sessions")?;
+    let sess_count = sess_rows.len();
+    for (session_id, raw) in sess_rows {
+        let plain = crypto::decrypt_if_encrypted(&raw, &old_key)?;
+        let enc = crypto::encrypt(&plain, &new_key);
+        sqlx::query("UPDATE user_sessions SET ip = ? WHERE session_id = ?")
+            .bind(&enc).bind(&session_id)
+            .execute(&pool).await?;
+    }
+    info!("Re-encrypted {} session IP rows.", sess_count);
+
+    // Update canary to new key.
+    let new_canary = crypto::encrypt("yunexal-canary-v1", &new_key);
+    sqlx::query("INSERT OR REPLACE INTO key_meta (k, v) VALUES ('canary', ?)")
+        .bind(&new_canary)
+        .execute(&pool).await
+        .context("Failed to update canary")?;
+
+    println!();
+    println!("\x1b[32m[OK]\x1b[0m    Re-encryption complete.");
+    println!("\x1b[32m[OK]\x1b[0m    {img_count} image env rows, {sess_count} session IP rows, service_api_key — all re-encrypted with new key.");
+    Ok(())
 }

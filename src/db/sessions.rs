@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use sqlx::{FromRow, Pool, Sqlite};
+use crate::crypto;
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct UserSessionInfo {
@@ -20,14 +21,16 @@ pub async fn create_user_session(
     username: &str,
     ip: &str,
     user_agent: &str,
+    db_key: &[u8; 32],
 ) -> Result<()> {
+    let encrypted_ip = crypto::encrypt(ip, db_key);
     sqlx::query(
         "INSERT INTO user_sessions (session_id, user_id, username, ip, user_agent, created_at, last_seen_at, revoked) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'), 0)",
     )
     .bind(session_id)
     .bind(user_id)
     .bind(username)
-    .bind(ip)
+    .bind(&encrypted_ip)
     .bind(user_agent)
     .execute(pool)
     .await
@@ -103,13 +106,20 @@ pub async fn revoke_all_user_sessions(pool: &Pool<Sqlite>, user_id: i64) -> Resu
     Ok(rows)
 }
 
-pub async fn list_user_sessions(pool: &Pool<Sqlite>, user_id: i64) -> Result<Vec<UserSessionInfo>> {
-    let rows = sqlx::query_as::<_, UserSessionInfo>(
+pub async fn list_user_sessions(
+    pool: &Pool<Sqlite>,
+    user_id: i64,
+    db_key: &[u8; 32],
+) -> Result<Vec<UserSessionInfo>> {
+    let mut rows = sqlx::query_as::<_, UserSessionInfo>(
         "SELECT session_id, user_id, username, ip, user_agent, created_at, last_seen_at, revoked FROM user_sessions WHERE user_id = ? AND revoked = 0 ORDER BY datetime(last_seen_at) DESC, datetime(created_at) DESC",
     )
     .bind(user_id)
     .fetch_all(pool)
     .await
     .context("Failed to list user sessions")?;
+    for s in &mut rows {
+        s.ip = crypto::decrypt_if_encrypted(&s.ip, db_key).unwrap_or_else(|_| "?".to_string());
+    }
     Ok(rows)
 }

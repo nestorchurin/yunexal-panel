@@ -330,8 +330,54 @@ pub async fn init_db() -> Result<Pool<Sqlite>> {
         "ALTER TABLE audit_log ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''"
     ).execute(&pool).await;
 
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS key_meta (
+            k TEXT PRIMARY KEY,
+            v TEXT NOT NULL
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .context("Failed to create key_meta table")?;
+
     info!("Database initialized successfully");
     Ok(pool)
+}
+
+/// Verifies the DB encryption key against the stored canary, or writes the canary on first run.
+/// Returns an error if the key does not match — indicating COOKIE_SECRET was rotated without
+/// re-encrypting the database.
+pub async fn verify_or_init_canary(pool: &Pool<Sqlite>, key: &[u8; 32]) -> Result<()> {
+    use crate::crypto;
+
+    let existing: Option<(String,)> =
+        sqlx::query_as("SELECT v FROM key_meta WHERE k = 'canary'")
+            .fetch_optional(pool)
+            .await
+            .context("Failed to read key_meta canary")?;
+
+    match existing {
+        None => {
+            let canary = crypto::encrypt("yunexal-canary-v1", key);
+            sqlx::query("INSERT INTO key_meta (k, v) VALUES ('canary', ?)")
+                .bind(&canary)
+                .execute(pool)
+                .await
+                .context("Failed to write key_meta canary")?;
+            info!("DB encryption canary initialized.");
+            Ok(())
+        }
+        Some((stored,)) => crypto::decrypt(&stored, key)
+            .map(|_| ())
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "COOKIE_SECRET mismatch: cannot decrypt DB canary. \
+                     Run: yunexal-setup --rekey --old-secret <previous_secret>"
+                )
+            }),
+    }
 }
 
 // ── Role helpers ─────────────────────────────────────────────────────────────

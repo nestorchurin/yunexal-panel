@@ -55,7 +55,7 @@ pub async fn audit_list(
     if !search.is_empty() { sql.push_str(" AND (target LIKE ? OR detail LIKE ? OR actor LIKE ? OR action LIKE ? OR ip LIKE ?)"); }
     sql.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");
 
-    let mut q = sqlx::query_as::<_, AuditEntry>(&sql);
+    let mut q = sqlx::query_as::<_, AuditEntry>(sqlx::AssertSqlSafe(sql.as_str()));
     for a in &action_parts { q = q.bind(*a); }
     if !actor.is_empty()  { q = q.bind(actor); }
     if !search.is_empty() {
@@ -83,7 +83,7 @@ pub async fn audit_count(
     if !actor.is_empty()  { sql.push_str(" AND actor = ?"); }
     if !search.is_empty() { sql.push_str(" AND (target LIKE ? OR detail LIKE ? OR actor LIKE ? OR action LIKE ? OR ip LIKE ?)"); }
 
-    let mut q = sqlx::query_scalar::<_, i64>(&sql);
+    let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql.as_str()));
     for a in &action_parts { q = q.bind(*a); }
     if !actor.is_empty()  { q = q.bind(actor); }
     if !search.is_empty() {
@@ -125,7 +125,7 @@ pub async fn audit_list_for_server(
     }
     sql.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");
 
-    let mut q = sqlx::query_as::<_, AuditEntry>(&sql)
+    let mut q = sqlx::query_as::<_, AuditEntry>(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(&marker_hash)
         .bind(&marker_hash)
         .bind(&marker_server)
@@ -182,7 +182,7 @@ pub async fn audit_list_all_for_server(
     }
     sql.push_str(" ORDER BY id ASC");
 
-    let mut q = sqlx::query_as::<_, AuditEntry>(&sql)
+    let mut q = sqlx::query_as::<_, AuditEntry>(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(&marker_hash)
         .bind(&marker_hash)
         .bind(&marker_server)
@@ -237,7 +237,7 @@ pub async fn audit_count_for_server(
         sql.push_str(" AND (target LIKE ? OR detail LIKE ? OR actor LIKE ? OR action LIKE ? OR ip LIKE ?)");
     }
 
-    let mut q = sqlx::query_scalar::<_, i64>(&sql)
+    let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(&marker_hash)
         .bind(&marker_hash)
         .bind(&marker_server)

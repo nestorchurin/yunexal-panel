@@ -66,6 +66,7 @@ pub async fn login_submit(
             &session_username,
             &ip,
             &auth::user_agent(&headers),
+            &state.db_key,
         )
         .await
         {
@@ -183,6 +184,7 @@ pub async fn api_service_login(
         &username,
         &ip,
         &auth::user_agent(&headers),
+        &state.db_key,
     )
     .await
     {
