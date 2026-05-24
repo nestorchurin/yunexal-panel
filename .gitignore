@@ -14,7 +14,7 @@
 # Project local data
 /volumes/
 /bw/
-/scripts/
+/scripts/local/
 
 # Build/release artifacts
 /yunex-release/
