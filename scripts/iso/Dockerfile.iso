@@ -1,0 +1,71 @@
+# syntax=docker/dockerfile:1
+
+# ── Stage 1: Compile static musl binaries ────────────────────────────────────
+FROM rust:alpine AS builder
+
+RUN apk add --no-cache musl-dev
+
+WORKDIR /src
+
+COPY Cargo.toml Cargo.lock ./
+COPY src       ./src
+COPY templates ./templates
+COPY static    ./static
+
+RUN rustup target add x86_64-unknown-linux-musl && \
+    cargo build --release --target x86_64-unknown-linux-musl \
+        --bin yunexal-panel \
+        --bin yunexal-setup
+
+# ── Stage 2: Build yunexal-panel Docker image tar (no daemon needed) ─────────
+FROM alpine:edge AS image-maker
+
+COPY --from=builder \
+    /src/target/x86_64-unknown-linux-musl/release/yunexal-panel \
+    /rootfs/usr/local/bin/yunexal-panel
+
+COPY scripts/iso/make-image-tar.sh /make-image-tar.sh
+RUN mkdir -p /images && sh /make-image-tar.sh /rootfs yunexal-panel:embedded /images/yunexal-panel.tar
+
+# ── Stage 3: Build Alpine ISO ─────────────────────────────────────────────────
+FROM alpine:edge AS iso
+
+RUN apk add --no-cache xorriso rsync curl
+
+WORKDIR /work
+
+# Pre-built binaries (native service)
+COPY --from=builder \
+    /src/target/x86_64-unknown-linux-musl/release/yunexal-panel \
+    /src/target/x86_64-unknown-linux-musl/release/yunexal-setup \
+    /work/release/
+
+# Docker images to embed
+COPY --from=image-maker /images/yunexal-panel.tar /work/images/yunexal-panel.tar
+# alpine.tar is injected via --build-context docker-images=out/docker-images
+COPY --from=docker-images /alpine.tar /work/images/alpine.tar
+
+# Project tree embedded in ISO at /opt/yunexal/project
+COPY Cargo.toml Cargo.lock README.md LICENSE /work/project/
+COPY src       /work/project/src
+COPY templates /work/project/templates
+COPY static    /work/project/static
+COPY scripts   /work/project/scripts
+
+# ISO build scripts (must mirror project layout so ROOT_DIR resolves to /work)
+COPY scripts/iso /work/scripts/iso
+RUN chmod +x /work/scripts/iso/*.sh
+
+ENV YUNEXAL_RELEASE_DIR=/work/release \
+    YUNEXAL_PROJECT_DIR=/work/project \
+    YUNEXAL_IMAGES_DIR=/work/images \
+    YUNEXAL_HOSTNAME=yunexal-installer \
+    ISO_BUILD_MODE=repack \
+    SKIP_BINARY_BUILD=1 \
+    OUT_DIR=/work/out
+
+RUN sh /work/scripts/iso/auto-build-iso.sh
+
+# ── Stage 4: Export ISO artifact only ────────────────────────────────────────
+FROM scratch AS artifact
+COPY --from=iso /work/out/ /
