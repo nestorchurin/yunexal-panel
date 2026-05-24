@@ -7,6 +7,9 @@ set -e
 # a safety net for any edge-case launch path where stty state is unknown.
 stty sane 2>/dev/null || true
 
+# busybox init / getty may not set /usr/local/bin in PATH
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 # ── Colour helpers ────────────────────────────────────────────────────────────
 CY='\033[0;36m' WH='\033[1;37m' GR='\033[0;32m'
 YL='\033[1;33m' RD='\033[0;31m' DM='\033[2m'   RS='\033[0m' BD='\033[1m'
