@@ -354,6 +354,13 @@ pub async fn is_root_session(state: &AppState, jar: &PrivateCookieJar) -> bool {
     matches!(session_user(state, jar).await, Some(u) if u.role == "root")
 }
 
+pub async fn session_has_permission(state: &AppState, jar: &PrivateCookieJar, permission: &str) -> bool {
+    match session_user(state, jar).await {
+        Some(u) => role_has_permission(state, &u.role, permission).await,
+        None => false,
+    }
+}
+
 /// Middleware: redirects to /login if not authenticated or if user was deleted.
 pub async fn require_auth(
     State(state): State<AppState>,

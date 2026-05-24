@@ -242,10 +242,16 @@ pub async fn api_server_audit_list(
     let entries = db::audit_list_for_server(&state.db, db_id, limit, offset, action, actor, search)
         .await
         .unwrap_or_default();
+    let show_ip = auth::session_has_permission(&state, &jar, "audit.view_ip").await;
+    let entries_json: Vec<serde_json::Value> = entries.into_iter().map(|e| {
+        let mut v = serde_json::to_value(&e).unwrap_or_default();
+        if !show_ip { v["ip"] = serde_json::Value::Null; }
+        v
+    }).collect();
 
     Json(serde_json::json!({
         "ok": true,
-        "entries": entries,
+        "entries": entries_json,
         "total": total,
         "page": page,
         "pages": (total as f64 / limit as f64).ceil() as i64,

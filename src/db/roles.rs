@@ -112,6 +112,11 @@ const PERMISSION_CATALOG: &[PermissionDef] = &[
         description: "Read audit events.",
     },
     PermissionDef {
+        key: "audit.view_ip",
+        label: "Audit: View IP Addresses",
+        description: "See real IP addresses in audit log entries.",
+    },
+    PermissionDef {
         key: "panel.update",
         label: "Panel Updates",
         description: "Check/apply panel updates.",
@@ -199,8 +204,8 @@ fn default_role_permissions(role: &str) -> &'static [&'static str] {
             "users.manage",
             "roles.manage",
             "audit.read",
+            "audit.view_ip",
             "panel.update",
-            "panel.settings",
             "storage.manage",
             "security.manage",
             "theme.manage",

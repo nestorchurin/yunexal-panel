@@ -1999,6 +1999,7 @@ pub struct AuditQuery {
 
 pub async fn api_audit_list(
     State(state): State<AppState>,
+    jar: PrivateCookieJar,
     axum::extract::Query(q): axum::extract::Query<AuditQuery>,
 ) -> impl IntoResponse {
     let limit = q.limit.unwrap_or(50).min(200).max(1);
@@ -2009,9 +2010,15 @@ pub async fn api_audit_list(
     let search = q.search.as_deref().unwrap_or("");
     let total = db::audit_count(&state.db, action, actor, search).await.unwrap_or(0);
     let entries = db::audit_list(&state.db, limit, offset, action, actor, search).await.unwrap_or_default();
+    let show_ip = auth::session_has_permission(&state, &jar, "audit.view_ip").await;
+    let entries_json: Vec<serde_json::Value> = entries.into_iter().map(|e| {
+        let mut v = serde_json::to_value(&e).unwrap_or_default();
+        if !show_ip { v["ip"] = serde_json::Value::Null; }
+        v
+    }).collect();
     Json(serde_json::json!({
         "ok": true,
-        "entries": entries,
+        "entries": entries_json,
         "total": total,
         "page": page,
         "pages": (total as f64 / limit as f64).ceil() as i64,
