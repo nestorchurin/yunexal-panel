@@ -60,10 +60,11 @@ EOF
 
 makefile root:root 0644 "$tmp"/etc/os-release <<'EOF'
 NAME="Yunexal Musl Panel"
-VERSION="0.5.1"
+VERSION="26m05d24a"
+VERSION_ID="26m05d24a"
 ID=yunexal
 ID_LIKE=alpine
-PRETTY_NAME="Yunexal Musl Panel 0.5.1"
+PRETTY_NAME="Yunexal Musl Panel 26m05d24a"
 EOF
 
 mkdir -p "$tmp"/etc/network

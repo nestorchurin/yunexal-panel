@@ -63,8 +63,8 @@ header() {
         "$(w '  YUNEXAL MUSL PANEL INSTALLER')" \
         "                      "
     printf "${CY}  │${RS}  %s  %s${CY}│${RS}\n" \
-        "$(dm '  Version 0.5.1  ·  x86_64')" \
-        "                    "
+        "$(dm '  Panel 0.5.1  ·  26m05d24a  ·  x86_64')" \
+        "              "
     printf "${CY}  └──────────────────────────────────────────────────────────┘${RS}\n"
     printf "\n"
 }
