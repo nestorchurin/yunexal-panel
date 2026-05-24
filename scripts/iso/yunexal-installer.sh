@@ -98,7 +98,19 @@ part_path() {
 }
 
 list_disks_raw() {
-    lsblk -dnpo NAME,SIZE,TYPE,MODEL 2>/dev/null | awk '$3=="disk"{print $1, $2, $4}'
+    for _sysdev in /sys/block/*/; do
+        _name="${_sysdev%/}"; _name="${_name##*/}"
+        case "$_name" in loop*|ram*|sr*|fd*|md*|dm*|zram*) continue ;; esac
+        [ -b "/dev/$_name" ] || continue
+        _sectors="$(cat "$_sysdev/size" 2>/dev/null || echo 0)"
+        [ "$_sectors" -gt 0 ] 2>/dev/null || continue
+        _bytes=$((_sectors * 512))
+        if   [ "$_bytes" -ge 1073741824000 ]; then _sz="$((_bytes/1073741824))G"
+        elif [ "$_bytes" -ge 1073741824 ];    then _sz="$((_bytes/1073741824))G"
+        else                                       _sz="$((_bytes/1048576))M"; fi
+        _model="$(cat "$_sysdev/device/model" 2>/dev/null | tr -s ' ' | sed 's/^ //;s/ $//')"
+        printf "/dev/%s %s %s\n" "$_name" "$_sz" "$_model"
+    done
 }
 
 count_disks() { list_disks_raw | wc -l; }
