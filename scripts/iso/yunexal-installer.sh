@@ -19,11 +19,30 @@ rd() { printf "${RD}%s${RS}"        "$*"; }
 dm() { printf "${DM}%s${RS}"        "$*"; }
 hr() { printf "${CY}──────────────────────────────────────────────────────────${RS}\n"; }
 
+# ESC character for instant back navigation
+_ESC="$(printf '\033')"
+
 # ── Input helpers ─────────────────────────────────────────────────────────────
 ask() {
     # ask "prompt" "default" → REPLY
+    # ESC = instant back (sets REPLY to ESC); other keys work as normal line input
     printf "%b [%s]: " "$(c "$1")" "$2"
-    read -r REPLY; [ -z "$REPLY" ] && REPLY="$2"
+    stty -icanon min 1 2>/dev/null
+    _c="$(dd bs=1 count=1 2>/dev/null)"
+    stty icanon 2>/dev/null
+    case "$_c" in
+        "$_ESC")
+            printf "^[\n"; REPLY="$_ESC" ;;
+        "$(printf '\n')"|\
+        "$(printf '\r')")
+            printf "\n"; REPLY="$2" ;;
+        *)
+            printf "%s" "$_c"
+            read -r _rest
+            REPLY="${_c}${_rest}"
+            [ -z "$REPLY" ] && REPLY="$2"
+            ;;
+    esac
 }
 
 ask_secret() {
@@ -41,16 +60,20 @@ confirm() {
 wait_key() { printf "\n%b" "$(dm 'Press Enter to continue...')"; read -r _; }
 
 wait_key_or_back() {
-    printf "\n%b" "$(dm 'Enter = continue  ·  b = back...')"
-    read -r _k; case "$_k" in b|B) return 2;; esac
+    printf "\n%b" "$(dm 'Enter = continue  ·  Esc = back...')"
+    stty -icanon min 1 2>/dev/null
+    _k="$(dd bs=1 count=1 2>/dev/null)"
+    stty icanon 2>/dev/null
+    printf "\n"
+    case "$_k" in "$_ESC") return 2;; esac
 }
 
-_is_back() { [ "$REPLY" = "b" ] || [ "$REPLY" = "B" ]; }
+_is_back() { [ "$REPLY" = "$_ESC" ] || [ "$REPLY" = "b" ] || [ "$REPLY" = "B" ]; }
 
 step_label() {
     _total=7
     printf "\n${DM}  Step %s of %s${RS}  ${WH}${BD}%s${RS}" "$1" "$_total" "$2"
-    [ "$1" -gt 1 ] && printf "  ${DM}(b = back)${RS}"
+    [ "$1" -gt 1 ] && printf "  ${DM}(Esc = back)${RS}"
     printf "\n\n"
 }
 
@@ -434,11 +457,11 @@ step_confirm_changes() {
     hr
     printf "\n"
 
-    ask "  Confirm installation? (y = install · b = back · n = cancel)" "n"
+    ask "  Confirm installation? (y = install · Esc/b = back · n = cancel)" "n"
     case "$REPLY" in
-        [yY]) return 0 ;;
-        [bB]) return 2 ;;
-        *)    return 1 ;;
+        [yY])        return 0 ;;
+        [bB]|"$_ESC") return 2 ;;
+        *)           return 1 ;;
     esac
 }
 
