@@ -40,9 +40,18 @@ confirm() {
 
 wait_key() { printf "\n%b" "$(dm 'Press Enter to continue...')"; read -r _; }
 
+wait_key_or_back() {
+    printf "\n%b" "$(dm 'Enter = continue  ·  b = back...')"
+    read -r _k; case "$_k" in b|B) return 2;; esac
+}
+
+_is_back() { [ "$REPLY" = "b" ] || [ "$REPLY" = "B" ]; }
+
 step_label() {
     _total=7
-    printf "\n${DM}  Step %s of %s${RS}  ${WH}${BD}%s${RS}\n\n" "$1" "$_total" "$2"
+    printf "\n${DM}  Step %s of %s${RS}  ${WH}${BD}%s${RS}" "$1" "$_total" "$2"
+    [ "$1" -gt 1 ] && printf "  ${DM}(b = back)${RS}"
+    printf "\n\n"
 }
 
 # ── Header ────────────────────────────────────────────────────────────────────
@@ -181,6 +190,7 @@ step_keyboard() {
     printf "  %s\n\n" "$_layouts"
 
     ask "  Layout" "us"
+    _is_back && return 2
     KEYMAP_LAYOUT="$REPLY"
 
     if [ -d "$_kmdir/$KEYMAP_LAYOUT" ]; then
@@ -228,6 +238,7 @@ step_networking() {
     [ -n "$_default_iface" ] || _default_iface="eth0"
 
     ask "  Interface to configure" "$_default_iface"
+    _is_back && return 2
     NET_IFACE="$REPLY"
 
     if is_wireless_iface "$NET_IFACE"; then
@@ -294,6 +305,7 @@ step_storage() {
     print_disk_table
     printf "\n"
     ask "  Disk number for system" "1"
+    _is_back && return 2
     SYS_DISK="$(disk_by_index "$REPLY")"
     [ -n "$SYS_DISK" ] || { rd "\n  Invalid selection.\n"; wait_key; return 1; }
 
@@ -336,6 +348,7 @@ step_profile() {
 
     printf "  $(w 'System')\n\n"
     ask "  Hostname" "yunexal"
+    _is_back && return 2
     INST_HOSTNAME="$REPLY"
 
     printf "\n"
@@ -400,10 +413,11 @@ step_confirm_partitions() {
     printf "  $(w 'Panel admin:')%s\n" "$PANEL_USER"
     printf "\n"
 
-    wait_key
+    wait_key_or_back
+    return $?
 }
 
-# ── Step 7: Confirm changes ───────────────────────────────────────────────────
+# ── Step 7: Confirm changes ─────────────────────────────────────────────────
 step_confirm_changes() {
     header
     step_label 7 "Confirm changes"
@@ -420,8 +434,12 @@ step_confirm_changes() {
     hr
     printf "\n"
 
-    confirm "  Erase disks and install Yunexal Musl Panel" || return 1
-    return 0
+    ask "  Confirm installation? (y = install · b = back · n = cancel)" "n"
+    case "$REPLY" in
+        [yY]) return 0 ;;
+        [bB]) return 2 ;;
+        *)    return 1 ;;
+    esac
 }
 
 # ── Execute installation ──────────────────────────────────────────────────────
@@ -594,26 +612,40 @@ main_menu() {
 # ── Entry point ───────────────────────────────────────────────────────────────
 [ -t 0 ] || exec /bin/sh
 
+_run_wizard() {
+    _step=1
+    while true; do
+        _rc=0
+        case "$_step" in
+            1) step_requirements       || _rc=$? ;;
+            2) step_keyboard           || _rc=$? ;;
+            3) step_networking         || _rc=$? ;;
+            4) step_storage            || _rc=$? ;;
+            5) step_profile            || _rc=$? ;;
+            6) step_confirm_partitions || _rc=$? ;;
+            7) step_confirm_changes    || _rc=$? ;;
+            *)
+                execute_install || true
+                return 0
+                ;;
+        esac
+        case "$_rc" in
+            0) _step=$((_step+1)) ;;
+            2) _step=$((_step-1)); [ "$_step" -lt 1 ] && return 0 ;;
+            *) return 1 ;;
+        esac
+    done
+}
+
 while true; do
     main_menu
     case "$MENU_CHOICE" in
-        1)
-            step_requirements  || continue
-            step_keyboard
-            step_networking    || continue
-            step_storage       || continue
-            step_profile
-            step_confirm_partitions
-            step_confirm_changes || continue
-            execute_install
-            ;;
+        1) _run_wizard || true ;;
         2)
             printf "\n  Dropping to shell. Type $(yl 'exit') to return.\n\n"
             /bin/sh || true
             ;;
-        3)
-            reboot ;;
-        *)
-            yl "  Unknown option.\n"; sleep 1 ;;
+        3) reboot ;;
+        *) yl "  Unknown option.\n"; sleep 1 ;;
     esac
 done
