@@ -123,17 +123,14 @@ fn parse_ports_to_bindings(
 
 /// Updates CPU / memory limits in-place via `docker update`. Zero = remove limit.
 pub async fn update_container_resources(id: &str, cpu: f64, memory_mb: i64) -> Result<()> {
-    let mut args: Vec<String> = vec!["update".to_string()];
-    if cpu > 0.0 {
-        args.extend_from_slice(&["--cpus".to_string(), format!("{:.4}", cpu)]);
-    }
-    if memory_mb > 0 {
-        args.extend_from_slice(&[
-            "--memory".to_string(), format!("{}m", memory_mb),
-            "--memory-swap".to_string(), format!("{}m", memory_mb),
-        ]);
-    }
-    args.push(id.to_string());
+    let cpu_str = format!("{:.4}", cpu);
+    let mem_str = format!("{}m", memory_mb);
+    let mem_swap_str = format!("{}m", memory_mb);
+    let args: Vec<&str> = if memory_mb > 0 {
+        vec!["update", "--cpus", &cpu_str, "--memory", &mem_str, "--memory-swap", &mem_swap_str, id]
+    } else {
+        vec!["update", "--cpus", &cpu_str, id]
+    };
     let output = tokio::process::Command::new("docker")
         .args(&args)
         .output()
