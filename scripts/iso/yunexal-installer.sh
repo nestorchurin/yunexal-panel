@@ -318,7 +318,9 @@ step_storage() {
     header
     step_label 4 "Configure storage"
 
-    if [ "$(count_disks)" -eq 0 ]; then
+    _ndisks="$(count_disks)"
+
+    if [ "$_ndisks" -eq 0 ]; then
         rd "  No block devices found. Cannot continue.\n"
         wait_key; return 1
     fi
@@ -327,10 +329,16 @@ step_storage() {
     printf "  $(w 'System disk')  $(dm '(OS + Yunexal Musl Panel)')\n\n"
     print_disk_table
     printf "\n"
-    ask "  Disk number for system" "1"
-    _is_back && return 2
-    SYS_DISK="$(disk_by_index "$REPLY")"
-    [ -n "$SYS_DISK" ] || { rd "\n  Invalid selection.\n"; wait_key; return 1; }
+
+    if [ "$_ndisks" -eq 1 ]; then
+        SYS_DISK="$(disk_by_index 1)"
+        printf "  $(gr '✓')  Auto-selected: $(gr "$SYS_DISK")  $(dm '(only disk available)')\n"
+    else
+        ask "  Disk number for system" "1"
+        _is_back && return 2
+        SYS_DISK="$(disk_by_index "$REPLY")"
+        [ -n "$SYS_DISK" ] || { rd "\n  Invalid selection.\n"; wait_key; return 1; }
+    fi
 
     printf "\n"
     printf "  Layout for $(gr "$SYS_DISK"):\n"
@@ -339,7 +347,6 @@ step_storage() {
     printf "  $(dm '  p3  DATA     rest       ext4 + prjquota  ← local volumes')\n\n"
 
     # ── Additional data disks ─────────────────────────────────────────────────
-    _ndisks="$(count_disks)"
     if [ "$_ndisks" -gt 1 ]; then
         printf "  $(w 'Additional data disks')  $(dm '(optional — container volumes, prjquota)')\n\n"
         print_disk_table
@@ -361,7 +368,8 @@ step_storage() {
     fi
 
     printf "\n"
-    wait_key
+    wait_key_or_back
+    return $?
 }
 
 # ── Step 5: Profile ───────────────────────────────────────────────────────────
