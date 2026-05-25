@@ -7,14 +7,25 @@ function _srvAuditServerId() {
     return String(window.YU_SERVER_ID || '').trim();
 }
 
-function _srvAuditActorBadge(actor) {
+function _srvAuditActorBadge(actor, role) {
     if (!actor) return '<span style="color:var(--muted);">—</span>';
     const initial = actor.charAt(0).toUpperCase();
     const esc = _srvAuditEscHtml(actor);
-    return `<span style="display:inline-flex;align-items:center;gap:.4rem;">
+    const roleBadge = _srvAuditRoleBadge(role);
+    return `<span style="display:inline-flex;align-items:center;gap:.4rem;flex-wrap:wrap;">
         <span style="width:22px;height:22px;border-radius:50%;background:rgba(124,58,237,.18);border:1px solid rgba(124,58,237,.3);display:inline-flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:700;color:#a78bfa;flex-shrink:0;">${initial}</span>
-        <span style="font-weight:600;font-size:.85rem;">${esc}</span>
+        <span style="font-weight:600;font-size:.85rem;">${esc}</span>${roleBadge}
     </span>`;
+}
+
+function _srvAuditRoleBadge(role) {
+    if (!role) return '';
+    const cfg = {
+        root:  { bg: 'rgba(239,68,68,.15)',   bd: 'rgba(239,68,68,.35)',   tx: '#fca5a5' },
+        admin: { bg: 'rgba(245,158,11,.13)',  bd: 'rgba(245,158,11,.33)',  tx: '#fcd34d' },
+    };
+    const c = cfg[role] || { bg: 'rgba(148,163,184,.1)', bd: 'rgba(148,163,184,.25)', tx: '#94a3b8' };
+    return ` <span style="font-size:.68rem;font-weight:600;padding:.1rem .4rem;border-radius:4px;background:${c.bg};border:1px solid ${c.bd};color:${c.tx};letter-spacing:.03em;">${_srvAuditEscHtml(role)}</span>`;
 }
 
 function _srvAuditEscHtml(value) {
@@ -217,7 +228,7 @@ function srvAuditLoad(page) {
                 tbody.innerHTML = entries.map(e => {
                     return `<tr>
                         <td class="mono" style="white-space:nowrap;">${_srvAuditEscHtml(e.created_at)}</td>
-                        <td>${_srvAuditActorBadge(e.actor)}</td>
+                        <td>${_srvAuditActorBadge(e.actor, e.actor_role)}</td>
                         <td class="mono" style="font-size:.8rem;">${_srvAuditEscHtml(e.ip)}</td>
                         <td>${_srvAuditActionBadge(e.action)}</td>
                         <td>${_srvAuditEscHtml(e.target)}</td>

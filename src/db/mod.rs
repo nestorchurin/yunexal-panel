@@ -365,6 +365,11 @@ pub async fn init_db() -> Result<Pool<Sqlite>> {
         "ALTER TABLE servers ADD COLUMN max_schedule_runs INTEGER NOT NULL DEFAULT 20"
     ).execute(&pool).await;
 
+    // ── v0.5.3 migrations ─────────────────────────────────────────────────────
+    let _ = sqlx::query(
+        "ALTER TABLE servers ADD COLUMN max_backups INTEGER NOT NULL DEFAULT 10"
+    ).execute(&pool).await;
+
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS schedules (

@@ -1432,6 +1432,7 @@ pub async fn admin_edit_page(
         .unwrap_or_default();
 
     let max_schedule_runs = db::schedules::get_server_max_schedule_runs(&state.db, db_id).await;
+    let max_backups = db::get_server_max_backups(&state.db, db_id).await;
 
     let users: Vec<UserInfo> = db::list_users(&state.db)
         .await
@@ -1460,6 +1461,7 @@ pub async fn admin_edit_page(
             bandwidth_mbit,
             owner_id,
             max_schedule_runs: max_schedule_runs.to_string(),
+            max_backups: max_backups.to_string(),
         },
         current_storage_source,
         current_storage_base,
@@ -1642,6 +1644,10 @@ pub async fn api_admin_edit_container(
 
     if form.max_schedule_runs > 0 {
         let _ = db::update_server_max_schedule_runs(&state.db, db_id, form.max_schedule_runs).await;
+    }
+
+    if form.max_backups > 0 {
+        let _ = db::update_server_max_backups(&state.db, db_id, form.max_backups).await;
     }
 
     let action_detail = if recreated_short.is_some() {

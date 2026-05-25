@@ -1,6 +1,6 @@
 # Yunexal Panel
 
-> **v0.5.0** — Self-hosted server management platform built on Docker.
+> **v1.0.0** — Self-hosted server management platform built on Docker.
 
 Built with **Rust + Axum**, **SQLite**, and **Bollard** (Docker SDK).  
 Templates and static assets are compiled into a single binary — no external runtime files needed.
@@ -9,8 +9,8 @@ Templates and static assets are compiled into a single binary — no external ru
 
 ## Table of Contents
 
-- [Roadmap](#roadmap)
 - [Features](#features)
+- [Roadmap](#roadmap)
 - [Installation](#installation)
 - [Repository Status](#repository-status)
 - [Reverse Proxy (nginx)](#reverse-proxy-nginx)
@@ -21,60 +21,6 @@ Templates and static assets are compiled into a single binary — no external ru
 - [Tech Stack](#tech-stack)
 - [License](#license)
 - [Contributors](CONTRIBUTORS.md)
-
----
-
-## Roadmap
-
-> The panel is in active development with a focus on stability and core features first.
-> The following features are planned for the next few releases.
-> Spoiler: it's a dont completed roadmap, because we has a dynamic and crazy ideas that we want to implement, but we will try to stick to this roadmap as much as possible.
-> If you have any suggestions or want to contribute, feel free to open an issue or a pull request!
-
-### General
-| Status | Feature |
-|---|---|
-| ✅ | Overview — system stats, ZRAM, panel updates |
-| ✅ | All Containers — manage any container across all users |
-| ✅ | Images — pull, delete, duplicate, ENV overrides |
-
-### Management
-| Status | Feature |
-|---|---|
-| ✅ | Users — create, delete, roles with full RBAC permission matrix |
-| 🔜 | Distpatchers — task dispatchers and future agent manager workflows |
-| 🔜 | Firewall — global IP allow/block rules beyond per-port UFW |
-| 🔜 | Backups — scheduled volume snapshots with retention policies |
-| 🔜 | Tickets — built-in support ticket system for end users |
-
-### Analytics
-| Status | Feature |
-|---|---|
-| ✅ | Audit Log — immutable, global + per-server, multi-select filter, Device column |
-| 🔜 | Insights — historical resource usage charts and trend analysis |
-
-### Configuration
-| Status | Feature |
-|---|---|
-| ✅ | Panel Settings — UFW, bandwidth, sidebar visibility, panel updates |
-| ✅ | API Keys — service API key for external integrations |
-| 🔜 | Notifications — email / webhook alerts for events (container down, login, etc.) |
-| 🔜 | Themes — custom colour schemes and branding per installation |
-
-### Other
-| Status | Feature |
-|---|---|
-| 🔜 | Support Windows as a host level (Yes, it's possible I think) |
-| 🔜 | Mobile app (Flutter or React Native) |
-| 🔜 | Support ARM servers |
-| 🔜 | Marketplace — pre-configured server templates for popular games and applications |
-| 🔜 | Community plugins — allow third-party extensions for additional features and integrations |
-| 🔜 | Localization — multi-language support with user-selectable languages |
-| 🔜 | Accessibility — ensure the panel is usable with screen readers and keyboard navigation |
-
-And much more! The roadmap is flexible and will evolve based on user feedback and new ideas.
-You can make a pull request to add your own features or upvote existing ones in the [Issues](https://github.com/nestorchurin/yunexal-panel/issues)
-Or help to implement features by joining the development on the [Discussions](https://github.com/nestorchurin/yunexal-panel/discussions) page.
 
 ---
 
@@ -96,7 +42,7 @@ Or help to implement features by joining the development on the [Discussions](ht
 - **Storage card** — volume size (MB) fetched once on open
 
 ### Server Sidebar — SPA Navigation
-- Server tabs (Console · Files · Networking · Settings · Audit · Users) load without full page reloads
+- Server tabs (Console · Files · Backups · Networking · Schedules · Settings · Audit · Users) load without full page reloads
 - Only `.yu-main` is replaced on navigation; sidebar and assets remain intact
 - Each tab re-initialises its own polling/WS lifecycle via `yu:page-shown` events
 - Back/forward browser navigation works correctly via `history.pushState`
@@ -116,6 +62,24 @@ Or help to implement features by joining the development on the [Discussions](ht
 - **Non-editable guard** — binary/archive/media files are blocked from opening in the text editor
 - Path traversal and symlink-escape protection enforced on all backend endpoints
 
+### Backups
+- Per-container backup tab at `/servers/{id}/backups`
+- Create `.tar.gz` snapshots of the container volume on demand; spinner + download lock during creation
+- Backups stored in a **sibling directory** (`{volume}_backups/`) adjacent to the container volume — never inside it, never included in future backups
+- **Max backups** limit per container (configurable in Admin Panel, default 10); oldest-first enforcement
+- Download individual backups; delete with confirmation
+- **Upload & Restore** — upload any `.tar.gz` archive to fully replace the container's volume contents;
+  clear warning modal, XHR progress bar; falls back to `docker run alpine` for root-owned volumes
+
+### Schedules
+- Per-container schedule manager at `/servers/{id}/schedules`
+- Cron-expression based triggers with human-readable preview
+- Three task types: **Command** (docker exec inside container), **Power Action** (start/stop/restart), **Backup** (tar.gz snapshot)
+- Enable/disable individual schedules without deleting them
+- Run-now button for immediate manual execution
+- Per-entry run history with status badges (success / error) and output
+- Background Tokio runner checks due schedules every 30 s; history capped at `max_schedule_runs` per container (default 20)
+
 ### Server Settings
 - **Environment Variables** — row-based editor: each `KEY=VALUE` rendered as its own row
   - Regular users can edit values; only admins can add, delete or rename keys
@@ -127,15 +91,17 @@ Or help to implement features by joining the development on the [Discussions](ht
 ### Server Members (User Access Control)
 - Add users to a specific container without granting global admin rights
 - Members are looked up by **UID** — unique user identity string (9–16 characters)
-- Per-capability access policy (`none / read / write`) for: **console · files · networking · settings · audit · power**
+- Per-capability access policy (`none / read / write`) for: **console · files · networking · settings · audit · power · schedules**
 - Users tab in the server sidebar — visible only when the container has members
 - Non-admin members see only their permitted tabs; power actions (start/stop/restart/kill) respect the `power:write` policy
 
 ### Server Audit Log
 - Per-server immutable event log at `/servers/{id}/audit`
 - Filter by action type, actor, free-text search; paginated (50 per page)
+- **Actor role badge** — `root` (red), `admin` (amber), named roles (grey) displayed inline next to username
+- **IP privilege masking** — IPs of users with a higher privilege level than the viewer are hidden (`[hidden]`); applies to both the live table and downloaded log export
 - Device column with parsed User-Agent; full UA in tooltip
-- Download complete log as `.log` file with current filters applied
+- Download complete log as `.log` file with current filters applied; export includes `role=` field per line
 
 ### Networking
 - View all port bindings (host ↔ container) with protocol (TCP / UDP / TCP+UDP)
@@ -168,7 +134,7 @@ Or help to implement features by joining the development on the [Discussions](ht
 - **Roles & Permissions (RBAC)** — Role Studio UI: create custom roles, edit per-permission policy (`read / none / write`),
   assign colour; `root` role is immutable; topbar badge shows the current user's role with its colour
 - **Images** — pull, delete, duplicate, ENV override editor
-- **Containers** — edit any container (disk limit, bandwidth, ENV, ports); stop all at once; per-row state updates without animation flicker
+- **Containers** — edit any container (disk limit, bandwidth, ENV, ports, max backups, max schedule run history); stop all at once; per-row state updates without animation flicker
 - **Audit Log** — immutable; 200 records per page; multi-select action filter; Device column (parsed User-Agent); full UA in tooltip
 - **Panel Updates** — check for new releases (stable/unstable), one-click download & install with auto-restart
 - **Panel Settings** — categorical layout (Storage · Security · Operations · Interface)
@@ -208,8 +174,63 @@ Or help to implement features by joining the development on the [Discussions](ht
 - Responsive **Bootstrap 5** dark-mode layout
 - **AMOLED mode** — pure-black theme for mobile OLED screens with auto-fullscreen
 - **PWA** — `manifest.json` + service worker for installable web app
-- **HTMX** for partial page updates
 - Load-time footer badge (seconds) on every page
+
+---
+
+## Roadmap
+
+> The panel is in active development with a focus on stability and core features first.
+> The following features are planned for the next few releases.
+> Spoiler: it's a dont completed roadmap, because we has a dynamic and crazy ideas that we want to implement, but we will try to stick to this roadmap as much as possible.
+> If you have any suggestions or want to contribute, feel free to open an issue or a pull request!
+
+### General
+| Status | Feature |
+|---|---|
+| ✅ | Overview — system stats, ZRAM, panel updates |
+| ✅ | All Containers — manage any container across all users |
+| ✅ | Images — pull, delete, duplicate, ENV overrides |
+
+### Management
+| Status | Feature |
+|---|---|
+| ✅ | Users — create, delete, roles with full RBAC permission matrix |
+| ✅ | Roles — custom roles with granular permissions and colour coding |
+| ✅ | Schedules — cron-based task scheduling (command / power / backup) |
+| ✅ | Backups — on-demand volume snapshots, upload restore, per-container retention limit |
+| 🔜 | Distpatchers — task dispatchers and future agent manager workflows |
+| 🔜 | Firewall — global IP allow/block rules beyond per-port UFW |
+| 🔜 | Tickets — built-in support ticket system for end users |
+
+### Analytics
+| Status | Feature |
+|---|---|
+| ✅ | Audit Log — immutable, global + per-server, multi-select filter, role badge, IP privilege masking |
+| 🔜 | Insights — historical resource usage charts and trend analysis |
+
+### Configuration
+| Status | Feature |
+|---|---|
+| ✅ | Panel Settings — UFW, bandwidth, sidebar visibility, panel updates |
+| ✅ | API Keys — service API key for external integrations |
+| 🔜 | Notifications — email / webhook alerts for events (container down, login, etc.) |
+| 🔜 | Themes — custom colour schemes and branding per installation |
+
+### Other
+| Status | Feature |
+|---|---|
+| 🔜 | Support Windows as a host level (Yes, it's possible I think) |
+| 🔜 | Mobile app (Flutter or React Native) |
+| 🔜 | Support ARM servers |
+| 🔜 | Marketplace — pre-configured server templates for popular games and applications |
+| 🔜 | Community plugins — allow third-party extensions for additional features and integrations |
+| 🔜 | Localization — multi-language support with user-selectable languages |
+| 🔜 | Accessibility — ensure the panel is usable with screen readers and keyboard navigation |
+
+And much more! The roadmap is flexible and will evolve based on user feedback and new ideas.
+You can make a pull request to add your own features or upvote existing ones in the [Issues](https://github.com/nestorchurin/yunexal-panel/issues)
+Or help to implement features by joining the development on the [Discussions](https://github.com/nestorchurin/yunexal-panel/discussions) page.
 
 ---
 
@@ -322,7 +343,6 @@ sudo certbot --nginx -d panel.example.com
 | **Helper shell image** | Pulled automatically by `yunexal-setup` | latest | latest |
 | **RAM** | For the panel process | 64 MB if using minimal features with containers | 2 GB if using full features with containers |
 | **CPU** | For the panel process | 1 vCPU | 2 vCPU |
-| **GPU** | For hardware acceleration (optional) | None | Recommended if using GPU-intensive features |
 | **Disk space** | For the panel binary, database, and volumes | 100 MB | 500 MB |
 | **Filesystem** | For volume management and quotas | Any (quotas disabled) | **ext4 with `prjquota`** for per-container disk limits |
 | **Ports** | Panel port (default: 3000) + container ports | 1 free port for the panel + container ports | Multiple free ports for the panel and containers |
@@ -404,6 +424,7 @@ src/
 ├── compose.rs            # Docker Compose YAML parser
 ├── password.rs           # Argon2id hash / verify
 ├── host.rs               # Host command abstraction (init-system detection)
+├── scheduler.rs          # Background Tokio cron runner (30 s tick)
 ├── db/
 │   ├── mod.rs            # Schema init, migrations, seed defaults
 │   ├── users.rs          # User CRUD (uid + nickname model)
@@ -413,13 +434,14 @@ src/
 │   ├── audit.rs          # Audit log (immutable, global + per-server)
 │   ├── settings.rs       # panel_settings key/value store
 │   ├── roles.rs          # RBAC roles, permissions, tri-state policy
-│   └── sessions.rs       # User session records (device tracking)
+│   ├── sessions.rs       # User session records (device tracking)
+│   └── schedules.rs      # Schedule + run history CRUD
 ├── docker/
 │   ├── mod.rs            # Docker client, ContainerInfo
 │   ├── containers.rs     # Lifecycle, attach, list
 │   ├── stats.rs          # CPU/RAM/network/disk I/O stats
 │   ├── images.rs         # Pull, delete, duplicate, ENV fetch
-│   ├── files.rs          # Volume file operations
+│   ├── files.rs          # Volume file operations; backup_dir_for_volume helper
 │   ├── network.rs        # Bandwidth limiting (tc TBF), isolated networks
 │   ├── edit.rs           # Inspect & recreate containers
 │   └── quota.rs          # ext4 project-quota enforcement
@@ -429,9 +451,11 @@ src/
     ├── mod.rs            # Router, embedded assets, track_requests middleware
     ├── auth.rs           # Login / logout / service-login
     ├── dashboard.rs      # Dashboard + server list fragment + device sessions API
-    ├── servers.rs        # Console, Settings, Stats, lifecycle, ENV update, Factory Reset, Members API
+    ├── servers.rs        # Console, Settings, Stats, lifecycle, ENV update, Factory Reset, Members API, Audit API
     ├── files.rs          # File manager API (upload, extract, edit, safe path resolution)
     ├── network.rs        # Networking + port / bandwidth / UFW API
+    ├── backups.rs        # Backups page + create / download / delete / restore API
+    ├── schedules.rs      # Schedules page + CRUD / toggle / run-now / run history API
     ├── create.rs         # Container creation (local-first, Dockerfile build, quota preflight)
     ├── admin.rs          # Admin panel — users, images, containers, roles, storage, panel settings
     ├── ws.rs             # WebSocket console
@@ -457,7 +481,7 @@ static/                   # CSS, JS, icons — compiled into binary via rust-emb
 | Password hashing | [Argon2](https://github.com/RustCrypto/password-hashes) (Argon2id) |
 | Session cookies | [axum-extra](https://docs.rs/axum-extra) private cookies (AES-GCM) |
 | Concurrent maps | [DashMap](https://github.com/xacrimon/dashmap) — L7 per-IP counters |
-| Frontend | Bootstrap 5 · [HTMX](https://htmx.org) · vanilla JS |
+| Frontend | Bootstrap 5 · vanilla JS |
 | Terminal | [xterm.js](https://xtermjs.org) with FitAddon |
 | Charts | [Chart.js](https://www.chartjs.org) |
 | Code editors | [Ace](https://ace.c9.io) (file editor) · [Monaco](https://microsoft.github.io/monaco-editor/) (YAML / compose) |

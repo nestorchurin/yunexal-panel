@@ -164,15 +164,11 @@ async fn run_power(
     Ok(format!("{action} completed"))
 }
 
-async fn run_backup(
+pub async fn run_backup(
     docker: &Docker,
     container_id: &str,
     task_payload: &str,
 ) -> anyhow::Result<String> {
-    use flate2::write::GzEncoder;
-    use flate2::Compression;
-    use std::fs;
-
     let volume_dir = docker::get_volume_dir(docker, container_id).await
         .map_err(|e| anyhow::anyhow!("get_volume_dir: {e}"))?;
 
@@ -180,38 +176,42 @@ async fn run_backup(
         .unwrap_or(serde_json::json!({}));
     let prefix = payload.get("prefix")
         .and_then(|v| v.as_str())
-        .unwrap_or("backup");
+        .unwrap_or("backup")
+        .to_string();
 
-    let backups_dir = format!("{}/backups", volume_dir);
-    fs::create_dir_all(&backups_dir)?;
+    tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::fs;
 
-    let ts = Utc::now().format("%Y%m%d-%H%M%S");
-    let filename = format!("{backups_dir}/{prefix}-{ts}.tar.gz");
-    let short_name = format!("{prefix}-{ts}.tar.gz");
+        let volume_path = docker::volume_dir_to_path(&volume_dir);
+        let backups_dir = docker::backup_dir_for_volume(&volume_path);
+        fs::create_dir_all(&backups_dir)?;
 
-    let file = fs::File::create(&filename)?;
-    let gz = GzEncoder::new(file, Compression::default());
-    let mut archive = tar::Builder::new(gz);
+        let ts = Utc::now().format("%Y%m%d-%H%M%S");
+        let short_name = format!("{prefix}-{ts}.tar.gz");
+        let filename = backups_dir.join(&short_name);
 
-    // Archive volume contents, skipping the backups dir itself to avoid recursion
-    for entry in fs::read_dir(&volume_dir)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if name == "backups" {
-            continue;
+        let file = fs::File::create(&filename)?;
+        let gz = GzEncoder::new(file, Compression::default());
+        let mut archive = tar::Builder::new(gz);
+
+        for entry in fs::read_dir(&volume_path)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            let path = entry.path();
+            let rel = name.to_string_lossy().into_owned();
+            if path.is_dir() {
+                archive.append_dir_all(&rel, &path)?;
+            } else {
+                archive.append_path_with_name(&path, &rel)?;
+            }
         }
-        let path = entry.path();
-        let rel = name.to_string_lossy().into_owned();
-        if path.is_dir() {
-            archive.append_dir_all(&rel, &path)?;
-        } else {
-            archive.append_path_with_name(&path, &rel)?;
-        }
-    }
 
-    drop(archive);
+        drop(archive);
 
-    let meta = fs::metadata(&filename)?;
-    let size_mb = meta.len() as f64 / 1_048_576.0;
-    Ok(format!("{} ({:.1} MB)", short_name, size_mb))
+        let meta = fs::metadata(&filename)?;
+        let size_mb = meta.len() as f64 / 1_048_576.0;
+        Ok(format!("{} ({:.1} MB)", short_name, size_mb))
+    }).await?
 }

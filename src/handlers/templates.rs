@@ -175,6 +175,19 @@ pub struct SchedulesTemplate {
 }
 
 #[derive(Template)]
+#[template(path = "backups.html")]
+pub struct BackupsTemplate {
+    pub id: i64,
+    pub container: ContainerInfo,
+    pub can_members: bool,
+    pub can_write: bool,
+    pub is_admin: bool,
+    pub max_backups: i64,
+    pub active_tab: &'static str,
+    pub nonce: String,
+}
+
+#[derive(Template)]
 #[template(path = "admin.html")]
 pub struct AdminTemplate {
     pub containers: Vec<ContainerInfo>,
@@ -260,6 +273,8 @@ pub struct ContainerEditInfo {
     pub owner_id: i64,
     /// Max schedule run history entries kept per server.
     pub max_schedule_runs: String,
+    /// Max backups stored per server.
+    pub max_backups: String,
 }
 
 // ── Form / Query structs ──────────────────────────────────────────────────────
@@ -429,6 +444,8 @@ pub struct EditContainerForm {
     pub env: String,
     #[serde(default)]
     pub max_schedule_runs: i64,
+    #[serde(default)]
+    pub max_backups: i64,
 }
 
 #[derive(Deserialize)]

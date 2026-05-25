@@ -15,6 +15,7 @@
         <div class="yu-nav-label">Server</div>
         <a href="/servers/{{id}}/console" class="yu-nav-item{% if active_tab == "console" %} active{% endif %}" onclick="if (typeof serverSwitchTab === 'function') { serverSwitchTab('/servers/{{id}}/console', this); return false; }"><i class="bi bi-terminal-fill"></i> Console</a>
         <a href="/servers/{{id}}/files" class="yu-nav-item{% if active_tab == "files" %} active{% endif %}" onclick="if (typeof serverSwitchTab === 'function') { serverSwitchTab('/servers/{{id}}/files', this); return false; }"><i class="bi bi-folder2-open"></i> Files</a>
+        <a href="/servers/{{id}}/backups" class="yu-nav-item{% if active_tab == "backups" %} active{% endif %}" onclick="if (typeof serverSwitchTab === 'function') { serverSwitchTab('/servers/{{id}}/backups', this); return false; }"><i class="bi bi-archive"></i> Backups</a>
         <a href="/servers/{{id}}/networking" class="yu-nav-item{% if active_tab == "networking" %} active{% endif %}" onclick="if (typeof serverSwitchTab === 'function') { serverSwitchTab('/servers/{{id}}/networking', this); return false; }"><i class="bi bi-diagram-3"></i> Networking</a>
         {% if can_members %}
         <a href="/servers/{{id}}/users" class="yu-nav-item{% if active_tab == "users" %} active{% endif %}" onclick="if (typeof serverSwitchTab === 'function') { serverSwitchTab('/servers/{{id}}/users', this); return false; }"><i class="bi bi-people"></i> Users</a>

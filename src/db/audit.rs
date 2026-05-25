@@ -5,6 +5,7 @@ use sqlx::{FromRow, Pool, Sqlite};
 pub struct AuditEntry {
     pub id: i64,
     pub actor: String,
+    pub actor_role: String,
     pub action: String,
     pub target: String,
     pub detail: String,
@@ -46,14 +47,14 @@ pub async fn audit_list(
     search: &str,
 ) -> Result<Vec<AuditEntry>> {
     let action_parts: Vec<&str> = action.split(',').filter(|s| !s.is_empty()).collect();
-    let mut sql = String::from("SELECT id, actor, action, target, detail, ip, COALESCE(user_agent,'') as user_agent, created_at FROM audit_log WHERE 1=1");
+    let mut sql = String::from("SELECT a.id, a.actor, COALESCE(u.role,'') as actor_role, a.action, a.target, a.detail, a.ip, COALESCE(a.user_agent,'') as user_agent, a.created_at FROM audit_log a LEFT JOIN users u ON u.username = a.actor WHERE 1=1");
     if !action_parts.is_empty() {
         let ph = action_parts.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        sql.push_str(&format!(" AND action IN ({})", ph));
+        sql.push_str(&format!(" AND a.action IN ({})", ph));
     }
-    if !actor.is_empty()  { sql.push_str(" AND actor = ?"); }
-    if !search.is_empty() { sql.push_str(" AND (target LIKE ? OR detail LIKE ? OR actor LIKE ? OR action LIKE ? OR ip LIKE ?)"); }
-    sql.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");
+    if !actor.is_empty()  { sql.push_str(" AND a.actor = ?"); }
+    if !search.is_empty() { sql.push_str(" AND (a.target LIKE ? OR a.detail LIKE ? OR a.actor LIKE ? OR a.action LIKE ? OR a.ip LIKE ?)"); }
+    sql.push_str(" ORDER BY a.id DESC LIMIT ? OFFSET ?");
 
     let mut q = sqlx::query_as::<_, AuditEntry>(sqlx::AssertSqlSafe(sql.as_str()));
     for a in &action_parts { q = q.bind(*a); }
@@ -75,13 +76,13 @@ pub async fn audit_count(
     search: &str,
 ) -> Result<i64> {
     let action_parts: Vec<&str> = action.split(',').filter(|s| !s.is_empty()).collect();
-    let mut sql = String::from("SELECT COUNT(*) FROM audit_log WHERE 1=1");
+    let mut sql = String::from("SELECT COUNT(*) FROM audit_log a LEFT JOIN users u ON u.username = a.actor WHERE 1=1");
     if !action_parts.is_empty() {
         let ph = action_parts.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        sql.push_str(&format!(" AND action IN ({})", ph));
+        sql.push_str(&format!(" AND a.action IN ({})", ph));
     }
-    if !actor.is_empty()  { sql.push_str(" AND actor = ?"); }
-    if !search.is_empty() { sql.push_str(" AND (target LIKE ? OR detail LIKE ? OR actor LIKE ? OR action LIKE ? OR ip LIKE ?)"); }
+    if !actor.is_empty()  { sql.push_str(" AND a.actor = ?"); }
+    if !search.is_empty() { sql.push_str(" AND (a.target LIKE ? OR a.detail LIKE ? OR a.actor LIKE ? OR a.action LIKE ? OR a.ip LIKE ?)"); }
 
     let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql.as_str()));
     for a in &action_parts { q = q.bind(*a); }
@@ -109,21 +110,21 @@ pub async fn audit_list_for_server(
     let marker_server = format!("server={}", server_db_id);
 
     let mut sql = String::from(
-        "SELECT id, actor, action, target, detail, ip, COALESCE(user_agent,'') as user_agent, created_at \
-         FROM audit_log \
-         WHERE (target = ? OR detail = ? OR target = ? OR detail = ?)",
+        "SELECT a.id, a.actor, COALESCE(u.role,'') as actor_role, a.action, a.target, a.detail, a.ip, COALESCE(a.user_agent,'') as user_agent, a.created_at \
+         FROM audit_log a LEFT JOIN users u ON u.username = a.actor \
+         WHERE (a.target = ? OR a.detail = ? OR a.target = ? OR a.detail = ?)",
     );
     if !action_parts.is_empty() {
         let ph = action_parts.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        sql.push_str(&format!(" AND action IN ({})", ph));
+        sql.push_str(&format!(" AND a.action IN ({})", ph));
     }
     if !actor.is_empty() {
-        sql.push_str(" AND actor = ?");
+        sql.push_str(" AND a.actor = ?");
     }
     if !search.is_empty() {
-        sql.push_str(" AND (target LIKE ? OR detail LIKE ? OR actor LIKE ? OR action LIKE ? OR ip LIKE ?)");
+        sql.push_str(" AND (a.target LIKE ? OR a.detail LIKE ? OR a.actor LIKE ? OR a.action LIKE ? OR a.ip LIKE ?)");
     }
-    sql.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");
+    sql.push_str(" ORDER BY a.id DESC LIMIT ? OFFSET ?");
 
     let mut q = sqlx::query_as::<_, AuditEntry>(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(&marker_hash)
@@ -166,21 +167,21 @@ pub async fn audit_list_all_for_server(
     let marker_server = format!("server={}", server_db_id);
 
     let mut sql = String::from(
-        "SELECT id, actor, action, target, detail, ip, COALESCE(user_agent,'') as user_agent, created_at \
-         FROM audit_log \
-         WHERE (target = ? OR detail = ? OR target = ? OR detail = ?)",
+        "SELECT a.id, a.actor, COALESCE(u.role,'') as actor_role, a.action, a.target, a.detail, a.ip, COALESCE(a.user_agent,'') as user_agent, a.created_at \
+         FROM audit_log a LEFT JOIN users u ON u.username = a.actor \
+         WHERE (a.target = ? OR a.detail = ? OR a.target = ? OR a.detail = ?)",
     );
     if !action_parts.is_empty() {
         let ph = action_parts.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        sql.push_str(&format!(" AND action IN ({})", ph));
+        sql.push_str(&format!(" AND a.action IN ({})", ph));
     }
     if !actor.is_empty() {
-        sql.push_str(" AND actor = ?");
+        sql.push_str(" AND a.actor = ?");
     }
     if !search.is_empty() {
-        sql.push_str(" AND (target LIKE ? OR detail LIKE ? OR actor LIKE ? OR action LIKE ? OR ip LIKE ?)");
+        sql.push_str(" AND (a.target LIKE ? OR a.detail LIKE ? OR a.actor LIKE ? OR a.action LIKE ? OR a.ip LIKE ?)");
     }
-    sql.push_str(" ORDER BY id ASC");
+    sql.push_str(" ORDER BY a.id ASC");
 
     let mut q = sqlx::query_as::<_, AuditEntry>(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(&marker_hash)
@@ -223,18 +224,18 @@ pub async fn audit_count_for_server(
 
     let mut sql = String::from(
         "SELECT COUNT(*) \
-         FROM audit_log \
-         WHERE (target = ? OR detail = ? OR target = ? OR detail = ?)",
+         FROM audit_log a LEFT JOIN users u ON u.username = a.actor \
+         WHERE (a.target = ? OR a.detail = ? OR a.target = ? OR a.detail = ?)",
     );
     if !action_parts.is_empty() {
         let ph = action_parts.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        sql.push_str(&format!(" AND action IN ({})", ph));
+        sql.push_str(&format!(" AND a.action IN ({})", ph));
     }
     if !actor.is_empty() {
-        sql.push_str(" AND actor = ?");
+        sql.push_str(" AND a.actor = ?");
     }
     if !search.is_empty() {
-        sql.push_str(" AND (target LIKE ? OR detail LIKE ? OR actor LIKE ? OR action LIKE ? OR ip LIKE ?)");
+        sql.push_str(" AND (a.target LIKE ? OR a.detail LIKE ? OR a.actor LIKE ? OR a.action LIKE ? OR a.ip LIKE ?)");
     }
 
     let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql.as_str()))

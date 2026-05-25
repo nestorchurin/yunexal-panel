@@ -668,3 +668,14 @@ pub async fn replace_role_permissions(
 pub async fn role_has_permission(pool: &Pool<Sqlite>, role_name: &str, permission: &str) -> Result<bool> {
     role_has_write_permission(pool, role_name, permission).await
 }
+
+/// Returns the set of role names that have admin.access (excluding "root" which is always privileged).
+pub async fn get_admin_role_names(pool: &Pool<Sqlite>) -> std::collections::HashSet<String> {
+    let rows: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT role_name FROM role_permissions WHERE permission_key = 'admin.access'"
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    rows.into_iter().collect()
+}

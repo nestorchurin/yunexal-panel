@@ -51,7 +51,7 @@ function closeSidebar() {
     }
 
     function _isServerSidebarPath(path) {
-        return /^\/servers\/\d+\/(console|files|networking|users|settings|audit|schedules)$/.test(path);
+        return /^\/servers\/\d+\/(console|files|networking|users|settings|audit|schedules|backups)$/.test(path);
     }
 
     function _currentNonce() {

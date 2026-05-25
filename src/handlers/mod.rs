@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod auth;
+pub mod backups;
 pub mod create;
 pub mod dashboard;
 pub mod files;
@@ -199,6 +200,10 @@ use schedules::{
     schedules_page, api_list_schedules, api_create_schedule, api_update_schedule,
     api_delete_schedule, api_toggle_schedule, api_list_runs, api_run_now,
 };
+use backups::{
+    backups_page, api_list_backups, api_create_backup, api_delete_backup, api_download_backup,
+    api_restore_backup,
+};
 use ws::{console_ws, stats_ws};
 
 pub fn create_router(state: AppState) -> Router {
@@ -230,6 +235,13 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/servers/{id}/schedules/{sid}/toggle", post(api_toggle_schedule))
         .route("/api/servers/{id}/schedules/{sid}/runs", get(api_list_runs))
         .route("/api/servers/{id}/schedules/{sid}/run-now", post(api_run_now))
+        // Backups
+        .route("/servers/{id}/backups", get(backups_page))
+        .route("/api/servers/{id}/backups", get(api_list_backups))
+        .route("/api/servers/{id}/backups/create", post(api_create_backup))
+        .route("/api/servers/{id}/backups/restore", post(api_restore_backup))
+        .route("/api/servers/{id}/backups/{filename}/download", get(api_download_backup))
+        .route("/api/servers/{id}/backups/{filename}/delete", post(api_delete_backup))
         // Server actions
         .route("/api/servers/{id}/start", post(start_server))
         .route("/api/servers/{id}/stop", post(stop_server))

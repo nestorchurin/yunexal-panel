@@ -234,6 +234,19 @@ pub struct ServerAuditQuery {
     pub search: Option<String>,
 }
 
+/// 0 = regular, 1 = admin, 2 = root
+async fn viewer_role_level(state: &crate::state::AppState, jar: &axum_extra::extract::cookie::PrivateCookieJar) -> u8 {
+    if auth::is_root_session(state, jar).await { 2 }
+    else if auth::is_admin_session(state, jar).await { 1 }
+    else { 0 }
+}
+
+fn actor_role_level(role: &str, admin_roles: &std::collections::HashSet<String>) -> u8 {
+    if role == "root" { 2 }
+    else if admin_roles.contains(role) { 1 }
+    else { 0 }
+}
+
 pub async fn api_server_audit_list(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
@@ -273,9 +286,14 @@ pub async fn api_server_audit_list(
         .await
         .unwrap_or_default();
     let show_ip = auth::session_has_permission(&state, &jar, "audit.view_ip").await;
+    let viewer_level = viewer_role_level(&state, &jar).await;
+    let admin_roles = db::get_admin_role_names(&state.db).await;
     let entries_json: Vec<serde_json::Value> = entries.into_iter().map(|e| {
         let mut v = serde_json::to_value(&e).unwrap_or_default();
-        if !show_ip { v["ip"] = serde_json::Value::Null; }
+        let actor_level = actor_role_level(&e.actor_role, &admin_roles);
+        if !show_ip || actor_level > viewer_level {
+            v["ip"] = serde_json::Value::Null;
+        }
         v
     }).collect();
 
@@ -330,6 +348,10 @@ pub async fn api_server_audit_download(
         }
     };
 
+    let show_ip = auth::session_has_permission(&state, &jar, "audit.view_ip").await;
+    let viewer_level = viewer_role_level(&state, &jar).await;
+    let admin_roles = db::get_admin_role_names(&state.db).await;
+
     let mut body = String::new();
     body.push_str(&format!("# Server audit export\n# server_id={}\n", db_id));
 
@@ -337,11 +359,14 @@ pub async fn api_server_audit_download(
         body.push_str("# No audit entries found\n");
     } else {
         for e in entries {
+            let actor_level = actor_role_level(&e.actor_role, &admin_roles);
+            let ip_str = if show_ip && actor_level <= viewer_level { e.ip.as_str() } else { "[hidden]" };
             body.push_str(&format!(
-                "[{created_at}] actor=\"{actor}\" ip=\"{ip}\" action=\"{action}\" target=\"{target}\" detail=\"{detail}\" ua=\"{ua}\"\n",
+                "[{created_at}] actor=\"{actor}\" role=\"{role}\" ip=\"{ip}\" action=\"{action}\" target=\"{target}\" detail=\"{detail}\" ua=\"{ua}\"\n",
                 created_at = sanitize_audit_log_field(&e.created_at),
                 actor = sanitize_audit_log_field(&e.actor),
-                ip = sanitize_audit_log_field(&e.ip),
+                role = sanitize_audit_log_field(&e.actor_role),
+                ip = sanitize_audit_log_field(ip_str),
                 action = sanitize_audit_log_field(&e.action),
                 target = sanitize_audit_log_field(&e.target),
                 detail = sanitize_audit_log_field(&e.detail),

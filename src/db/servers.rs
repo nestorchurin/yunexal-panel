@@ -438,6 +438,26 @@ pub async fn update_server_max_schedule_runs(pool: &Pool<Sqlite>, server_id: i64
     Ok(())
 }
 
+pub async fn get_server_max_backups(pool: &Pool<Sqlite>, server_id: i64) -> i64 {
+    sqlx::query_scalar::<_, i64>("SELECT max_backups FROM servers WHERE id = ?")
+        .bind(server_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(10)
+}
+
+pub async fn update_server_max_backups(pool: &Pool<Sqlite>, server_id: i64, max_backups: i64) -> Result<()> {
+    sqlx::query("UPDATE servers SET max_backups = ? WHERE id = ?")
+        .bind(max_backups)
+        .bind(server_id)
+        .execute(pool)
+        .await
+        .context("Failed to update max_backups")?;
+    Ok(())
+}
+
 /// Updates only the name for an existing container, preserving owner_id.
 pub async fn update_server_name_only(
     pool: &Pool<Sqlite>,

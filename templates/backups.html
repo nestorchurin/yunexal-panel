@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    {% include "_head_common.html" %}
+    <title>{{ container.name }} - Backups</title>
+    <link href="/static/css/base.css?v=2" rel="stylesheet">
+</head>
+<body>
+    <div class="yu-layout">
+        {% include "_server_sidebar.html" %}
+        <main class="yu-main">
+            {% include "_mobile_topbar.html" %}
+            <div class="yu-content">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;gap:.75rem;flex-wrap:wrap;">
+                    <div style="display:flex;align-items:center;gap:.75rem;">
+                        <h1 style="font-size:1.25rem;font-weight:700;letter-spacing:-.02em;margin:0;">Backups</h1>
+                        <span id="b-counter" style="font-size:.78rem;color:var(--muted);"></span>
+                    </div>
+                    {% if can_write %}
+                    <div style="display:flex;gap:.5rem;">
+                        <button id="b-upload-btn" class="btn-yu btn-yu-ghost" style="font-size:.825rem;" onclick="openRestoreModal()">
+                            <i class="bi bi-upload"></i> Upload Backup
+                        </button>
+                        <button id="b-open-btn" class="btn-yu btn-yu-primary" style="font-size:.825rem;" onclick="openCreateModal()">
+                            <i class="bi bi-plus-lg"></i> Create Backup
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <p style="font-size:.8rem;color:var(--muted);margin-bottom:1.25rem;">
+                    <i class="bi bi-info-circle" style="margin-right:.3rem;"></i>
+                    Backups are stored adjacent to your server volume. You can also schedule automatic backups from the
+                    <a href="/servers/{{id}}/schedules" style="color:#a78bfa;" onclick="if(typeof serverSwitchTab==='function'){serverSwitchTab('/servers/{{id}}/schedules',null);return false;}">Schedules</a> tab.
+                </p>
+
+                <div id="backup-list">
+                    <div class="yu-panel" style="padding:2.5rem;text-align:center;color:var(--muted);">
+                        <i class="bi bi-hourglass-split" style="font-size:1.5rem;opacity:.35;"></i>
+                        <p style="margin:.75rem 0 0;font-size:.875rem;">Loading backups…</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    {% include "_scripts_server.html" %}
+    <script nonce="{{nonce}}">window.YU_SERVER_ID = '{{id}}'; window.YU_IS_ADMIN = {% if is_admin %}true{% else %}false{% endif %}; window.YU_MAX_BACKUPS = {{max_backups}}; window.YU_CAN_WRITE = {% if can_write %}true{% else %}false{% endif %};</script>
+    <script src="/static/js/backups.js?v=6" nonce="{{nonce}}"></script>
+    {% include "_script_footer.html" %}
+</body>
+</html>

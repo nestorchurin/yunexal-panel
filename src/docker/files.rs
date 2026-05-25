@@ -95,6 +95,15 @@ pub fn volume_dir_to_path(volume_dir: &str) -> std::path::PathBuf {
     }
 }
 
+/// Returns the backup directory for a container volume.
+/// Stored adjacent to the volume, never inside it:
+///   /data/servers/abc123  →  /data/servers/abc123_backups
+pub fn backup_dir_for_volume(volume_path: &std::path::Path) -> std::path::PathBuf {
+    let mut s = volume_path.to_string_lossy().into_owned();
+    s.push_str("_backups");
+    std::path::PathBuf::from(s)
+}
+
 // ── Volume directory resolution ──────────────────────────────────────────────
 
 /// Returns the volume path for this container as a String.
