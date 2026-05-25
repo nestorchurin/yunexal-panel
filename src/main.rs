@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use tracing::{info, warn};
 use axum_extra::extract::cookie::Key;
-use yunexal_panel::{crypto, db, docker, handlers, password};
+use yunexal_panel::{crypto, db, docker, handlers, password, scheduler, sftp};
 use yunexal_panel::state::AppState;
 
 async fn auto_migrate_legacy_labels(pool: &sqlx::Pool<sqlx::Sqlite>, docker_client: &bollard::Docker) {
@@ -107,6 +107,16 @@ async fn main() -> Result<()> {
         .await
         .context("DB encryption key check failed — run: yunexal-setup --rekey --old-secret <prev>")?;
 
+    match db::migrate_legacy_encrypted_values(&pool, &db_key).await {
+        Ok(count) if count > 0 => {
+            info!("DB encryption migration applied to {} legacy row(s).", count);
+        }
+        Ok(_) => {}
+        Err(e) => {
+            warn!("DB encryption migration skipped due to error: {}", e);
+        }
+    }
+
     // 5. Initialize Docker Client
     let docker_client = docker::get_docker_client().await.context("Docker client init failed")?;
 
@@ -118,7 +128,52 @@ async fn main() -> Result<()> {
     auto_migrate_legacy_labels(&pool, &docker_client).await;
 
     // 6. Create App State
-    let state = AppState::new(pool, docker_client, cookie_key, db_key, listen_addr.clone());
+    let state = AppState::new(pool.clone(), docker_client.clone(), cookie_key, db_key, listen_addr.clone());
+
+    // Spawn background scheduler
+    {
+        let sched_pool = pool.clone();
+        let sched_docker = docker_client.clone();
+        tokio::spawn(async move {
+            scheduler::start(sched_pool, sched_docker).await;
+        });
+    }
+
+    // 7. Start SFTP server (if enabled)
+    if db::get_panel_setting_bool(&pool, "sftp_enabled").await {
+        let sftp_port: u16 = db::get_panel_setting(&pool, "sftp_port")
+            .await
+            .parse()
+            .unwrap_or(2022);
+
+        let host_key_pem = match db::get_sftp_host_key(&pool, &db_key).await {
+            Some(pem) => pem,
+            None => {
+                match sftp::generate_host_key() {
+                    Ok(pem) => {
+                        if let Err(e) = db::set_sftp_host_key(&pool, &pem, &db_key).await {
+                            warn!("Could not persist SFTP host key: {e}");
+                        }
+                        pem
+                    }
+                    Err(e) => {
+                        warn!("SFTP disabled: could not generate host key: {e}");
+                        String::new()
+                    }
+                }
+            }
+        };
+
+        if !host_key_pem.is_empty() {
+            let sftp_pool = pool.clone();
+            let sftp_docker = docker_client.clone();
+            tokio::spawn(async move {
+                if let Err(e) = sftp::start(sftp_pool, sftp_docker, sftp_port, host_key_pem).await {
+                    warn!("SFTP server error: {e}");
+                }
+            });
+        }
+    }
 
     // 7. Setup Router
     let app = handlers::create_router(state);

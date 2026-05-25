@@ -1,8 +1,8 @@
-/* Console page */
-body { overflow: hidden; }
-.yu-layout { display: flex; height: 100vh; }
-.yu-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
-.yu-content {
+/* Console page — scoped so SPA nav to other tabs doesn't inherit these globals */
+body.yu-console-page { overflow: hidden; }
+body.yu-console-page .yu-layout { display: flex; height: 100vh; }
+body.yu-console-page .yu-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+body.yu-console-page .yu-content {
     flex: 1;
     padding: 1rem 1.25rem;
     display: flex;
@@ -79,10 +79,27 @@ button.con-btn-start   { background: rgba(16,185,129,.12);  color: #10b981; bord
 button.con-btn-restart { background: rgba(99,102,241,.1);   color: #818cf8; border-color: rgba(99,102,241,.2); }
 button.con-btn-stop    { background: rgba(245,158,11,.1);   color: #f59e0b; border-color: rgba(245,158,11,.2); }
 button.con-btn-kill    { background: rgba(239,68,68,.1);    color: #ef4444; border-color: rgba(239,68,68,.2); }
+button.con-btn-term   { background: rgba(124,58,237,.1);   color: #a78bfa; border-color: rgba(124,58,237,.2); }
+button.con-btn-term.active { background: rgba(124,58,237,.25); color: #c4b5fd; border-color: rgba(124,58,237,.4); }
 button.con-btn-start:hover:not(:disabled)   { background: rgba(16,185,129,.22); }
 button.con-btn-restart:hover:not(:disabled) { background: rgba(99,102,241,.2); }
 button.con-btn-stop:hover:not(:disabled)    { background: rgba(245,158,11,.2); }
 button.con-btn-kill:hover:not(:disabled)    { background: rgba(239,68,68,.2); }
+button.con-btn-term:hover:not(:disabled)    { background: rgba(124,58,237,.2); }
+
+.con-btn-sep {
+    width: 1px;
+    height: 18px;
+    background: var(--bdr);
+    flex-shrink: 0;
+}
+
+/* ── Terminal-only mode (mobile-only button) ── */
+.con-grid.con-term-only { grid-template-columns: 1fr; }
+.con-grid.con-term-only .con-right-col { display: none; }
+@media (min-width: 992px) {
+    #btn-term-only, .con-term-sep { display: none; }
+}
 
 /* ── Main grid ── */
 .con-grid {
@@ -306,6 +323,7 @@ button.con-btn-kill:hover:not(:disabled)    { background: rgba(239,68,68,.2); }
     .con-terminal-col { flex: none; min-width: 0; }
     .con-term-win { height: clamp(260px, 45svh, 460px); flex: none; overflow: hidden; }
     .con-right-col { overflow-y: visible; }
+    .con-grid.con-term-only .con-term-win { height: clamp(400px, 75svh, 680px); }
     /* Icon-only buttons on all mobile — always fit regardless of phone width */
     button.con-btn span { display: none; }
     button.con-btn { padding: .42rem .6rem; }

@@ -91,6 +91,9 @@ pub struct FilesTemplate {
     pub can_members: bool,
     pub active_tab: &'static str,
     pub nonce: String,
+    pub sftp_enabled: bool,
+    pub sftp_port: String,
+    pub sftp_username_hint: String,
 }
 
 #[derive(Template)]
@@ -114,10 +117,15 @@ pub struct SettingsTemplate {
     pub id: i64,
     pub container: ContainerInfo,
     pub is_admin: bool,
+    pub can_edit_keys: bool,
     pub can_members: bool,
     pub active_tab: &'static str,
     pub nonce: String,
     pub env: String,
+    pub env_permissions: String,
+    pub sftp_enabled: bool,
+    pub sftp_port: String,
+    pub sftp_username_hint: String,
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +159,17 @@ pub struct ServerAuditTemplate {
     pub id: i64,
     pub container: ContainerInfo,
     pub can_members: bool,
+    pub active_tab: &'static str,
+    pub nonce: String,
+}
+
+#[derive(Template)]
+#[template(path = "schedules.html")]
+pub struct SchedulesTemplate {
+    pub id: i64,
+    pub container: ContainerInfo,
+    pub can_members: bool,
+    pub can_write: bool,
     pub active_tab: &'static str,
     pub nonce: String,
 }
@@ -205,6 +224,8 @@ pub struct AdminTemplate {
     pub settings_storage_unsafe_override: bool,
     pub panel_accent: String,
     pub panel_name: String,
+    pub settings_sftp_enabled: bool,
+    pub settings_sftp_port: String,
 }
 
 #[derive(Template)]
@@ -237,6 +258,8 @@ pub struct ContainerEditInfo {
     /// Bandwidth limit in Mbit/s (empty = unlimited).
     pub bandwidth_mbit: String,
     pub owner_id: i64,
+    /// Max schedule run history entries kept per server.
+    pub max_schedule_runs: String,
 }
 
 // ── Form / Query structs ──────────────────────────────────────────────────────
@@ -256,6 +279,9 @@ pub struct CreateServerForm {
     /// Custom storage path for this container's volume. Empty = use panel default.
     #[serde(default)]
     pub container_storage_path: String,
+    /// Max schedule run history kept per server.
+    #[serde(default)]
+    pub max_schedule_runs: i64,
 }
 
 #[derive(Deserialize)]
@@ -401,6 +427,8 @@ pub struct EditContainerForm {
     pub bandwidth_mbit: String,
     pub ports: String,
     pub env: String,
+    #[serde(default)]
+    pub max_schedule_runs: i64,
 }
 
 #[derive(Deserialize)]
@@ -414,5 +442,11 @@ pub struct ExtractForm {
 pub struct ArchiveForm {
     pub dir: String,
     pub name: String,
+    pub paths: String,
+}
+
+#[derive(Deserialize)]
+pub struct DownloadBulkForm {
+    pub dir: String,
     pub paths: String,
 }

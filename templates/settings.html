@@ -14,11 +14,60 @@
             <div class="yu-content">
                 <h1 style="font-size:1.25rem;font-weight:700;letter-spacing:-.02em;margin-bottom:1.5rem;">Settings</h1>
 
+                <!-- SFTP Access -->
+                {% if sftp_enabled %}
+                <div class="yu-panel" style="margin-bottom:1rem;">
+                    <div class="yu-panel-hd"><i class="bi bi-hdd-network text-muted"></i> SFTP Access</div>
+                    <div class="yu-panel-bd" style="padding:0;">
+                        <div style="padding:.85rem 1rem;display:grid;grid-template-columns:max-content 1fr;gap:.45rem .85rem;font-size:.83rem;align-items:center;">
+                            <span style="color:var(--muted);font-weight:500;">Host</span>
+                            <span style="font-family:monospace;color:var(--muted);font-style:italic;">your-server-ip or sftp-hostname</span>
+                            <span style="color:var(--muted);font-weight:500;">Port</span>
+                            <span style="font-family:monospace;">{{ sftp_port }}</span>
+                            <span style="color:var(--muted);font-weight:500;">Username</span>
+                            <code style="font-size:.83rem;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.2);padding:.1rem .4rem;border-radius:5px;color:#c4b5fd;">{{ sftp_username_hint }}</code>
+                            <span style="color:var(--muted);font-weight:500;">Password</span>
+                            <span style="color:var(--muted);font-style:italic;">your panel password</span>
+                        </div>
+                        <div style="border-top:1px solid var(--bdr);padding:.65rem 1rem;display:flex;flex-direction:column;gap:.45rem;">
+                            <p style="font-size:.775rem;color:var(--muted);margin:0;line-height:1.55;">
+                                <i class="bi bi-shield-check" style="color:#a78bfa;"></i>
+                                <strong style="color:var(--txt);">Path isolation:</strong> your session is restricted to this server's volume — no access outside it.
+                            </p>
+                            <p style="font-size:.775rem;color:var(--muted);margin:0;line-height:1.55;">
+                                <i class="bi bi-cloud" style="color:#60a5fa;"></i>
+                                <strong style="color:var(--txt);">Cloudflare:</strong>
+                                <strong>Spectrum</strong> (paid) — add a TCP rule on port {{ sftp_port }}, use your proxied domain transparently. &nbsp;|&nbsp;
+                                <strong>DNS-only</strong> (free) — create an <code style="font-size:.75rem;">sftp.yourdomain.com</code> A record pointed directly at your server IP (grey cloud, no proxy).
+                            </p>
+                            <p style="font-size:.775rem;color:var(--muted);margin:0;line-height:1.55;">
+                                <i class="bi bi-info-circle" style="color:#94a3b8;"></i>
+                                Compatible with any standard SFTP client — FileZilla, WinSCP, Cyberduck, <code style="font-size:.75rem;">sftp</code> CLI.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="yu-panel" style="margin-bottom:1rem;border-color:rgba(148,163,184,.15);">
+                    <div class="yu-panel-hd" style="color:var(--muted);"><i class="bi bi-hdd-network"></i> SFTP Access</div>
+                    <div class="yu-panel-bd" style="padding:.75rem 1rem;">
+                        <p style="font-size:.825rem;color:var(--muted);margin:0;">
+                            SFTP is disabled. An admin can enable it in
+                            {% if is_admin %}
+                            <a href="/admin/settings" style="color:#a78bfa;">Admin → Settings → Operations</a>.
+                            {% else %}
+                            Admin → Settings → Operations.
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- Environment Variables -->
                 <div class="yu-panel" style="margin-bottom:1rem;">
                     <div class="yu-panel-hd" style="justify-content:space-between;">
                         <span><i class="bi bi-code-slash text-muted"></i> Environment Variables</span>
-                        {% if is_admin %}
+                        {% if can_edit_keys %}
                         <button class="btn-yu btn-yu-ghost" style="font-size:.78rem;padding:.3rem .65rem;" onclick="envAddRow()">
                             <i class="bi bi-plus-lg"></i> Add variable
                         </button>
@@ -28,10 +77,10 @@
                         <div id="env-list" style="display:flex;flex-direction:column;"></div>
                         <div style="padding:.75rem 1rem;border-top:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;gap:.75rem;">
                             <p style="font-size:.75rem;color:var(--muted);margin:0;">
-                                {% if is_admin %}
-                                Admins can add, rename and delete variables. Changes will recreate the container.
+                                {% if can_edit_keys %}
+                                Use the <i class="bi bi-eye"></i> and <i class="bi bi-pencil"></i> buttons to control member access per variable. Changes recreate the container.
                                 {% else %}
-                                You can edit values. Only admins can add or remove variables.
+                                You can edit variables marked as editable. Some values may be hidden.
                                 {% endif %}
                             </p>
                             <button class="btn-yu btn-yu-primary" style="white-space:nowrap;" onclick="saveEnv()">
@@ -80,13 +129,32 @@
                     </div>
                 </div>
             </div>
+            <textarea id="env-raw" style="display:none">{{ env }}</textarea>
+            <textarea id="env-perms-raw" style="display:none">{{ env_permissions }}</textarea>
         </main>
     </div>
     {% include "_scripts_server.html" %}
-    <textarea id="env-raw" style="display:none">{{ env }}</textarea>
     <script nonce="{{nonce}}">
-    {% if is_admin %}const _isAdmin = true;{% else %}const _isAdmin = false;{% endif %}
-    const _rawEnv = document.getElementById('env-raw').value;
+    {% if can_edit_keys %}const _isAdmin = true;{% else %}const _isAdmin = false;{% endif %}
+    let _rawEnv = '';
+    let _envPerms = {};
+
+    function readRawEnvFromDom() {
+        const node = document.getElementById('env-raw');
+        return node ? String(node.value || '') : '';
+    }
+
+    function readEnvPermsFromDom() {
+        const el = document.getElementById('env-perms-raw');
+        if (!el) return {};
+        try { return JSON.parse(el.value || '{}'); } catch(e) { return {}; }
+    }
+
+    function setRawEnv(nextRaw) {
+        _rawEnv = String(nextRaw || '');
+        const node = document.getElementById('env-raw');
+        if (node) node.value = _rawEnv;
+    }
 
     function showToast(type, msg) {
         let tc = document.getElementById('st-toast-container');
@@ -107,45 +175,95 @@
         setTimeout(() => { el.style.opacity='0'; el.style.transform='translateX(20px)'; setTimeout(() => el.remove(), 280); }, 3400);
     }
 
+    function escEnv(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/'/g,'&#39;');
+    }
+
+    function _permBtn(key, field, active) {
+        const isVis = field === 'user_visible';
+        const icon = isVis ? (active ? 'bi-eye-fill' : 'bi-eye-slash') : (active ? 'bi-pencil-fill' : 'bi-pencil');
+        const title = isVis
+            ? (active ? 'Visible to members' : 'Hidden from members')
+            : (active ? 'Editable by members' : 'Read-only for members');
+        const color = active ? '#10b981' : 'var(--muted)';
+        return `<button title="${escEnv(title)}" data-key="${escEnv(key)}" onclick="envTogglePerm(this,'${field}')" style="background:none;border:1px solid var(--bdr);cursor:pointer;color:${color};font-size:.82rem;padding:.25rem .4rem;border-radius:5px;flex-shrink:0;transition:color .15s;line-height:1;"><i class="bi ${icon}"></i></button>`;
+    }
+
     function envRenderList() {
         const list = document.getElementById('env-list');
         if (!list) return;
         list.innerHTML = '';
-        const pairs = _rawEnv.split('\n').filter(l => l.includes('='));
+        const pairs = _rawEnv.split(/\r?\n/).map(l => l.trim()).filter(l => l.includes('='));
         if (pairs.length === 0) {
             list.innerHTML = '<div style="padding:.85rem 1rem;font-size:.8rem;color:var(--muted);">No environment variables set.</div>';
             return;
         }
+        let hasRows = false;
         pairs.forEach((line, idx) => {
             const eqIdx = line.indexOf('=');
             const k = line.slice(0, eqIdx);
             const v = line.slice(eqIdx + 1);
-            const row = document.createElement('div');
-            row.style.cssText = 'display:grid;grid-template-columns:minmax(140px,1fr) 2fr auto;gap:.5rem;align-items:center;padding:.45rem 1rem;border-bottom:1px solid var(--bdr);';
-            row.dataset.idx = idx;
-            row.innerHTML = `
-                <input data-role="key" type="text" value="${escEnv(k)}"
-                    style="font-family:monospace;font-size:.78rem;padding:.3rem .5rem;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);color:${_isAdmin ? 'var(--txt)' : 'var(--muted)'};width:100%;"
-                    ${_isAdmin ? '' : 'readonly'} spellcheck="false">
-                <input data-role="val" type="text" value="${escEnv(v)}"
-                    style="font-family:monospace;font-size:.78rem;padding:.3rem .5rem;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);color:var(--txt);width:100%;"
-                    spellcheck="false">
-                ${_isAdmin ? `<button title="Remove" onclick="envRemoveRow(this)"
-                    style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:.9rem;padding:.2rem .35rem;border-radius:5px;flex-shrink:0;"><i class="bi bi-trash3"></i></button>` : '<span></span>'}`;
-            list.appendChild(row);
-        });
-    }
+            const perm = _envPerms[k] || {user_editable: false, user_visible: true};
 
-    function escEnv(s) {
-        return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+            if (_isAdmin) {
+                hasRows = true;
+                const row = document.createElement('div');
+                row.style.cssText = 'display:grid;grid-template-columns:minmax(140px,1fr) 2fr auto auto auto;gap:.5rem;align-items:center;padding:.45rem 1rem;border-bottom:1px solid var(--bdr);';
+                row.dataset.idx = idx;
+                row.dataset.key = k;
+                row.innerHTML = `
+                    <input data-role="key" type="text" value="${escEnv(k)}"
+                        style="font-family:monospace;font-size:.78rem;padding:.3rem .5rem;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);color:var(--txt);width:100%;"
+                        spellcheck="false">
+                    <input data-role="val" type="text" value="${escEnv(v)}"
+                        style="font-family:monospace;font-size:.78rem;padding:.3rem .5rem;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);color:var(--txt);width:100%;"
+                        spellcheck="false">
+                    ${_permBtn(k, 'user_visible', perm.user_visible)}
+                    ${_permBtn(k, 'user_editable', perm.user_editable)}
+                    <button title="Remove" onclick="envRemoveRow(this)"
+                        style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:.9rem;padding:.2rem .35rem;border-radius:5px;flex-shrink:0;"><i class="bi bi-trash3"></i></button>`;
+                list.appendChild(row);
+            } else {
+                const visible = perm.user_visible;
+                const editable = perm.user_editable;
+                if (!visible && !editable) return;
+                hasRows = true;
+                const row = document.createElement('div');
+                row.style.cssText = 'display:grid;grid-template-columns:minmax(140px,1fr) 2fr;gap:.5rem;align-items:center;padding:.45rem 1rem;border-bottom:1px solid var(--bdr);';
+                row.dataset.idx = idx;
+                row.dataset.key = k;
+                let valInput;
+                if (!visible && editable) {
+                    valInput = `<input data-role="val" type="password" placeholder="••••••••" value=""
+                        style="font-family:monospace;font-size:.78rem;padding:.3rem .5rem;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid rgba(124,58,237,.4);color:var(--txt);width:100%;"
+                        spellcheck="false">`;
+                } else if (editable) {
+                    valInput = `<input data-role="val" type="text" value="${escEnv(v)}"
+                        style="font-family:monospace;font-size:.78rem;padding:.3rem .5rem;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid rgba(124,58,237,.4);color:var(--txt);width:100%;"
+                        spellcheck="false">`;
+                } else {
+                    valInput = `<input data-role="val" type="text" value="${escEnv(v)}" readonly
+                        style="font-family:monospace;font-size:.78rem;padding:.3rem .5rem;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);color:var(--muted);width:100%;"
+                        spellcheck="false">`;
+                }
+                row.innerHTML = `
+                    <input data-role="key" type="text" value="${escEnv(k)}" readonly
+                        style="font-family:monospace;font-size:.78rem;padding:.3rem .5rem;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);color:var(--muted);width:100%;"
+                        spellcheck="false">
+                    ${valInput}`;
+                list.appendChild(row);
+            }
+        });
+        if (!hasRows) {
+            list.innerHTML = '<div style="padding:.85rem 1rem;font-size:.8rem;color:var(--muted);">No environment variables set.</div>';
+        }
     }
 
     function envAddRow() {
         const list = document.getElementById('env-list');
-        // Remove empty-state placeholder if present
         if (list.children.length === 1 && !list.children[0].dataset.idx) list.innerHTML = '';
         const row = document.createElement('div');
-        row.style.cssText = 'display:grid;grid-template-columns:minmax(140px,1fr) 2fr auto;gap:.5rem;align-items:center;padding:.45rem 1rem;border-bottom:1px solid var(--bdr);';
+        row.style.cssText = 'display:grid;grid-template-columns:minmax(140px,1fr) 2fr auto auto auto;gap:.5rem;align-items:center;padding:.45rem 1rem;border-bottom:1px solid var(--bdr);';
         row.innerHTML = `
             <input data-role="key" type="text" placeholder="KEY"
                 style="font-family:monospace;font-size:.78rem;padding:.3rem .5rem;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid rgba(124,58,237,.4);color:var(--txt);width:100%;"
@@ -153,6 +271,8 @@
             <input data-role="val" type="text" placeholder="value"
                 style="font-family:monospace;font-size:.78rem;padding:.3rem .5rem;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);color:var(--txt);width:100%;"
                 spellcheck="false">
+            <button disabled title="Save to set permissions" style="background:none;border:1px solid var(--bdr);cursor:not-allowed;color:var(--muted);opacity:.35;font-size:.82rem;padding:.25rem .4rem;border-radius:5px;flex-shrink:0;line-height:1;"><i class="bi bi-eye-fill"></i></button>
+            <button disabled title="Save to set permissions" style="background:none;border:1px solid var(--bdr);cursor:not-allowed;color:var(--muted);opacity:.35;font-size:.82rem;padding:.25rem .4rem;border-radius:5px;flex-shrink:0;line-height:1;"><i class="bi bi-pencil-fill"></i></button>
             <button title="Remove" onclick="envRemoveRow(this)"
                 style="background:none;border:none;cursor:pointer;color:#ef4444;font-size:.9rem;padding:.2rem .35rem;border-radius:5px;flex-shrink:0;"><i class="bi bi-trash3"></i></button>`;
         list.appendChild(row);
@@ -161,6 +281,26 @@
 
     function envRemoveRow(btn) {
         btn.closest('div[data-idx], div[style]').remove();
+    }
+
+    async function envTogglePerm(btn, field) {
+        const key = btn.dataset.key || btn.closest('[data-key]')?.dataset.key;
+        if (!key) return;
+        const perm = _envPerms[key] || {user_editable: false, user_visible: true};
+        perm[field] = !perm[field];
+        _envPerms[key] = perm;
+        envRenderList();
+        try {
+            const r = await fetch(`/api/servers/{{id}}/env/permissions`, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({key, editable: perm.user_editable, visible: perm.user_visible})
+            });
+            const d = await r.json();
+            if (!r.ok) showToast('danger', d.error || 'Failed to update permission');
+        } catch(e) {
+            showToast('danger', 'Network error');
+        }
     }
 
     async function saveEnv() {
@@ -184,7 +324,8 @@
             const d = await r.json();
             if (r.ok) {
                 showToast('success', 'ENV saved — container recreated');
-                document.getElementById('env-raw').value = env;
+                setRawEnv(d.env || env);
+                envRenderList();
             } else {
                 showToast('danger', d.error || 'Failed to save ENV');
             }
@@ -194,11 +335,43 @@
         if (btn) { btn.disabled = false; btn.innerHTML = orig; }
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', envRenderList, { once: true });
-    } else {
-        envRenderList();
+    async function refreshEnvFromServer(showErrors) {
+        try {
+            const r = await fetch(`/api/servers/{{id}}/env`, { credentials: 'same-origin' });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok || !d.ok) {
+                if (showErrors) showToast('danger', d.error || 'Failed to load ENV');
+                return;
+            }
+            setRawEnv(d.env || '');
+            if (d.permissions && typeof d.permissions === 'object') {
+                _envPerms = d.permissions;
+            }
+            envRenderList();
+        } catch (_e) {
+            if (showErrors) showToast('danger', 'Network error while loading ENV');
+        }
     }
+
+    function initEnvPage() {
+        _envPerms = readEnvPermsFromDom();
+        setRawEnv(readRawEnvFromDom());
+        envRenderList();
+        refreshEnvFromServer(false);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initEnvPage, { once: true });
+    } else {
+        initEnvPage();
+    }
+
+    window.addEventListener('yu:page-shown', (ev) => {
+        const path = String(ev?.detail?.path || '');
+        if (/^\/servers\/\d+\/settings$/.test(path)) {
+            refreshEnvFromServer(false);
+        }
+    });
 
     async function doFactoryReset() {
         const pw = document.getElementById('reset-password').value;

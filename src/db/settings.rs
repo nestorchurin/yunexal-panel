@@ -45,3 +45,18 @@ pub async fn set_service_api_key(pool: &Pool<Sqlite>, value: &str, db_key: &[u8;
     set_panel_setting(pool, "service_api_key", &encrypted).await
 }
 
+/// Reads and decrypts the SFTP host key (OpenSSH PEM string).
+pub async fn get_sftp_host_key(pool: &Pool<Sqlite>, db_key: &[u8; 32]) -> Option<String> {
+    let raw = get_panel_setting(pool, "sftp_host_key").await;
+    if raw.is_empty() {
+        return None;
+    }
+    crypto::decrypt_if_encrypted(&raw, db_key).ok()
+}
+
+/// Encrypts and stores the SFTP host key.
+pub async fn set_sftp_host_key(pool: &Pool<Sqlite>, pem: &str, db_key: &[u8; 32]) -> Result<()> {
+    let encrypted = crypto::encrypt(pem, db_key);
+    set_panel_setting(pool, "sftp_host_key", &encrypted).await
+}
+

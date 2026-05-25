@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    {% include "_head_common.html" %}
+    <title>{{ container.name }} - Schedules</title>
+    <link href="/static/css/base.css?v=2" rel="stylesheet">
+</head>
+<body>
+    <div class="yu-layout">
+        {% include "_server_sidebar.html" %}
+        <main class="yu-main">
+            {% include "_mobile_topbar.html" %}
+            <div class="yu-content">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;gap:.75rem;flex-wrap:wrap;">
+                    <h1 style="font-size:1.25rem;font-weight:700;letter-spacing:-.02em;margin:0;">Schedules</h1>
+                    {% if can_write %}
+                    <button class="btn-yu btn-yu-primary" style="font-size:.825rem;" onclick="openModal()">
+                        <i class="bi bi-plus-lg"></i> New Schedule
+                    </button>
+                    {% endif %}
+                </div>
+
+                <div id="sched-list">
+                    <div class="yu-panel" style="padding:2.5rem;text-align:center;color:var(--muted);">
+                        <i class="bi bi-hourglass-split" style="font-size:1.5rem;opacity:.35;"></i>
+                        <p style="margin:.75rem 0 0;font-size:.875rem;">Loading schedules…</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Create / Edit Modal -->
+    <div class="modal fade" id="schedModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:520px;">
+            <div class="modal-content" style="background:#111119;border:1px solid rgba(124,58,237,.25);border-radius:14px;">
+                <div class="modal-header" style="border-bottom:1px solid rgba(255,255,255,.07);">
+                    <h6 class="modal-title" id="modal-title" style="font-weight:600;color:var(--txt);"><i class="bi bi-calendar-event me-2" style="color:#a78bfa;"></i>New Schedule</h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" style="display:flex;flex-direction:column;gap:1rem;">
+                    <div>
+                        <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Name</label>
+                        <input type="text" id="m-name" class="form-input" placeholder="Daily backup">
+                    </div>
+                    <div>
+                        <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Cron Expression</label>
+                        <input type="text" id="m-cron" class="form-input" placeholder="0 3 * * *" oninput="updateCronPreview()">
+                        <p id="m-cron-preview" style="font-size:.78rem;color:#a78bfa;margin:.35rem 0 0;min-height:1.2em;"></p>
+                    </div>
+                    <div>
+                        <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Task Type</label>
+                        <select id="m-type" class="form-input" onchange="onTypeChange()">
+                            <option value="command">Command</option>
+                            <option value="power">Power Action</option>
+                            <option value="backup">Backup</option>
+                        </select>
+                    </div>
+                    <!-- command payload -->
+                    <div id="payload-command">
+                        <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Shell Command</label>
+                        <input type="text" id="m-cmd" class="form-input" placeholder="echo hello">
+                        <p style="font-size:.75rem;color:var(--muted);margin:.3rem 0 0;">Runs via <code style="font-size:.73rem;">sh -c</code> inside the container.</p>
+                    </div>
+                    <!-- power payload -->
+                    <div id="payload-power" style="display:none;">
+                        <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Action</label>
+                        <select id="m-action" class="form-input">
+                            <option value="start">Start</option>
+                            <option value="stop">Stop</option>
+                            <option value="restart">Restart</option>
+                            <option value="kill">Kill</option>
+                        </select>
+                    </div>
+                    <!-- backup payload -->
+                    <div id="payload-backup" style="display:none;">
+                        <label class="form-label" style="font-size:.78rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">Filename prefix</label>
+                        <input type="text" id="m-prefix" class="form-input" placeholder="backup">
+                        <p style="font-size:.75rem;color:var(--muted);margin:.3rem 0 0;">Saved to <code style="font-size:.73rem;">backups/&lt;prefix&gt;-&lt;timestamp&gt;.tar.gz</code> in volume.</p>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:.6rem;">
+                        <input type="checkbox" id="m-enabled" checked style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;">
+                        <label for="m-enabled" style="font-size:.85rem;cursor:pointer;margin:0;">Enabled</label>
+                    </div>
+                </div>
+                <div class="modal-footer d-flex gap-2 justify-content-end" style="border-top:1px solid rgba(255,255,255,.07);">
+                    <button type="button" class="btn-yu btn-yu-ghost" style="width:auto;" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" id="m-save-btn" class="btn-yu btn-yu-primary" style="width:auto;" onclick="saveSchedule()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% include "_scripts_server.html" %}
+    <script nonce="{{nonce}}">window.YU_SERVER_ID = '{{id}}';</script>
+    <script src="/static/js/schedules.js?v=2" nonce="{{nonce}}"></script>
+    {% include "_script_footer.html" %}
+</body>
+</html>

@@ -19,7 +19,7 @@ pub async fn get_container_stats_raw(docker: &Docker, id: &str) -> Result<Contai
 
     let options = StatsOptions {
         stream: false,
-        one_shot: true,
+        one_shot: false,
     };
     
     let mut stream = docker.stats(id, Some(options));
@@ -28,7 +28,14 @@ pub async fn get_container_stats_raw(docker: &Docker, id: &str) -> Result<Contai
         let pre_total   = stats.precpu_stats.as_ref().and_then(|c| c.cpu_usage.as_ref()).and_then(|u| u.total_usage).unwrap_or(0);
         let sys_cur     = stats.cpu_stats.as_ref().and_then(|c| c.system_cpu_usage).unwrap_or(0);
         let sys_pre     = stats.precpu_stats.as_ref().and_then(|c| c.system_cpu_usage).unwrap_or(0);
-        let num_cpus    = stats.cpu_stats.as_ref().and_then(|c| c.online_cpus).map(|n| n as f64).unwrap_or(1.0);
+        let num_cpus    = stats.cpu_stats.as_ref().and_then(|c| c.online_cpus).map(|n| n as f64)
+            .unwrap_or_else(|| {
+                stats.cpu_stats.as_ref()
+                    .and_then(|c| c.cpu_usage.as_ref())
+                    .and_then(|u| u.percpu_usage.as_ref())
+                    .map(|p| p.len() as f64)
+                    .unwrap_or(1.0)
+            });
 
         let cpu_delta    = cpu_total as f64 - pre_total as f64;
         let system_delta = sys_cur   as f64 - sys_pre   as f64;

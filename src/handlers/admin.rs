@@ -318,6 +318,11 @@ async fn build_admin_template(state: &AppState, tab: String, username: String, n
             let v = db::get_panel_setting(&state.db, "panel_name").await;
             if v.is_empty() { "Yunexal Panel".into() } else { v }
         },
+        settings_sftp_enabled: db::get_panel_setting_bool(&state.db, "sftp_enabled").await,
+        settings_sftp_port: {
+            let v = db::get_panel_setting(&state.db, "sftp_port").await;
+            if v.is_empty() { "2022".into() } else { v }
+        },
     }
 }
 
@@ -1426,6 +1431,8 @@ pub async fn admin_edit_page(
         .map(|v| v.to_string())
         .unwrap_or_default();
 
+    let max_schedule_runs = db::schedules::get_server_max_schedule_runs(&state.db, db_id).await;
+
     let users: Vec<UserInfo> = db::list_users(&state.db)
         .await
         .unwrap_or_default()
@@ -1452,6 +1459,7 @@ pub async fn admin_edit_page(
             disk_limit,
             bandwidth_mbit,
             owner_id,
+            max_schedule_runs: max_schedule_runs.to_string(),
         },
         current_storage_source,
         current_storage_base,
@@ -1630,6 +1638,10 @@ pub async fn api_admin_edit_container(
         if let Err(e) = apply_server_disk_limit(&state.docker, db_id, &final_container_id, new_disk_limit.as_deref()).await {
             error!("api_admin_edit_container apply_server_disk_limit (non-fatal): {}", e);
         }
+    }
+
+    if form.max_schedule_runs > 0 {
+        let _ = db::update_server_max_schedule_runs(&state.db, db_id, form.max_schedule_runs).await;
     }
 
     let action_detail = if recreated_short.is_some() {
@@ -2430,6 +2442,7 @@ pub async fn api_admin_set_setting(
     const BOOL_KEYS: &[&str] = &[
         "ufw_enabled", "bandwidth_enabled",
         "storage_unsafe_override",
+        "sftp_enabled",
     ];
     const STR_KEYS: &[&str] = &[
         "docker_default_quota",
@@ -2437,6 +2450,7 @@ pub async fn api_admin_set_setting(
         "service_api_key",
         "panel_accent",
         "panel_name",
+        "sftp_port",
     ];
     let is_bool = BOOL_KEYS.contains(&body.key.as_str());
     let is_str  = STR_KEYS.contains(&body.key.as_str());

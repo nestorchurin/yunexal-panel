@@ -183,7 +183,15 @@ function _applyStats(data) {
 }
 
 function _openStatsWs() {
-    if (_statsWs && (_statsWs.readyState === WebSocket.OPEN || _statsWs.readyState === WebSocket.CONNECTING)) return;
+    if (_statsWs) {
+        if (_statsWs.readyState === WebSocket.OPEN || _statsWs.readyState === WebSocket.CONNECTING) return;
+        // Detach handlers before replacing — prevents a buffered onclose from a
+        // bfcache-frozen socket from nulling out the newly created connection.
+        _statsWs.onclose = null;
+        _statsWs.onerror = null;
+        _statsWs.onmessage = null;
+        _statsWs = null;
+    }
     clearTimeout(_statsReconnectTimer);
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     _statsWs = new WebSocket(`${protocol}://${window.location.host}/ws/stats`);
@@ -221,6 +229,16 @@ document.addEventListener('visibilitychange', () => {
         clearInterval(_listTimer);
         _closeStatsWs();
     }
+});
+
+// bfcache restore (desktop "back" button): pageshow fires with persisted=true
+// visibilitychange alone is unreliable here — force a clean restart.
+window.addEventListener('pageshow', (ev) => {
+    if (!ev.persisted) return;
+    _closeStatsWs();
+    clearInterval(_listTimer);
+    loadServers();
+    _startTimers();
 });
 
 _startTimers();

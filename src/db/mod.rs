@@ -6,6 +6,7 @@ mod servers;
 mod ports;
 mod images;
 mod settings;
+pub mod schedules;
 
 pub use audit::*;
 pub use users::*;
@@ -343,6 +344,64 @@ pub async fn init_db() -> Result<Pool<Sqlite>> {
     .context("Failed to create key_meta table")?;
 
     info!("Database initialized successfully");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS server_env_permissions (
+            server_id     INTEGER NOT NULL,
+            key           TEXT    NOT NULL,
+            user_editable INTEGER NOT NULL DEFAULT 0,
+            user_visible  INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (server_id, key)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .context("Failed to create server_env_permissions table")?;
+
+    // ── v0.5.2 migrations ─────────────────────────────────────────────────────
+    let _ = sqlx::query(
+        "ALTER TABLE servers ADD COLUMN max_schedule_runs INTEGER NOT NULL DEFAULT 20"
+    ).execute(&pool).await;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS schedules (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            server_id       INTEGER NOT NULL,
+            name            TEXT    NOT NULL,
+            cron_expression TEXT    NOT NULL,
+            task_type       TEXT    NOT NULL,
+            task_payload    TEXT    NOT NULL DEFAULT '{}',
+            enabled         INTEGER NOT NULL DEFAULT 1,
+            last_run_at     TEXT,
+            next_run_at     TEXT,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .context("Failed to create schedules table")?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS schedule_runs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            schedule_id INTEGER NOT NULL,
+            started_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+            status      TEXT    NOT NULL DEFAULT 'running',
+            output      TEXT,
+            FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .context("Failed to create schedule_runs table")?;
+
     Ok(pool)
 }
 
@@ -378,6 +437,78 @@ pub async fn verify_or_init_canary(pool: &Pool<Sqlite>, key: &[u8; 32]) -> Resul
                 )
             }),
     }
+}
+
+/// Encrypts legacy plaintext values in DB columns that now store encrypted data.
+/// Safe to run on every startup; already-encrypted rows are skipped.
+pub async fn migrate_legacy_encrypted_values(pool: &Pool<Sqlite>, key: &[u8; 32]) -> Result<u64> {
+    use crate::crypto;
+
+    let mut migrated = 0u64;
+
+    let session_rows = sqlx::query_as::<_, (String, String)>(
+        "SELECT session_id, ip FROM user_sessions WHERE ip IS NOT NULL AND trim(ip) <> ''",
+    )
+    .fetch_all(pool)
+    .await
+    .context("migrate encrypted values: list user_sessions")?;
+
+    for (session_id, ip) in session_rows {
+        if crypto::is_encrypted(&ip) {
+            continue;
+        }
+        let encrypted = crypto::encrypt(&ip, key);
+        sqlx::query("UPDATE user_sessions SET ip = ? WHERE session_id = ?")
+            .bind(&encrypted)
+            .bind(&session_id)
+            .execute(pool)
+            .await
+            .context("migrate encrypted values: update user_sessions.ip")?;
+        migrated += 1;
+    }
+
+    let image_rows = sqlx::query_as::<_, (String, String)>(
+        "SELECT image_id, env FROM image_env_overrides WHERE env IS NOT NULL AND trim(env) <> ''",
+    )
+    .fetch_all(pool)
+    .await
+    .context("migrate encrypted values: list image_env_overrides")?;
+
+    for (image_id, env) in image_rows {
+        if crypto::is_encrypted(&env) {
+            continue;
+        }
+        let encrypted = crypto::encrypt(&env, key);
+        sqlx::query("UPDATE image_env_overrides SET env = ? WHERE image_id = ?")
+            .bind(&encrypted)
+            .bind(&image_id)
+            .execute(pool)
+            .await
+            .context("migrate encrypted values: update image_env_overrides.env")?;
+        migrated += 1;
+    }
+
+    let service_key_row = sqlx::query_as::<_, (String,)>(
+        "SELECT value FROM panel_settings WHERE key = 'service_api_key'",
+    )
+    .fetch_optional(pool)
+    .await
+    .context("migrate encrypted values: read service_api_key")?;
+
+    if let Some((value,)) = service_key_row {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() && !crypto::is_encrypted(trimmed) {
+            let encrypted = crypto::encrypt(trimmed, key);
+            sqlx::query("UPDATE panel_settings SET value = ? WHERE key = 'service_api_key'")
+                .bind(&encrypted)
+                .execute(pool)
+                .await
+                .context("migrate encrypted values: update service_api_key")?;
+            migrated += 1;
+        }
+    }
+
+    Ok(migrated)
 }
 
 // ── Role helpers ─────────────────────────────────────────────────────────────

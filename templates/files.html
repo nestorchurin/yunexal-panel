@@ -13,6 +13,27 @@
         <main class="yu-main">
             {% include "_mobile_topbar.html" %}
             <div class="yu-content">
+                {% if sftp_enabled %}
+                <div class="yu-panel" style="margin-bottom:1rem;">
+                    <div class="yu-panel-hd"><i class="bi bi-terminal me-2 text-muted"></i>SFTP Access</div>
+                    <div class="yu-panel-bd" style="padding:.75rem 1rem;">
+                        <div style="display:grid;grid-template-columns:max-content 1fr;gap:.35rem .75rem;font-size:.82rem;align-items:center;">
+                            <span style="color:var(--muted);">Host</span>
+                            <span style="font-family:monospace;">your-server-ip-or-sftp-hostname</span>
+                            <span style="color:var(--muted);">Port</span>
+                            <span style="font-family:monospace;">{{ sftp_port }}</span>
+                            <span style="color:var(--muted);">Username</span>
+                            <span style="font-family:monospace;">{{ sftp_username_hint }}</span>
+                            <span style="color:var(--muted);">Password</span>
+                            <span style="color:var(--muted);font-style:italic;">your panel password</span>
+                        </div>
+                        <p style="font-size:.75rem;color:var(--muted);margin:.75rem 0 0;border-top:1px solid var(--bdr);padding-top:.5rem;">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Cloudflare: use <strong>Spectrum</strong> (paid) for the proxied domain, or a <strong>DNS-only</strong> hostname that points directly to this server's IP.
+                        </p>
+                    </div>
+                </div>
+                {% endif %}
                 <div class="yu-panel">
                     <div class="yu-panel-hd">
                         <span><i class="bi bi-folder2-open me-2 text-muted"></i>File Browser</span>
@@ -20,7 +41,7 @@
                             <button class="btn-yu btn-yu-ghost" onclick="document.getElementById('fb-file-input').click()">
                                 <i class="bi bi-upload"></i> Upload
                             </button>
-                            <input type="file" id="fb-file-input" multiple style="display:none" onchange="fbUploadFiles(this.files); this.value='';">
+                            <input type="file" id="fb-file-input" multiple style="display:none" onchange="fbUploadFiles(Array.from(this.files)); this.value='';">
                             <button class="btn-yu btn-yu-primary" onclick="fbOpenCreate('file')">
                                 <i class="bi bi-plus-lg"></i> New File
                             </button>

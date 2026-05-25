@@ -1,6 +1,31 @@
 // Console page: terminal, WebSocket, controls, metrics charts
 // Requires YU_SERVER_ID to be set inline in the template before this script loads.
 
+// ── Terminal-only toggle ──────────────────────────────────────────────────────
+document.body.classList.add('yu-console-page');
+
+function toggleTermOnly() {
+    const grid = document.querySelector('.con-grid');
+    const btn  = document.getElementById('btn-term-only');
+    const on   = grid.classList.toggle('con-term-only');
+    btn.querySelector('i').className = on ? 'bi bi-fullscreen-exit' : 'bi bi-arrows-fullscreen';
+    btn.classList.toggle('active', on);
+    localStorage.setItem('yu_term_only', on ? '1' : '0');
+    setTimeout(() => { if (window.fitAddonRef) window.fitAddonRef.fit(); }, 50);
+}
+
+(function () {
+    if (window.innerWidth < 992 && localStorage.getItem('yu_term_only') === '1') {
+        const grid = document.querySelector('.con-grid');
+        const btn  = document.getElementById('btn-term-only');
+        if (grid) grid.classList.add('con-term-only');
+        if (btn) {
+            btn.querySelector('i').className = 'bi bi-fullscreen-exit';
+            btn.classList.add('active');
+        }
+    }
+})();
+
 // ── Sidebar toggle (mobile) ──────────────────────────────────────────────────
 function openSidebar() {
     document.getElementById('sidebar').classList.add('open');
@@ -75,9 +100,25 @@ const fitAddon = new FitAddon.FitAddon();
 window.fitAddonRef = fitAddon;
 term.loadAddon(fitAddon);
 term.open(document.getElementById('terminal'));
-setTimeout(() => fitAddon.fit(), 100);
-const _resizeHandler = () => fitAddon.fit();
+setTimeout(() => { fitAddon.fit(); term.scrollToBottom(); }, 100);
+const _resizeHandler = () => { fitAddon.fit(); term.scrollToBottom(); };
 let _resizeAttached = false;
+
+// One-shot ResizeObserver: fires when .con-term-bd gets its real height,
+// calls fit+scroll, then disconnects. Handles CSS/flex layout settling after
+// the initial 100 ms timeout fires with incorrect (zero) dimensions.
+let _termResizeObserver = null;
+(function () {
+    const bd = document.querySelector('.con-term-bd');
+    if (!bd || typeof ResizeObserver === 'undefined') return;
+    _termResizeObserver = new ResizeObserver(entries => {
+        if (!entries[0] || entries[0].contentRect.height === 0) return;
+        try { fitAddon.fit(); term.scrollToBottom(); } catch (_) {}
+        _termResizeObserver.disconnect();
+        _termResizeObserver = null;
+    });
+    _termResizeObserver.observe(bd);
+}());
 
 function _attachConsoleResize() {
     if (_resizeAttached) return;
@@ -154,7 +195,7 @@ function _consoleOnPageShown(path) {
 
     _attachConsoleResize();
     setTimeout(() => {
-        try { fitAddon.fit(); } catch (_) {}
+        try { fitAddon.fit(); term.scrollToBottom(); } catch (_) {}
     }, 40);
 
     if (!ws || ws.readyState === WebSocket.CLOSED) {
@@ -164,6 +205,11 @@ function _consoleOnPageShown(path) {
 
 window.addEventListener('yu:page-shown', (ev) => {
     const path = String(ev?.detail?.path || '');
+    if (/^\/servers\/\d+\/console$/.test(path)) {
+        document.body.classList.add('yu-console-page');
+    } else {
+        document.body.classList.remove('yu-console-page');
+    }
     _consoleOnPageShown(path);
 });
 
@@ -345,12 +391,14 @@ function handleStats(stats) {
 
 // ── Cleanup (called by SPA navigation before leaving this page) ───────────────
 window._yuPageCleanup = function () {
+    document.body.classList.remove('yu-console-page');
     if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
     if (ws) {
         try { ws.close(); } catch (_) {}
         ws = null;
     }
     _detachConsoleResize();
+    if (_termResizeObserver) { _termResizeObserver.disconnect(); _termResizeObserver = null; }
     _prevRx = null;
     _prevTx = null;
     _prevBlkRead = null;

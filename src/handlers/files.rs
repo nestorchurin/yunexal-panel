@@ -11,7 +11,8 @@ use std::net::SocketAddr;
 use crate::{auth, db, docker};
 use crate::handlers::CspNonce;
 use crate::state::AppState;
-use super::templates::{ArchiveForm, CopyFileForm, CreateFileForm, DeleteFileQuery, ExtractForm, FileChunkCompleteQuery, FileChunkUploadQuery, FileContentQuery, FileEditTemplate, FileListQuery, FileUploadQuery, RenameFileForm, SaveFileForm};
+use super::templates::{ArchiveForm, CopyFileForm, CreateFileForm, DeleteFileQuery, DownloadBulkForm, ExtractForm, FileChunkCompleteQuery, FileChunkUploadQuery, FileContentQuery, FileEditTemplate, FileListQuery, FileUploadQuery, RenameFileForm, SaveFileForm};
+use tokio_util::io::ReaderStream;
 
 async fn can_read_files(state: &AppState, jar: &PrivateCookieJar, db_id: i64) -> bool {
     auth::can_access_server_permission(state, jar, db_id, "files", false).await
@@ -359,7 +360,7 @@ pub async fn list_files_api(
     );
 
     html.push_str(&build_breadcrumb(db_id, &path));
-    html.push_str(r#"<div class="fb-sel-bar" id="fb-sel-bar"><label class="fb-sel-all"><span class="fb-cb-wrap"><input type="checkbox" class="fb-cb" id="fb-cb-all"><span class="fb-cb-box"></span></span>All</label><span class="fb-sel-count" id="fb-sel-count"></span><div class="fb-sel-actions"><button type="button" class="fb-sel-btn fb-sel-btn-copy" id="fb-btn-copy"><i class="bi bi-files"></i> Copy</button><button type="button" class="fb-sel-btn fb-sel-btn-cut" id="fb-btn-cut"><i class="bi bi-scissors"></i> Cut</button><div class="fb-sel-divider"></div><button type="button" class="fb-sel-btn fb-sel-btn-archive" id="fb-btn-archive"><i class="bi bi-file-earmark-zip"></i> Archive</button><div class="fb-sel-divider"></div><button type="button" class="fb-sel-btn fb-sel-btn-delete" id="fb-btn-delete"><i class="bi bi-trash3"></i> Delete</button></div></div>"#);
+    html.push_str(r#"<div class="fb-sel-bar" id="fb-sel-bar"><label class="fb-sel-all"><span class="fb-cb-wrap"><input type="checkbox" class="fb-cb" id="fb-cb-all"><span class="fb-cb-box"></span></span>All</label><span class="fb-sel-count" id="fb-sel-count"></span><div class="fb-sel-actions"><button type="button" class="fb-sel-btn fb-sel-btn-copy" id="fb-btn-copy"><i class="bi bi-files"></i> Copy</button><button type="button" class="fb-sel-btn fb-sel-btn-cut" id="fb-btn-cut"><i class="bi bi-scissors"></i> Cut</button><div class="fb-sel-divider"></div><button type="button" class="fb-sel-btn fb-sel-btn-archive" id="fb-btn-archive"><i class="bi bi-file-earmark-zip"></i> Archive</button><button type="button" class="fb-sel-btn fb-sel-btn-download" id="fb-btn-download"><i class="bi bi-download"></i> Download</button><div class="fb-sel-divider"></div><button type="button" class="fb-sel-btn fb-sel-btn-delete" id="fb-btn-delete"><i class="bi bi-trash3"></i> Delete</button></div></div>"#);
     html.push_str(r#"<div class="fb-list">"#);
 
     match docker::list_files(&state.docker, &volume_dir, &path).await {
@@ -1769,6 +1770,200 @@ pub async fn move_file(
             axum::http::HeaderValue::from_static("file-created"),
         )]),
     ).into_response()
+}
+
+// ── DOWNLOAD a single file (with Range / partial-content support) ─────────────
+pub async fn download_file(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(db_id): Path<i64>,
+    Query(query): Query<FileContentQuery>,
+) -> impl IntoResponse {
+    if !can_read_files(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
+    let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
+        Some(cid) => cid,
+        None => return (StatusCode::NOT_FOUND, "Server not found").into_response(),
+    };
+    let volume_dir = docker::get_volume_dir(&state.docker, &docker_id).await
+        .unwrap_or_else(|_| docker_id.clone());
+    let volume_path = docker::volume_dir_to_path(&volume_dir);
+
+    let resolved = match resolve_path(&volume_path, &query.path) {
+        Some(p) => p,
+        None => return (StatusCode::FORBIDDEN, "Access denied").into_response(),
+    };
+
+    let meta = match tokio::fs::metadata(&resolved).await {
+        Ok(m) if m.is_file() => m,
+        Ok(_) => return (StatusCode::BAD_REQUEST, "Not a file").into_response(),
+        Err(_) => return (StatusCode::NOT_FOUND, "File not found").into_response(),
+    };
+
+    let file_size = meta.len();
+    let filename = resolved.file_name().and_then(|n| n.to_str()).unwrap_or("download").to_string();
+    let encoded_name = urlencoding::encode(&filename).into_owned();
+    let disposition = format!("attachment; filename=\"{}\"; filename*=UTF-8''{}",
+        filename.replace('"', "\\\""), encoded_name);
+
+    let range_val = headers.get(axum::http::header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| parse_byte_range(s, file_size));
+
+    if let Some((start, end)) = range_val {
+        let length = end - start + 1;
+        let mut file = match tokio::fs::File::open(&resolved).await {
+            Ok(f) => f,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Cannot open file").into_response(),
+        };
+        use tokio::io::{AsyncSeekExt, AsyncReadExt};
+        if file.seek(std::io::SeekFrom::Start(start)).await.is_err() {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Seek failed").into_response();
+        }
+        let stream = ReaderStream::new(file.take(length));
+        let body = axum::body::Body::from_stream(stream);
+        return axum::response::Response::builder()
+            .status(StatusCode::PARTIAL_CONTENT)
+            .header("Content-Type", "application/octet-stream")
+            .header("Content-Disposition", &disposition)
+            .header("Content-Range", format!("bytes {}-{}/{}", start, end, file_size))
+            .header("Content-Length", length.to_string())
+            .header("Accept-Ranges", "bytes")
+            .body(body)
+            .unwrap()
+            .into_response();
+    }
+
+    let file = match tokio::fs::File::open(&resolved).await {
+        Ok(f) => f,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Cannot open file").into_response(),
+    };
+    let stream = ReaderStream::new(file);
+    let body = axum::body::Body::from_stream(stream);
+
+    let ip = auth::client_ip(&headers, addr);
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "file.download", &query.path,
+        &format!("#{}", db_id), &ip, &auth::user_agent(&headers)).await;
+
+    axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/octet-stream")
+        .header("Content-Disposition", &disposition)
+        .header("Content-Length", file_size.to_string())
+        .header("Accept-Ranges", "bytes")
+        .body(body)
+        .unwrap()
+        .into_response()
+}
+
+fn parse_byte_range(header: &str, file_size: u64) -> Option<(u64, u64)> {
+    let s = header.strip_prefix("bytes=")?;
+    let mut parts = s.split('-');
+    let start: u64 = parts.next()?.trim().parse().ok()?;
+    let end_str = parts.next()?.trim();
+    let end = if end_str.is_empty() {
+        file_size.saturating_sub(1)
+    } else {
+        end_str.parse::<u64>().ok()?.min(file_size.saturating_sub(1))
+    };
+    if start > end { return None; }
+    Some((start, end))
+}
+
+// ── DOWNLOAD multiple files / folders as a streaming tar.gz ──────────────────
+pub async fn download_bulk(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(db_id): Path<i64>,
+    Form(form): Form<DownloadBulkForm>,
+) -> impl IntoResponse {
+    if !can_read_files(&state, &jar, db_id).await {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
+    let docker_id = match db::get_container_id_by_server_id(&state.db, db_id).await.ok().flatten() {
+        Some(cid) => cid,
+        None => return (StatusCode::NOT_FOUND, "Server not found").into_response(),
+    };
+    let volume_dir = docker::get_volume_dir(&state.docker, &docker_id).await
+        .unwrap_or_else(|_| docker_id.clone());
+    let volume_path = docker::volume_dir_to_path(&volume_dir);
+
+    let base_dir = match resolve_path(&volume_path, &form.dir) {
+        Some(p) => p,
+        None => return (StatusCode::FORBIDDEN, "Access denied").into_response(),
+    };
+
+    let names: Vec<String> = form.paths
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() { return None; }
+            let item = resolve_path(&volume_path, line)?;
+            if item.parent()? != base_dir { return None; }
+            let name = item.file_name()?.to_str()?.to_string();
+            if name.is_empty() || name.contains('/') { return None; }
+            Some(name)
+        })
+        .collect();
+
+    if names.is_empty() {
+        return (StatusCode::BAD_REQUEST, "No valid items selected").into_response();
+    }
+
+    let rel_dir = base_dir.strip_prefix(&volume_path)
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let cd_part = if rel_dir.is_empty() {
+        "cd /mnt".to_string()
+    } else {
+        format!("cd '/mnt/{}'", sh_esc(&rel_dir))
+    };
+    let targets: String = names.iter()
+        .map(|n| format!("'{}'", sh_esc(n)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let sh_cmd = format!("{} && tar czf - {}", cd_part, targets);
+
+    let mount_arg = format!("{}:/mnt:ro", volume_path.display());
+    let mut child = match tokio::process::Command::new("docker")
+        .args(["run", "--rm", "-v", &mount_arg, "alpine", "sh", "-c", &sh_cmd])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to start: {e}")).into_response(),
+    };
+
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => return (StatusCode::INTERNAL_SERVER_ERROR, "No stdout").into_response(),
+    };
+
+    // Reap child after stream is consumed
+    tokio::spawn(async move { let _ = child.wait().await; });
+
+    let stream = ReaderStream::new(stdout);
+    let body = axum::body::Body::from_stream(stream);
+
+    let ip = auth::client_ip(&headers, addr);
+    let actor = auth::session_username(&jar).unwrap_or_default();
+    let _ = db::audit_log(&state.db, &actor, "file.download.bulk", &form.dir,
+        &format!("#{} items={}", db_id, names.len()), &ip, &auth::user_agent(&headers)).await;
+
+    axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/gzip")
+        .header("Content-Disposition", "attachment; filename=\"download.tar.gz\"")
+        .body(body)
+        .unwrap()
+        .into_response()
 }
 
 #[cfg(test)]

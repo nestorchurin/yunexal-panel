@@ -532,6 +532,9 @@ pub async fn create_server(
     };
 
     if db_id > 0 {
+        if form.max_schedule_runs > 0 {
+            let _ = db::update_server_max_schedule_runs(&state.db, db_id, form.max_schedule_runs).await;
+        }
         // ── Disk quota (ext4 + prjquota) ─────────────────────────────────────
         if let Some(ref limit_str) = service.disk_limit {
             if let Some(limit_bytes) = docker::parse_disk_limit(limit_str) {

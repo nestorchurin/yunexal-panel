@@ -67,22 +67,19 @@ pub async fn console_page(
     let (docker_id, db_name) = match resolve_server(&state, db_id).await {
         Ok(v) => v, Err(e) => return e.into_response(),
     };
-    match docker::get_container(&state.docker, &docker_id).await {
-        Ok(mut c) => {
-            c.db_id = db_id;
-            c.name = db_name;
-            render(ConsoleTemplate {
-                id: db_id,
-                container: c,
-                can_power,
-                can_members,
-                active_tab: "console",
-                nonce,
-            })
-            .into_response()
-        }
-        Err(e) => format!("Error: {}", e).into_response(),
-    }
+    let container = match docker::get_container(&state.docker, &docker_id).await {
+        Ok(mut c) => { c.db_id = db_id; c.name = db_name; c }
+        Err(_) => { let mut c = err_container(docker_id, db_id); c.name = db_name; c }
+    };
+    render(ConsoleTemplate {
+        id: db_id,
+        container,
+        can_power,
+        can_members,
+        active_tab: "console",
+        nonce,
+    })
+    .into_response()
 }
 
 pub async fn server_users_page(
@@ -136,7 +133,27 @@ pub async fn files_page(
         Ok(v) => v, Err(e) => return e.into_response(),
     };
     match docker::get_container(&state.docker, &docker_id).await {
-        Ok(mut c) => { c.db_id = db_id; c.name = db_name; render(FilesTemplate { id: db_id, container: c, can_members, active_tab: "files", nonce }).into_response() }
+        Ok(mut c) => {
+            c.db_id = db_id;
+            c.name = db_name;
+            let sftp_enabled = db::get_panel_setting_bool(&state.db, "sftp_enabled").await;
+            let sftp_port = {
+                let v = db::get_panel_setting(&state.db, "sftp_port").await;
+                if v.is_empty() { "2022".into() } else { v }
+            };
+            let auth_username = auth::session_username(&jar).unwrap_or_default();
+            let sftp_username_hint = format!("{db_id}.{auth_username}");
+            render(FilesTemplate {
+                id: db_id,
+                container: c,
+                can_members,
+                active_tab: "files",
+                nonce,
+                sftp_enabled,
+                sftp_port,
+                sftp_username_hint,
+            }).into_response()
+        }
         Err(e) => format!("Error: {}", e).into_response(),
     }
 }
@@ -155,11 +172,24 @@ pub async fn settings_page(
     let (docker_id, db_name) = match resolve_server(&state, db_id).await {
         Ok(v) => v, Err(e) => return e.into_response(),
     };
+    let current_user_id = auth::session_user_id(&state, &jar).await.unwrap_or(0);
+    let owner_id = db::get_server_owner(&state.db, &docker_id).await.ok().flatten().unwrap_or(-1);
+    let is_root = auth::is_root_session(&state, &jar).await;
+    let can_edit_keys = is_root || (current_user_id > 0 && current_user_id == owner_id);
     let env = docker::inspect_full(&state.docker, &docker_id).await
         .map(|c| c.env)
         .unwrap_or_default();
+    let perms = db::get_env_permissions(&state.db, db_id).await.unwrap_or_default();
+    let env_permissions = serde_json::to_string(&perms).unwrap_or_else(|_| "{}".to_string());
+    let sftp_enabled = db::get_panel_setting_bool(&state.db, "sftp_enabled").await;
+    let sftp_port = {
+        let v = db::get_panel_setting(&state.db, "sftp_port").await;
+        if v.is_empty() { "2022".into() } else { v }
+    };
+    let auth_username = auth::session_username(&jar).unwrap_or_default();
+    let sftp_username_hint = format!("{db_id}.{auth_username}");
     match docker::get_container(&state.docker, &docker_id).await {
-        Ok(mut c) => { c.db_id = db_id; c.name = db_name; render(SettingsTemplate { id: db_id, container: c, is_admin, can_members, active_tab: "settings", nonce, env }).into_response() }
+        Ok(mut c) => { c.db_id = db_id; c.name = db_name; render(SettingsTemplate { id: db_id, container: c, is_admin, can_edit_keys, can_members, active_tab: "settings", nonce, env, env_permissions, sftp_enabled, sftp_port, sftp_username_hint }).into_response() }
         Err(e) => format!("Error: {}", e).into_response(),
     }
 }
@@ -347,7 +377,8 @@ pub async fn api_server_members_list(
     jar: PrivateCookieJar,
     Path(db_id): Path<i64>,
 ) -> impl IntoResponse {
-    let can_write = auth::can_access_server_permission(&state, &jar, db_id, "members", true).await;
+    let can_write = auth::can_access_server_permission(&state, &jar, db_id, "members", true).await
+        && auth::is_admin_session(&state, &jar).await;
     if !auth::can_access_server_permission(&state, &jar, db_id, "members", false).await {
         return (
             axum::http::StatusCode::FORBIDDEN,
@@ -490,10 +521,12 @@ pub async fn api_server_member_add(
     Json(body): Json<AddServerMemberBody>,
 ) -> impl IntoResponse {
     let ip = auth::client_ip(&headers, addr);
-    if !auth::can_access_server_permission(&state, &jar, db_id, "members", true).await {
+    let can_manage_members = auth::can_access_server_permission(&state, &jar, db_id, "members", true).await
+        && auth::is_admin_session(&state, &jar).await;
+    if !can_manage_members {
         return (
             axum::http::StatusCode::FORBIDDEN,
-            Json(serde_json::json!({"ok": false, "error": "Access denied"})),
+            Json(serde_json::json!({"ok": false, "error": "Only panel admins can manage members"})),
         )
             .into_response();
     }
@@ -570,10 +603,12 @@ pub async fn api_server_member_set_permission(
     Json(body): Json<SetServerMemberPermissionBody>,
 ) -> impl IntoResponse {
     let ip = auth::client_ip(&headers, addr);
-    if !auth::can_access_server_permission(&state, &jar, db_id, "members", true).await {
+    let can_manage_members = auth::can_access_server_permission(&state, &jar, db_id, "members", true).await
+        && auth::is_admin_session(&state, &jar).await;
+    if !can_manage_members {
         return (
             axum::http::StatusCode::FORBIDDEN,
-            Json(serde_json::json!({"ok": false, "error": "Access denied"})),
+            Json(serde_json::json!({"ok": false, "error": "Only panel admins can change member access"})),
         )
             .into_response();
     }
@@ -646,10 +681,12 @@ pub async fn api_server_member_remove(
     Path((db_id, user_id)): Path<(i64, i64)>,
 ) -> impl IntoResponse {
     let ip = auth::client_ip(&headers, addr);
-    if !auth::can_access_server_permission(&state, &jar, db_id, "members", true).await {
+    let can_manage_members = auth::can_access_server_permission(&state, &jar, db_id, "members", true).await
+        && auth::is_admin_session(&state, &jar).await;
+    if !can_manage_members {
         return (
             axum::http::StatusCode::FORBIDDEN,
-            Json(serde_json::json!({"ok": false, "error": "Access denied"})),
+            Json(serde_json::json!({"ok": false, "error": "Only panel admins can manage members"})),
         )
             .into_response();
     }
@@ -703,6 +740,57 @@ pub struct UpdateEnvBody {
     pub env: String,
 }
 
+pub async fn api_get_env(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    Path(db_id): Path<i64>,
+) -> impl IntoResponse {
+    if !auth::can_access_server_permission(&state, &jar, db_id, "settings", false).await {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"ok": false, "error": "Access denied"})),
+        )
+            .into_response();
+    }
+
+    let (docker_id, _) = match resolve_server(&state, db_id).await {
+        Ok(v) => v,
+        Err(e) => return (axum::http::StatusCode::NOT_FOUND, Json(serde_json::json!({"ok": false, "error": e}))).into_response(),
+    };
+
+    let cfg = match docker::inspect_full(&state.docker, &docker_id).await {
+        Ok(c) => c,
+        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"ok": false, "error": e.to_string()}))).into_response(),
+    };
+
+    let is_admin = auth::is_admin_session(&state, &jar).await;
+    let current_user_id = auth::session_user_id(&state, &jar).await.unwrap_or(0);
+    let owner_id = db::get_server_owner(&state.db, &docker_id).await.ok().flatten().unwrap_or(-1);
+    let can_see_all = is_admin || (current_user_id > 0 && current_user_id == owner_id);
+
+    let perms = db::get_env_permissions(&state.db, db_id).await.unwrap_or_default();
+
+    let env_out = if can_see_all {
+        cfg.env.clone()
+    } else {
+        // mask hidden values
+        cfg.env.lines().map(|line| {
+            let eq = line.find('=').unwrap_or(line.len());
+            let k = &line[..eq];
+            let v = &line[eq + 1.min(line.len() - eq)..];
+            let perm = perms.get(k).cloned().unwrap_or_default();
+            if perm.user_visible {
+                format!("{}={}", k, v)
+            } else {
+                format!("{}=", k) // send empty; frontend treats empty as masked
+            }
+        }).collect::<Vec<_>>().join("\n")
+    };
+
+    let perms_json = serde_json::to_value(&perms).unwrap_or(serde_json::json!({}));
+    Json(serde_json::json!({"ok": true, "env": env_out, "permissions": perms_json})).into_response()
+}
+
 pub async fn api_update_env(
     State(state): State<AppState>,
     jar: PrivateCookieJar,
@@ -722,15 +810,46 @@ pub async fn api_update_env(
         Ok(c) => c,
         Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, axum::Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     };
+
+    let is_admin = auth::is_admin_session(&state, &jar).await;
+    let current_user_id = auth::session_user_id(&state, &jar).await.unwrap_or(0);
+    let owner_id = db::get_server_owner(&state.db, &docker_id).await.ok().flatten().unwrap_or(-1);
+    let can_edit_all = is_admin || (current_user_id > 0 && current_user_id == owner_id);
+
+    // Non-admin users can only change permitted keys; all others keep original values.
+    let final_env = if can_edit_all {
+        body.env.clone()
+    } else {
+        let perms = db::get_env_permissions(&state.db, db_id).await.unwrap_or_default();
+        let incoming: std::collections::HashMap<&str, &str> = body.env.lines()
+            .filter_map(|l| { let i = l.find('=')?; Some((&l[..i], &l[i+1..])) })
+            .collect();
+        old_cfg.env.lines().map(|line| {
+            let eq = line.find('=').unwrap_or(line.len());
+            let k = &line[..eq];
+            let orig_v = &line[eq + 1.min(line.len() - eq)..];
+            let perm = perms.get(k).cloned().unwrap_or_default();
+            if perm.user_editable {
+                if let Some(&new_v) = incoming.get(k) {
+                    // for non-visible keys: only update if user actually typed something
+                    if !perm.user_visible && new_v.is_empty() {
+                        return format!("{}={}", k, orig_v);
+                    }
+                    return format!("{}={}", k, new_v);
+                }
+            }
+            format!("{}={}", k, orig_v)
+        }).collect::<Vec<_>>().join("\n")
+    };
+
     let docker_name = match docker::get_container(&state.docker, &docker_id).await {
         Ok(c) => c.name,
         Err(_) => docker_id.clone(),
     };
-    let owner_id = db::get_server_owner(&state.db, &docker_id).await.ok().flatten().unwrap_or(0);
     let was_running = old_cfg.state == "running";
 
     let new_id = match docker::recreate_with_updated_config(
-        &state.docker, &docker_id, &old_cfg.image, &body.env,
+        &state.docker, &docker_id, &old_cfg.image, &final_env,
         &old_cfg.ports, old_cfg.cpu, old_cfg.memory_mb, &docker_name,
     ).await {
         Ok(id) => id,
@@ -748,9 +867,44 @@ pub async fn api_update_env(
             docker::reapply_isolation_rules(&state.docker, &new_id).await;
         }
     }
+
+    // Clean up permissions for keys that no longer exist
+    let live_keys: Vec<&str> = final_env.lines()
+        .filter_map(|l| l.find('=').map(|i| &l[..i]))
+        .collect();
+    let _ = db::cleanup_env_permissions(&state.db, db_id, &live_keys).await;
+
     let actor = auth::session_username(&jar).unwrap_or_default();
     let _ = db::audit_log(&state.db, &actor, "server.env_update", &db_name, &format!("#{}", db_id), &ip, &auth::user_agent(&headers)).await;
     axum::Json(serde_json::json!({"ok": true})).into_response()
+}
+
+#[derive(serde::Deserialize)]
+pub struct SetEnvPermBody {
+    pub key: String,
+    pub editable: bool,
+    pub visible: bool,
+}
+
+pub async fn api_set_env_permission(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    Path(db_id): Path<i64>,
+    Json(body): Json<SetEnvPermBody>,
+) -> impl IntoResponse {
+    let is_admin = auth::is_admin_session(&state, &jar).await;
+    let current_user_id = auth::session_user_id(&state, &jar).await.unwrap_or(0);
+    let (docker_id, _) = match resolve_server(&state, db_id).await {
+        Ok(v) => v, Err(e) => return (axum::http::StatusCode::NOT_FOUND, axum::Json(serde_json::json!({"error": e}))).into_response(),
+    };
+    let owner_id = db::get_server_owner(&state.db, &docker_id).await.ok().flatten().unwrap_or(-1);
+    if !is_admin && !(current_user_id > 0 && current_user_id == owner_id) {
+        return (axum::http::StatusCode::FORBIDDEN, axum::Json(serde_json::json!({"error":"Admin or owner required"}))).into_response();
+    }
+    match db::set_env_permission(&state.db, db_id, &body.key, body.editable, body.visible).await {
+        Ok(_) => axum::Json(serde_json::json!({"ok": true})).into_response(),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, axum::Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
 }
 
 // ── Action handlers ───────────────────────────────────────────────────────────

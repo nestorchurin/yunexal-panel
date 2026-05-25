@@ -5,6 +5,7 @@ pub mod dashboard;
 pub mod files;
 pub mod network;
 pub mod servers;
+pub mod schedules;
 pub mod templates;
 pub mod ws;
 
@@ -184,14 +185,19 @@ use dashboard::{
     api_dashboard_json, api_user_devices, api_user_logout_device, dashboard, new_server_page,
     server_list_fragment,
 };
-use files::{bulk_delete, copy_file, create_archive, create_new_file, delete_file, edit_file_page, extract_archive, finalize_file_upload, list_files_api, list_files_json, move_file, rename_file, save_file_content, upload_file_chunk, upload_files};
+use files::{bulk_delete, copy_file, create_archive, create_new_file, delete_file, download_bulk, download_file, edit_file_page, extract_archive, finalize_file_upload, list_files_api, list_files_json, move_file, rename_file, save_file_content, upload_file_chunk, upload_files};
 use network::{api_add_port, api_get_bandwidth, api_remove_port, api_set_bandwidth, api_tag_port, api_toggle_port, api_toggle_port_ufw, api_server_disk, networking_page};
 use servers::{
     api_server_member_add, api_server_member_remove, api_server_member_set_permission,
     api_server_members_list,
     console_page, delete_server, files_page, get_server_stats, kill_server, rename_server,
-    restart_server, server_audit_page, settings_page, start_server, stop_server, api_update_env,
+    restart_server, server_audit_page, settings_page, start_server, stop_server, api_get_env,
+    api_update_env, api_set_env_permission,
     api_factory_reset, api_server_audit_download, api_server_audit_list, server_users_page,
+};
+use schedules::{
+    schedules_page, api_list_schedules, api_create_schedule, api_update_schedule,
+    api_delete_schedule, api_toggle_schedule, api_list_runs, api_run_now,
 };
 use ws::{console_ws, stats_ws};
 
@@ -216,6 +222,14 @@ pub fn create_router(state: AppState) -> Router {
         .route("/servers/{id}/settings", get(settings_page))
         .route("/servers/{id}/networking", get(networking_page))
         .route("/servers/{id}/users", get(server_users_page))
+        // Schedules
+        .route("/servers/{id}/schedules", get(schedules_page))
+        .route("/api/servers/{id}/schedules", get(api_list_schedules).post(api_create_schedule))
+        .route("/api/servers/{id}/schedules/{sid}/update", post(api_update_schedule))
+        .route("/api/servers/{id}/schedules/{sid}/delete", post(api_delete_schedule))
+        .route("/api/servers/{id}/schedules/{sid}/toggle", post(api_toggle_schedule))
+        .route("/api/servers/{id}/schedules/{sid}/runs", get(api_list_runs))
+        .route("/api/servers/{id}/schedules/{sid}/run-now", post(api_run_now))
         // Server actions
         .route("/api/servers/{id}/start", post(start_server))
         .route("/api/servers/{id}/stop", post(stop_server))
@@ -237,7 +251,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/servers/{id}/ports/toggle", post(api_toggle_port))
         .route("/api/servers/{id}/ports/ufw", post(api_toggle_port_ufw))
         .route("/api/servers/{id}/disk", get(api_server_disk))
-        .route("/api/servers/{id}/env", post(api_update_env))
+        .route("/api/servers/{id}/env", get(api_get_env).post(api_update_env))
+        .route("/api/servers/{id}/env/permissions", post(api_set_env_permission))
         .route("/api/servers/{id}/factory-reset", post(api_factory_reset))
         // File manager
         .route("/servers/{id}/files/edit", get(edit_file_page))
@@ -257,6 +272,8 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/servers/{id}/files/archive", post(create_archive))
         .route("/api/servers/{id}/files/bulk-delete", post(bulk_delete))
         .route("/api/servers/{id}/files/move", post(move_file))
+        .route("/api/servers/{id}/files/download", get(download_file))
+        .route("/api/servers/{id}/files/download-bulk", post(download_bulk))
         // WebSocket console + stats
         .route("/api/servers/{id}/ws", get(console_ws))
         .route("/ws/stats", get(stats_ws))

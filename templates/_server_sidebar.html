@@ -20,6 +20,7 @@
         <a href="/servers/{{id}}/users" class="yu-nav-item{% if active_tab == "users" %} active{% endif %}" onclick="if (typeof serverSwitchTab === 'function') { serverSwitchTab('/servers/{{id}}/users', this); return false; }"><i class="bi bi-people"></i> Users</a>
         {% endif %}
         <a href="/servers/{{id}}/audit" class="yu-nav-item{% if active_tab == "audit" %} active{% endif %}" onclick="if (typeof serverSwitchTab === 'function') { serverSwitchTab('/servers/{{id}}/audit', this); return false; }"><i class="bi bi-clock-history"></i> Audit</a>
+        <a href="/servers/{{id}}/schedules" class="yu-nav-item{% if active_tab == "schedules" %} active{% endif %}" onclick="if (typeof serverSwitchTab === 'function') { serverSwitchTab('/servers/{{id}}/schedules', this); return false; }"><i class="bi bi-calendar-event"></i> Schedules</a>
         <a href="/servers/{{id}}/settings" class="yu-nav-item{% if active_tab == "settings" %} active{% endif %}" onclick="if (typeof serverSwitchTab === 'function') { serverSwitchTab('/servers/{{id}}/settings', this); return false; }"><i class="bi bi-gear"></i> Settings</a>
     </div>
 </aside>

@@ -187,6 +187,11 @@
                             </div>
                             <div class="field-note">Blank means unlimited.</div>
                         </div>
+                        <div>
+                            <label class="field-label">Max Schedule Run History</label>
+                            <input type="number" class="form-control" id="ae-max-sched-runs" min="1" max="500" placeholder="20" value="{{ edit.max_schedule_runs }}">
+                            <div class="field-note">Runs kept per server in schedule history.</div>
+                        </div>
                         <div style="grid-column:span 2;">
                             <label class="field-label">Storage Location <span style="font-size:.69rem;color:var(--muted);">target base path for migration</span></label>
                             <input type="hidden" id="storage-path-hidden" value="">
@@ -947,6 +952,7 @@ async function saveEdit(btn) {
         cpu: parseFloat(document.getElementById('ae-cpu').value) || 0,
         disk_limit: getDiskLimitForSave(),
         bandwidth_mbit: (document.getElementById('ae-bandwidth')?.value || '').trim(),
+        max_schedule_runs: parseInt(document.getElementById('ae-max-sched-runs')?.value || '20', 10) || 20,
         ports: getPortsForSave(),
         env: getEnvForSave(),
     };

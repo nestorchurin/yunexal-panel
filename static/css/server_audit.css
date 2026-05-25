@@ -65,7 +65,7 @@
     cursor: pointer;
 }
 
-.yu-server-audit .yu-input {
+.srv-audit-toolbar .yu-input {
     background: var(--surface2);
     border: 1px solid rgba(255,255,255,0.14);
     color: var(--txt);
@@ -74,7 +74,7 @@
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.yu-server-audit .yu-input:focus {
+.srv-audit-toolbar .yu-input:focus {
     border-color: rgba(124,58,237,0.5);
     box-shadow: 0 0 0 3px rgba(124,58,237,0.16);
 }

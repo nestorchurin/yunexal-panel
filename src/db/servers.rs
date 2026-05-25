@@ -10,6 +10,7 @@ pub const SERVER_MEMBER_PERMISSIONS: &[&str] = &[
     "settings",
     "power",
     "members",
+    "schedules",
 ];
 
 #[derive(Debug, Clone)]
@@ -426,6 +427,17 @@ pub async fn update_server_name_and_owner(
     Ok(())
 }
 
+/// Updates max_schedule_runs for a server row (by DB id).
+pub async fn update_server_max_schedule_runs(pool: &Pool<Sqlite>, server_id: i64, max_runs: i64) -> Result<()> {
+    sqlx::query("UPDATE servers SET max_schedule_runs = ? WHERE id = ?")
+        .bind(max_runs)
+        .bind(server_id)
+        .execute(pool)
+        .await
+        .context("Failed to update max_schedule_runs")?;
+    Ok(())
+}
+
 /// Updates only the name for an existing container, preserving owner_id.
 pub async fn update_server_name_only(
     pool: &Pool<Sqlite>,
@@ -454,6 +466,46 @@ pub async fn list_servers_basic_info(pool: &Pool<Sqlite>) -> Result<Vec<(i64, St
     Ok(rows)
 }
 
+// ── SFTP auth helper ──────────────────────────────────────────────────────────
+
+pub struct SftpAuthInfo {
+    pub container_id: String,
+    pub password_hash: String,
+    pub has_access: bool,
+}
+
+/// Returns auth info for an SFTP login attempt: password hash + access flag.
+/// Access is granted if the user is the server owner or has files=write permission.
+pub async fn get_sftp_auth_info(
+    pool: &Pool<Sqlite>,
+    server_id: i64,
+    username: &str,
+) -> Result<Option<SftpAuthInfo>> {
+    let row = sqlx::query_as::<_, (String, String, i64)>(
+        r#"SELECT s.container_id, u.password_hash,
+              CASE WHEN s.owner_id = u.id THEN 1
+                   WHEN perm.mode = 'write' THEN 1
+                   ELSE 0 END
+           FROM servers s
+           JOIN users u ON u.username = ?2
+           LEFT JOIN server_user_permissions perm
+             ON perm.server_id = s.id AND perm.user_id = u.id AND perm.permission = 'files'
+           WHERE s.id = ?1
+           LIMIT 1"#,
+    )
+    .bind(server_id)
+    .bind(username)
+    .fetch_optional(pool)
+    .await
+    .context("get_sftp_auth_info")?;
+
+    Ok(row.map(|(container_id, password_hash, access)| SftpAuthInfo {
+        container_id,
+        password_hash,
+        has_access: access == 1,
+    }))
+}
+
 /// Returns server rows needed by startup migration: (db_id, container_id, name).
 pub async fn list_servers_with_container_ids(
     pool: &Pool<Sqlite>,
@@ -465,4 +517,96 @@ pub async fn list_servers_with_container_ids(
     .await
     .context("list_servers_with_container_ids")?;
     Ok(rows)
+}
+
+// ── ENV variable permissions ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EnvPermission {
+    pub user_editable: bool,
+    pub user_visible: bool,
+}
+
+impl Default for EnvPermission {
+    fn default() -> Self {
+        Self { user_editable: false, user_visible: true }
+    }
+}
+
+pub async fn get_env_permissions(
+    pool: &Pool<Sqlite>,
+    server_id: i64,
+) -> Result<HashMap<String, EnvPermission>> {
+    let rows = sqlx::query_as::<_, (String, i64, i64)>(
+        "SELECT key, user_editable, user_visible FROM server_env_permissions WHERE server_id = ?"
+    )
+    .bind(server_id)
+    .fetch_all(pool)
+    .await
+    .context("get_env_permissions")?;
+
+    Ok(rows.into_iter().map(|(k, e, v)| (k, EnvPermission {
+        user_editable: e != 0,
+        user_visible: v != 0,
+    })).collect())
+}
+
+pub async fn set_env_permission(
+    pool: &Pool<Sqlite>,
+    server_id: i64,
+    key: &str,
+    editable: bool,
+    visible: bool,
+) -> Result<()> {
+    if !editable && visible {
+        // both are defaults → clean up row if it exists
+        sqlx::query(
+            "DELETE FROM server_env_permissions WHERE server_id = ? AND key = ?"
+        )
+        .bind(server_id)
+        .bind(key)
+        .execute(pool)
+        .await
+        .context("set_env_permission delete")?;
+    } else {
+        sqlx::query(
+            "INSERT INTO server_env_permissions (server_id, key, user_editable, user_visible) \
+             VALUES (?, ?, ?, ?) \
+             ON CONFLICT(server_id, key) DO UPDATE SET \
+               user_editable = excluded.user_editable, \
+               user_visible  = excluded.user_visible"
+        )
+        .bind(server_id)
+        .bind(key)
+        .bind(editable as i64)
+        .bind(visible as i64)
+        .execute(pool)
+        .await
+        .context("set_env_permission upsert")?;
+    }
+    Ok(())
+}
+
+pub async fn cleanup_env_permissions(
+    pool: &Pool<Sqlite>,
+    server_id: i64,
+    live_keys: &[&str],
+) -> Result<()> {
+    if live_keys.is_empty() {
+        sqlx::query("DELETE FROM server_env_permissions WHERE server_id = ?")
+            .bind(server_id)
+            .execute(pool)
+            .await
+            .context("cleanup_env_permissions")?;
+        return Ok(());
+    }
+    let placeholders = live_keys.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "DELETE FROM server_env_permissions WHERE server_id = ? AND key NOT IN ({})",
+        placeholders
+    );
+    let mut q = sqlx::query(sqlx::AssertSqlSafe(sql)).bind(server_id);
+    for k in live_keys { q = q.bind(k); }
+    q.execute(pool).await.context("cleanup_env_permissions")?;
+    Ok(())
 }

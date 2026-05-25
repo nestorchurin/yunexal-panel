@@ -407,9 +407,10 @@ function fbInit() {
     });
 
     document.addEventListener('drop', async function (e) {
-        if (!dropZone.contains(e.target)) return;
+        if (!e.dataTransfer?.types || !Array.from(e.dataTransfer.types).includes('Files')) return;
         e.preventDefault();
         dropZone.classList.remove('drag-over');
+        if (!dropZone.contains(e.target)) return;
         const files = e.dataTransfer?.files;
         if (files && files.length > 0) await fbUploadFiles(files);
     });
@@ -460,10 +461,11 @@ function fbInit() {
 
     // Selection bar buttons live inside HTMX-rendered content — delegate
     document.addEventListener('click', function (e) {
-        if (e.target.closest('#fb-btn-archive')) fbArchiveSelected();
-        if (e.target.closest('#fb-btn-copy'))    fbCopySelected('copy');
-        if (e.target.closest('#fb-btn-cut'))     fbCopySelected('move');
-        if (e.target.closest('#fb-btn-delete'))  fbBulkDelete();
+        if (e.target.closest('#fb-btn-archive'))  fbArchiveSelected();
+        if (e.target.closest('#fb-btn-copy'))     fbCopySelected('copy');
+        if (e.target.closest('#fb-btn-cut'))      fbCopySelected('move');
+        if (e.target.closest('#fb-btn-delete'))   fbBulkDelete();
+        if (e.target.closest('#fb-btn-download')) fbDownloadSelected();
     });
 
     // Clear selection state + sync URL hash whenever HTMX re-renders file browser
@@ -740,6 +742,126 @@ async function fbArchiveSelected() {
     } catch (err) { showToast(err.message, 'err'); }
 }
 
+// ── Download selected files ─────────────────────────────────────────────────────────────
+
+const CF_DL_CHUNK = 85 * 1024 * 1024; // 85 MB — stays under Cloudflare's response timeout
+
+async function fbDownloadSelected() {
+    if (_selection.size === 0) return;
+    const sid   = getServerId();
+    const paths = [..._selection];
+
+    if (paths.length === 1) {
+        const path = paths[0];
+        const filename = path.split('/').pop() || 'download';
+
+        // HEAD to get file size and decide whether chunking is needed
+        let fileSize = 0;
+        try {
+            const headRes = await fetch(
+                `/api/servers/${sid}/files/download?path=${encodeURIComponent(path)}`,
+                { method: 'HEAD', credentials: 'same-origin' }
+            );
+            if (!headRes.ok) {
+                showToast(await headRes.text() || 'Download failed', 'err');
+                return;
+            }
+            fileSize = parseInt(headRes.headers.get('Content-Length') || '0', 10);
+        } catch (err) {
+            showToast(err.message, 'err');
+            return;
+        }
+
+        if (fileSize > CF_DL_CHUNK) {
+            await fbDownloadInChunks(sid, path, filename, fileSize);
+        } else {
+            await fbDownloadBlob(
+                `/api/servers/${sid}/files/download?path=${encodeURIComponent(path)}`,
+                filename
+            );
+        }
+    } else {
+        // Multiple files → stream as tar.gz from server
+        const fd = new URLSearchParams();
+        fd.append('dir',   currentBrowserPath());
+        fd.append('paths', paths.join('\n'));
+        showToast(`Preparing download for ${paths.length} items…`, 'ok');
+        try {
+            const res = await fetch(`/api/servers/${sid}/files/download-bulk`, {
+                method: 'POST', body: fd,
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                credentials: 'same-origin',
+            });
+            if (!res.ok) { showToast(await res.text() || 'Download failed', 'err'); return; }
+            const blob = await res.blob();
+            const disp = res.headers.get('Content-Disposition') || '';
+            const nameMatch = disp.match(/filename="([^"]+)"/);
+            fbTriggerBlobDownload(blob, nameMatch ? nameMatch[1] : 'download.tar.gz');
+        } catch (err) { showToast(err.message, 'err'); }
+    }
+}
+
+async function fbDownloadInChunks(sid, path, filename, totalSize) {
+    const bar     = document.getElementById('fb-up-bar');
+    const label   = document.getElementById('fb-up-label');
+    const counter = document.getElementById('fb-up-counter');
+    const panel   = document.getElementById('fb-upload-progress');
+
+    if (panel)   panel.style.display = 'block';
+    if (label)   label.textContent   = filename;
+    if (counter) counter.textContent = 'Downloading…';
+
+    const chunks = [];
+    const total  = Math.ceil(totalSize / CF_DL_CHUNK);
+    let received = 0;
+
+    for (let i = 0; i < total; i++) {
+        const start = i * CF_DL_CHUNK;
+        const end   = Math.min(start + CF_DL_CHUNK - 1, totalSize - 1);
+        if (counter) counter.textContent = `${i + 1} / ${total}`;
+        try {
+            const res = await fetch(
+                `/api/servers/${sid}/files/download?path=${encodeURIComponent(path)}`,
+                { headers: { 'Range': `bytes=${start}-${end}` }, credentials: 'same-origin' }
+            );
+            if (!res.ok) {
+                showToast('Download failed at chunk ' + (i + 1), 'err');
+                if (panel) panel.style.display = 'none';
+                return;
+            }
+            chunks.push(await res.arrayBuffer());
+            received += (end - start + 1);
+            if (bar) bar.style.width = Math.round(received / totalSize * 100) + '%';
+        } catch (err) {
+            showToast(err.message, 'err');
+            if (panel) panel.style.display = 'none';
+            return;
+        }
+    }
+
+    if (panel) { panel.style.display = 'none'; if (bar) bar.style.width = '0%'; }
+    fbTriggerBlobDownload(new Blob(chunks), filename);
+}
+
+async function fbDownloadBlob(url, filename) {
+    try {
+        const res = await fetch(url, { credentials: 'same-origin' });
+        if (!res.ok) { showToast(await res.text() || 'Download failed', 'err'); return; }
+        fbTriggerBlobDownload(await res.blob(), filename);
+    } catch (err) { showToast(err.message, 'err'); }
+}
+
+function fbTriggerBlobDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 // ── Extract archive in-place ────────────────────────────────────────────────────────────
 
 async function fbExtractArchive(path, destination = 'folder') {
@@ -781,25 +903,27 @@ async function fbUploadFiles(files) {
 
     panel.style.display = 'block';
 
-    for (let i = 0; i < total; i++) {
-        const file = files[i];
-        counter.textContent = `${i + 1} / ${total}`;
-        label.textContent   = file.name;
-        bar.style.width     = '0%';
+    try {
+        for (let i = 0; i < total; i++) {
+            const file = files[i];
+            counter.textContent = `${i + 1} / ${total}`;
+            label.textContent   = file.name;
+            bar.style.width     = '0%';
 
-        const result = file.size > CHUNK_UPLOAD_THRESHOLD
-            ? await fbUploadFileInChunks(file, sid, path, bar, label)
-            : await fbUploadFileMultipart(file, sid, path, bar);
+            const result = file.size > CHUNK_UPLOAD_THRESHOLD
+                ? await fbUploadFileInChunks(file, sid, path, bar, label)
+                : await fbUploadFileMultipart(file, sid, path, bar);
 
-        if (result.ok) {
-            ok++;
-        } else {
-            showToast('Failed: ' + file.name + ' — ' + result.body, 'err');
+            if (result.ok) {
+                ok++;
+            } else {
+                showToast('Failed: ' + file.name + ' — ' + result.body, 'err');
+            }
         }
+    } finally {
+        panel.style.display = 'none';
+        bar.style.width = '0%';
     }
-
-    panel.style.display = 'none';
-    bar.style.width = '0%';
 
     if (ok > 0) {
         showToast('Uploaded ' + ok + ' file' + (ok > 1 ? 's' : ''), 'ok');

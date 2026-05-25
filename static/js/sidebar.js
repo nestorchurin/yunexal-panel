@@ -51,7 +51,7 @@ function closeSidebar() {
     }
 
     function _isServerSidebarPath(path) {
-        return /^\/servers\/\d+\/(console|files|networking|users|settings|audit)$/.test(path);
+        return /^\/servers\/\d+\/(console|files|networking|users|settings|audit|schedules)$/.test(path);
     }
 
     function _currentNonce() {
@@ -70,6 +70,7 @@ function closeSidebar() {
         const nonce = _currentNonce();
 
         const linkNodes = Array.from(doc.querySelectorAll('head link[rel="stylesheet"][href]'));
+        const linkWaits = [];
         for (const l of linkNodes) {
             const hrefRaw = l.getAttribute('href');
             if (!hrefRaw) continue;
@@ -84,8 +85,10 @@ function closeSidebar() {
             const crossorigin = l.getAttribute('crossorigin');
             if (integrity) node.integrity = integrity;
             if (crossorigin) node.crossOrigin = crossorigin;
+            linkWaits.push(new Promise(resolve => { node.onload = resolve; node.onerror = resolve; }));
             document.head.appendChild(node);
         }
+        await Promise.all(linkWaits);
 
         const headScripts = Array.from(doc.querySelectorAll('head script[src]'));
         for (const s of headScripts) {
@@ -250,13 +253,8 @@ function closeSidebar() {
             }
             _attachMain(targetMain);
 
-            if (loadedDoc) {
-                await _runPageBodyScripts(loadedDoc);
-            }
-
-            const title = _pageTitles.get(target);
-            if (title) document.title = title;
-
+            // Update URL and active state BEFORE running page scripts so that
+            // window.location.pathname is already correct when page scripts read it.
             _activePath = target;
             _updateSidebarActive(target);
             if (pushState) {
@@ -266,6 +264,13 @@ function closeSidebar() {
                     target,
                 );
             }
+            const title = _pageTitles.get(target);
+            if (title) document.title = title;
+
+            if (loadedDoc) {
+                await _runPageBodyScripts(loadedDoc);
+            }
+
             window.dispatchEvent(new CustomEvent('yu:page-shown', { detail: { path: target } }));
             if (typeof closeSidebar === 'function') closeSidebar();
         } catch (e) {

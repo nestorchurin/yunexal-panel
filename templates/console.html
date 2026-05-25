@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js" integrity="sha384-dpjGwSSISUTz2taP54Bor7qkyMR20sSO9oe11UVYnGs2/YdUBf7HW30XKQx9PCzn" crossorigin="anonymous" nonce="{{nonce}}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" nonce="{{nonce}}"></script>
     <link href="/static/css/base.css?v=2" rel="stylesheet">
-    <link href="/static/css/console.css?v=5" rel="stylesheet">
+    <link href="/static/css/console.css?v=6" rel="stylesheet">
 </head>
 <body>
     <div class="yu-layout">
@@ -27,6 +27,8 @@
                         <button id="btn-restart" class="con-btn con-btn-restart" onclick="sendAction('restart')" {% if !can_power %}disabled{% endif %}><i class="bi bi-arrow-repeat"></i><span>Restart</span></button>
                         <button id="btn-stop"    class="con-btn con-btn-stop"    onclick="sendAction('stop')" {% if !can_power %}disabled{% endif %}><i class="bi bi-stop-fill"></i><span>Stop</span></button>
                         <button id="btn-kill"    class="con-btn con-btn-kill"    onclick="confirmKill()" {% if !can_power %}disabled{% endif %}><i class="bi bi-lightning-fill"></i><span>Kill</span></button>
+                        <div class="con-btn-sep con-term-sep"></div>
+                        <button id="btn-term-only" class="con-btn con-btn-term" onclick="toggleTermOnly()" title="Terminal only"><i class="bi bi-arrows-fullscreen"></i></button>
                     </div>
                 </div>
 
@@ -102,7 +104,7 @@
         window.YU_SERVER_ID = '{{id}}';
         window.YU_CAN_POWER = {% if can_power %}true{% else %}false{% endif %};
     </script>
-    <script src="/static/js/console.js" nonce="{{nonce}}"></script>
+    <script src="/static/js/console.js?v=3" nonce="{{nonce}}"></script>
     {% include "_script_footer.html" %}
 </body>
 </html>

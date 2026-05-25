@@ -191,6 +191,12 @@
                             </div>
                             <div class="field-note">10 Mbit/s min. Blank = unlimited.</div>
                         </div>
+                        <div>
+                            <label class="field-label">Max Schedule Run History</label>
+                            <input type="number" class="form-control" id="max_schedule_runs" name="max_schedule_runs"
+                                min="1" max="500" placeholder="20" value="20">
+                            <div class="field-note">Runs kept per server in schedule history.</div>
+                        </div>
                         <div style="grid-column:span 2;">
                             <label class="field-label">Restart Policy</label>
                             <select class="form-select" id="gui_restart" onchange="updateYaml()">

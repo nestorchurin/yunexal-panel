@@ -7,6 +7,16 @@ function _srvAuditServerId() {
     return String(window.YU_SERVER_ID || '').trim();
 }
 
+function _srvAuditActorBadge(actor) {
+    if (!actor) return '<span style="color:var(--muted);">—</span>';
+    const initial = actor.charAt(0).toUpperCase();
+    const esc = _srvAuditEscHtml(actor);
+    return `<span style="display:inline-flex;align-items:center;gap:.4rem;">
+        <span style="width:22px;height:22px;border-radius:50%;background:rgba(124,58,237,.18);border:1px solid rgba(124,58,237,.3);display:inline-flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:700;color:#a78bfa;flex-shrink:0;">${initial}</span>
+        <span style="font-weight:600;font-size:.85rem;">${esc}</span>
+    </span>`;
+}
+
 function _srvAuditEscHtml(value) {
     return String(value ?? '')
         .replace(/&/g, '&amp;')
@@ -207,7 +217,7 @@ function srvAuditLoad(page) {
                 tbody.innerHTML = entries.map(e => {
                     return `<tr>
                         <td class="mono" style="white-space:nowrap;">${_srvAuditEscHtml(e.created_at)}</td>
-                        <td style="font-weight:600;">${_srvAuditEscHtml(e.actor)}</td>
+                        <td>${_srvAuditActorBadge(e.actor)}</td>
                         <td class="mono" style="font-size:.8rem;">${_srvAuditEscHtml(e.ip)}</td>
                         <td>${_srvAuditActionBadge(e.action)}</td>
                         <td>${_srvAuditEscHtml(e.target)}</td>

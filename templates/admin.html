@@ -702,6 +702,37 @@
                 </div>
             </div>
 
+            <!-- SFTP -->
+            <div class="yu-panel settings-cat-item" data-settings-cat="operations" style="margin-top:1rem;">
+                <div class="yu-panel-hd"><i class="bi bi-terminal-plus text-muted"></i> SFTP Access</div>
+                <div class="yu-panel-bd">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+                        <div>
+                            <p style="font-size:.875rem;font-weight:600;margin-bottom:.25rem;">Enable SFTP server</p>
+                            <p style="font-size:.825rem;color:var(--muted);margin:0;">Allows users to manage server files using any SFTP client. Requires panel restart to apply.</p>
+                        </div>
+                        <label class="yu-toggle" title="Toggle SFTP">
+                            <input type="checkbox" id="setting-sftp-enabled" {% if settings_sftp_enabled %}checked{% endif %}
+                                   onchange="adminSetSetting('sftp_enabled', this.checked ? '1' : '0')">
+                            <span class="yu-toggle-slider"></span>
+                        </label>
+                    </div>
+                    <hr style="border-color:var(--bdr);margin:1rem 0;">
+                    <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+                        <label style="font-size:.875rem;font-weight:600;white-space:nowrap;">SFTP Port</label>
+                        <input type="number" id="sftp-port-input" class="yu-input" style="width:120px;font-size:.85rem;"
+                               value="{{ settings_sftp_port }}" min="1" max="65535"
+                               onchange="adminSetSetting('sftp_port', this.value)">
+                    </div>
+                    <hr style="border-color:var(--bdr);margin:1rem 0;">
+                    <p style="font-size:.8rem;font-weight:600;color:var(--muted);margin-bottom:.5rem;">Cloudflare</p>
+                    <div style="display:flex;flex-direction:column;gap:.5rem;font-size:.8rem;color:var(--muted);">
+                        <div><span style="color:#f97316;font-weight:600;">Spectrum (paid):</span> Enable a Spectrum rule for TCP on this port in Cloudflare → Security → Spectrum. Clients connect to your proxied domain normally.</div>
+                        <div><span style="color:#60a5fa;font-weight:600;">DNS-only (free):</span> Add a separate <code>sftp.yourdomain.com</code> A record in Cloudflare set to <em>DNS only</em> (grey cloud) pointing directly to this server's IP. Clients connect to that hostname.</div>
+                    </div>
+                </div>
+            </div>
+
             <div class="yu-panel settings-cat-item" data-settings-cat="operations" style="margin-top:1rem;">
                 <div class="yu-panel-hd"><i class="bi bi-arrow-repeat text-muted"></i> Panel Updates</div>
                 <div class="yu-panel-bd">
@@ -726,7 +757,6 @@
 
                 </div>
             </div>
-        {% else %}
             <div class="yu-page-hd">
                 <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Panel Settings</div>
                 <p style="font-size:.825rem;color:var(--muted);margin:0;">Only the root user can access panel settings.</p>
