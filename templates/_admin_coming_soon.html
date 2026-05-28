@@ -130,11 +130,109 @@
 
         <!-- ─── PANEL: Notifications ─── -->
         <div id="tab-notifications" class="yu-tab-panel{% if tab == "notifications" %} active{% endif %}">
-            <div class="yu-page-hd"><div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Notifications</div><p style="font-size:.825rem;color:var(--muted);margin:0;">Webhooks &amp; email alerts for panel events</p></div>
-            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:340px;gap:1.25rem;">
-                <div style="width:68px;height:68px;border-radius:50%;background:rgba(124,58,237,.12);border:1px solid rgba(124,58,237,.25);display:flex;align-items:center;justify-content:center;"><i class="bi bi-bell" style="font-size:1.8rem;color:#a78bfa;"></i></div>
-                <div style="text-align:center;"><div style="font-size:1rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.4rem;">In Development</div><p style="font-size:.845rem;color:var(--muted);max-width:360px;margin:0;">Notifications are coming soon. You will be able to configure webhook URLs and email recipients to get alerted when a container crashes, disk exceeds 90%, or a user registers.</p></div>
-                <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;background:rgba(124,58,237,.15);color:#a78bfa;border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:.3rem .75rem;">COMING SOON</span>
+            <div class="yu-page-hd">
+                <div style="font-size:1.2rem;font-weight:700;letter-spacing:-.03em;margin-bottom:.2rem;">Notifications</div>
+                <p style="font-size:.825rem;color:var(--muted);margin:0;">Webhook and email delivery for panel events. <span style="color:#f87171;">Root only.</span></p>
+            </div>
+
+            {% if auth_role != "root" %}
+            <div class="yu-panel" style="margin-top:1.25rem;border:1px solid rgba(248,113,113,.25);">
+                <div class="yu-panel-bd" style="font-size:.86rem;color:var(--muted);">
+                    <i class="bi bi-lock" style="color:#f87171;"></i>
+                    Notification settings can be changed only by <strong style="color:#fca5a5;">root</strong>.
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="yu-panel" style="margin-top:1.25rem;">
+                <div class="yu-panel-hd"><i class="bi bi-send text-muted"></i> Delivery Channels</div>
+                <div class="yu-panel-bd">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+                        <div>
+                            <p style="font-size:.875rem;font-weight:600;margin-bottom:.25rem;">Enable notifications globally</p>
+                            <p style="font-size:.825rem;color:var(--muted);margin:0;">When disabled, no event notifications will be sent.</p>
+                        </div>
+                        <label class="yu-toggle" title="Toggle notifications">
+                            <input type="checkbox" id="notif-enabled" {% if notifications_enabled %}checked{% endif %}{% if auth_role != "root" %} disabled{% endif %}>
+                            <span class="yu-toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <hr style="border-color:var(--bdr);margin:1rem 0;">
+
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.75rem;">
+                        <div>
+                            <label class="yu-label">Webhook URL</label>
+                            <input type="url" id="notif-webhook-url" class="yu-input" placeholder="https://example.com/webhook" value="{{ notifications_webhook_url }}" {% if auth_role != "root" %}disabled{% endif %}>
+                            <div style="font-size:.76rem;color:var(--muted);margin-top:.35rem;">Accepts HTTP(S) endpoints (Discord, Slack, custom webhook).</div>
+                        </div>
+                        <div>
+                            <label class="yu-label">Email Recipients</label>
+                            <input type="text" id="notif-email-to" class="yu-input" placeholder="ops@example.com, owner@example.com" value="{{ notifications_email_to }}" {% if auth_role != "root" %}disabled{% endif %}>
+                            <div style="font-size:.76rem;color:var(--muted);margin-top:.35rem;">Stored for upcoming mail transport integration.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="yu-panel" style="margin-top:1rem;">
+                <div class="yu-panel-hd"><i class="bi bi-broadcast text-muted"></i> Event Triggers</div>
+                <div class="yu-panel-bd">
+                    <div style="display:flex;flex-direction:column;gap:.85rem;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+                            <div>
+                                <p style="font-size:.86rem;font-weight:600;margin:0 0 .2rem;">Container stops unexpectedly</p>
+                                <p style="font-size:.79rem;color:var(--muted);margin:0;">Useful for uptime monitoring and quick incident response.</p>
+                            </div>
+                            <label class="yu-toggle">
+                                <input type="checkbox" id="notif-on-server-down" {% if notifications_on_server_down %}checked{% endif %}{% if auth_role != "root" %} disabled{% endif %}>
+                                <span class="yu-toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+                            <div>
+                                <p style="font-size:.86rem;font-weight:600;margin:0 0 .2rem;">Disk usage crosses 90%</p>
+                                <p style="font-size:.79rem;color:var(--muted);margin:0;">Warns before quotas or host storage become critical.</p>
+                            </div>
+                            <label class="yu-toggle">
+                                <input type="checkbox" id="notif-on-disk-high" {% if notifications_on_disk_high %}checked{% endif %}{% if auth_role != "root" %} disabled{% endif %}>
+                                <span class="yu-toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;">
+                            <div>
+                                <p style="font-size:.86rem;font-weight:600;margin:0 0 .2rem;">New user registration</p>
+                                <p style="font-size:.79rem;color:var(--muted);margin:0;">Track account creation events from the panel.</p>
+                            </div>
+                            <label class="yu-toggle">
+                                <input type="checkbox" id="notif-on-user-create" {% if notifications_on_user_create %}checked{% endif %}{% if auth_role != "root" %} disabled{% endif %}>
+                                <span class="yu-toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="yu-panel" style="margin-top:1rem;">
+                <div class="yu-panel-hd"><i class="bi bi-flask text-muted"></i> Delivery Test</div>
+                <div class="yu-panel-bd">
+                    <p style="font-size:.825rem;color:var(--muted);margin:0 0 .7rem;">Sends a test payload to the configured webhook URL.</p>
+                    <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;">
+                        <input id="notif-test-message" class="yu-input" style="width:min(520px,100%);" maxlength="180" placeholder="Optional message override for this test">
+                        <button id="notif-test-btn" class="btn-yu btn-yu-ghost" onclick="sendNotificationTest()" {% if auth_role != "root" %}disabled{% endif %}>
+                            <i class="bi bi-send-check"></i> Send test webhook
+                        </button>
+                    </div>
+                    <div id="notif-result" style="margin-top:.6rem;font-size:.82rem;"></div>
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
+                <button id="notif-save-btn" class="btn-yu btn-yu-primary" onclick="saveNotificationSettings()" {% if auth_role != "root" %}disabled{% endif %}>
+                    <i class="bi bi-floppy"></i> Save notification settings
+                </button>
             </div>
         </div>
 

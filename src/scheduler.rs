@@ -3,6 +3,7 @@ use chrono::Utc;
 use sqlx::{Pool, Sqlite};
 use std::time::Duration;
 use tracing::{error, info, warn};
+use serde::Deserialize;
 
 use crate::db;
 use crate::db::schedules::{self, Schedule};
@@ -71,6 +72,7 @@ async fn execute(pool: &Pool<Sqlite>, docker: &Docker, schedule: Schedule) {
         "command" => run_command(docker, &container_id, &schedule.task_payload).await.map_err(|e| e.to_string()),
         "power"   => run_power(docker, &container_id, &schedule.task_payload).await.map_err(|e| e.to_string()),
         "backup"  => run_backup(docker, &container_id, &schedule.task_payload).await.map_err(|e| e.to_string()),
+        "script"  => run_script(docker, &container_id, &schedule.task_payload).await.map_err(|e| e.to_string()),
         other     => Err(format!("Unknown task type: {other}")),
     };
 
@@ -95,15 +97,23 @@ async fn run_command(
     container_id: &str,
     task_payload: &str,
 ) -> anyhow::Result<String> {
-    use bollard::exec::{CreateExecOptions, StartExecOptions};
-    use futures_util::StreamExt;
-
     let payload: serde_json::Value = serde_json::from_str(task_payload)
         .unwrap_or(serde_json::json!({}));
     let cmd_str = payload.get("cmd")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+
+    run_command_text(docker, container_id, &cmd_str).await
+}
+
+async fn run_command_text(
+    docker: &Docker,
+    container_id: &str,
+    cmd_str: &str,
+) -> anyhow::Result<String> {
+    use bollard::exec::{CreateExecOptions, StartExecOptions};
+    use futures_util::StreamExt;
 
     if cmd_str.is_empty() {
         return Err(anyhow::anyhow!("Empty command"));
@@ -150,6 +160,15 @@ async fn run_power(
         .and_then(|v| v.as_str())
         .unwrap_or("restart");
 
+    run_power_action(docker, container_id, action).await
+}
+
+async fn run_power_action(
+    docker: &Docker,
+    container_id: &str,
+    action: &str,
+) -> anyhow::Result<String> {
+
     match action {
         "start"   => docker::start_container(docker, container_id).await?,
         "stop"    => docker::stop_container(docker, container_id).await?,
@@ -169,15 +188,24 @@ pub async fn run_backup(
     container_id: &str,
     task_payload: &str,
 ) -> anyhow::Result<String> {
-    let volume_dir = docker::get_volume_dir(docker, container_id).await
-        .map_err(|e| anyhow::anyhow!("get_volume_dir: {e}"))?;
-
     let payload: serde_json::Value = serde_json::from_str(task_payload)
         .unwrap_or(serde_json::json!({}));
     let prefix = payload.get("prefix")
         .and_then(|v| v.as_str())
         .unwrap_or("backup")
         .to_string();
+
+    run_backup_prefix(docker, container_id, &prefix).await
+}
+
+async fn run_backup_prefix(
+    docker: &Docker,
+    container_id: &str,
+    prefix: &str,
+) -> anyhow::Result<String> {
+    let volume_dir = docker::get_volume_dir(docker, container_id).await
+        .map_err(|e| anyhow::anyhow!("get_volume_dir: {e}"))?;
+    let prefix = prefix.to_string();
 
     tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
         use flate2::write::GzEncoder;
@@ -214,4 +242,61 @@ pub async fn run_backup(
         let size_mb = meta.len() as f64 / 1_048_576.0;
         Ok(format!("{} ({:.1} MB)", short_name, size_mb))
     }).await?
+}
+
+#[derive(Debug, Deserialize)]
+struct ScriptPayload {
+    steps: Vec<ScriptStep>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum ScriptStep {
+    Command { cmd: String },
+    Power { action: String },
+    Backup { prefix: String },
+    Delay { seconds: u64 },
+}
+
+async fn run_script(
+    docker: &Docker,
+    container_id: &str,
+    task_payload: &str,
+) -> anyhow::Result<String> {
+    let payload: ScriptPayload = serde_json::from_str(task_payload)
+        .map_err(|e| anyhow::anyhow!("Invalid script payload: {e}"))?;
+    if payload.steps.is_empty() {
+        return Err(anyhow::anyhow!("Script needs at least one step"));
+    }
+
+    let mut transcript = Vec::new();
+    for (index, step) in payload.steps.into_iter().enumerate() {
+        let step_no = index + 1;
+        match step {
+            ScriptStep::Command { cmd } => {
+                transcript.push(format!("[step {step_no}] command: {cmd}"));
+                let output = run_command_text(docker, container_id, &cmd).await
+                    .map_err(|e| anyhow::anyhow!("[step {step_no}] command failed: {e}"))?;
+                transcript.push(output);
+            }
+            ScriptStep::Power { action } => {
+                transcript.push(format!("[step {step_no}] power: {action}"));
+                let output = run_power_action(docker, container_id, &action).await
+                    .map_err(|e| anyhow::anyhow!("[step {step_no}] power failed: {e}"))?;
+                transcript.push(output);
+            }
+            ScriptStep::Backup { prefix } => {
+                transcript.push(format!("[step {step_no}] backup: {prefix}"));
+                let output = run_backup_prefix(docker, container_id, &prefix).await
+                    .map_err(|e| anyhow::anyhow!("[step {step_no}] backup failed: {e}"))?;
+                transcript.push(output);
+            }
+            ScriptStep::Delay { seconds } => {
+                transcript.push(format!("[step {step_no}] delay: {seconds}s"));
+                tokio::time::sleep(Duration::from_secs(seconds)).await;
+            }
+        }
+    }
+
+    Ok(transcript.join("\n"))
 }

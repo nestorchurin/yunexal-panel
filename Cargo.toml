@@ -1,6 +1,6 @@
 [package]
 name = "yunexal-panel"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 default-run = "yunexal-panel"
 
@@ -38,7 +38,7 @@ tower-http = { version = "0.6.11", features = ["fs"] }
 argon2 = { version = "0.5.3", features = ["std"] }
 rust-embed = { version = "8.11.0", features = ["include-exclude"] }
 axum-embed = "0.1.0"
-reqwest = { version = "0.13.3", features = ["json"] }
+reqwest = { version = "0.13.4", features = ["json"] }
 flate2 = "1.1.9"
 tar = "0.4.46"
 rpassword = "7.5.3"

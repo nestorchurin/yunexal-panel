@@ -74,6 +74,20 @@ function closeSidebar() {
     document.getElementById('sbOverlay').classList.remove('open');
 }
 
+if (!window.__yuAdminSidebarEscInit) {
+    window.__yuAdminSidebarEscInit = true;
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') return;
+        const sidebar = document.getElementById('adminSidebar');
+        if (!sidebar || !sidebar.classList.contains('open')) return;
+        if (typeof window.closeSidebar === 'function') {
+            window.closeSidebar();
+        } else {
+            closeSidebar();
+        }
+    });
+}
+
 const SETTINGS_CATEGORY_META = {
     storage: {
         kicker: 'Storage',
@@ -194,6 +208,7 @@ function switchTab(name, btn) {
         const activeCat = settingsTab ? settingsTab.dataset.settingsCategory : '';
         if (!activeCat || activeCat === 'storage') loadStorageStats();
     }
+    if (name === 'notifications') initNotificationTab();
 }
 
 // Handle browser back/forward
@@ -216,6 +231,7 @@ window.addEventListener('popstate', (e) => {
         const activeCat = settingsTab ? settingsTab.dataset.settingsCategory : '';
         if (!activeCat || activeCat === 'storage') loadStorageStats();
     }
+    if (tab === 'notifications') initNotificationTab();
 });
 
 
@@ -1412,6 +1428,9 @@ if (document.getElementById('tab-settings') && document.getElementById('tab-sett
     const activeCat = settingsTab ? settingsTab.dataset.settingsCategory : '';
     if (!activeCat || activeCat === 'storage') loadStorageStats();
 }
+if (document.getElementById('tab-notifications') && document.getElementById('tab-notifications').classList.contains('active')) {
+    initNotificationTab();
+}
 
 // ── Containers: render helpers ──────────────────────────────────────────────────
 
@@ -2221,6 +2240,139 @@ async function runDbIntegrity() {
     }
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-database-check"></i> Run Integrity Check';
+}
+
+// ── Notifications tab ────────────────────────────────────────────────────────
+
+function _notificationResult(ok, msg) {
+    const el = document.getElementById('notif-result');
+    if (!el) return;
+    const color = ok ? 'var(--success)' : 'var(--danger)';
+    const icon = ok ? 'check-circle-fill' : 'x-circle';
+    el.innerHTML = `<span style="color:${color};"><i class="bi bi-${icon}"></i> ${escHtml(msg || '')}</span>`;
+}
+
+function _isRootUserForNotifications() {
+    return (document.body?.dataset?.authRole || '') === 'root';
+}
+
+function initNotificationTab() {
+    const msg = document.getElementById('notif-test-message');
+    if (msg && !msg.value.trim()) {
+        msg.value = 'Test notification from admin panel';
+    }
+}
+
+async function _setPanelSettingViaApi(key, value) {
+    if (typeof window.adminSetSetting === 'function') {
+        return window.adminSetSetting(key, value);
+    }
+    const r = await fetch('/api/admin/settings', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, value }),
+    });
+    const d = await r.json().catch(() => ({}));
+    return { ok: r.ok && d.ok, data: d };
+}
+
+async function saveNotificationSettings() {
+    if (!_isRootUserForNotifications()) {
+        _notificationResult(false, 'Only root can update notification settings.');
+        return;
+    }
+
+    const enabledEl = document.getElementById('notif-enabled');
+    const webhookEl = document.getElementById('notif-webhook-url');
+    const emailEl = document.getElementById('notif-email-to');
+    const downEl = document.getElementById('notif-on-server-down');
+    const diskEl = document.getElementById('notif-on-disk-high');
+    const userEl = document.getElementById('notif-on-user-create');
+    const saveBtn = document.getElementById('notif-save-btn');
+    if (!enabledEl || !webhookEl || !emailEl || !downEl || !diskEl || !userEl || !saveBtn) return;
+
+    const webhook = webhookEl.value.trim();
+    if (webhook) {
+        let parsed = null;
+        try {
+            parsed = new URL(webhook);
+        } catch (_) {
+            _notificationResult(false, 'Webhook URL must be a valid absolute URL.');
+            return;
+        }
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            _notificationResult(false, 'Webhook URL must use http or https.');
+            return;
+        }
+    }
+
+    saveBtn.disabled = true;
+    const oldLabel = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Saving…';
+    _notificationResult(true, 'Saving settings…');
+
+    try {
+        const updates = [
+            ['notifications_enabled', enabledEl.checked ? '1' : '0'],
+            ['notifications_webhook_url', webhook],
+            ['notifications_email_to', emailEl.value.trim()],
+            ['notifications_on_server_down', downEl.checked ? '1' : '0'],
+            ['notifications_on_disk_high', diskEl.checked ? '1' : '0'],
+            ['notifications_on_user_create', userEl.checked ? '1' : '0'],
+        ];
+
+        for (const [key, value] of updates) {
+            const result = await _setPanelSettingViaApi(key, value);
+            if (!result.ok) {
+                throw new Error(result.data?.error || `Failed to save ${key}`);
+            }
+        }
+
+        _notificationResult(true, 'Notification settings saved.');
+        if (typeof showToast === 'function') showToast('success', 'Notifications settings updated');
+    } catch (e) {
+        _notificationResult(false, e.message || 'Failed to save notification settings.');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = oldLabel;
+    }
+}
+
+async function sendNotificationTest() {
+    if (!_isRootUserForNotifications()) {
+        _notificationResult(false, 'Only root can send test notifications.');
+        return;
+    }
+
+    const btn = document.getElementById('notif-test-btn');
+    const msg = document.getElementById('notif-test-message');
+    if (!btn) return;
+
+    btn.disabled = true;
+    const oldLabel = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending…';
+    _notificationResult(true, 'Sending test webhook…');
+
+    try {
+        const r = await fetch('/api/admin/notifications/test', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg ? msg.value.trim() : '' }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) {
+            throw new Error(d.error || `Request failed (${r.status})`);
+        }
+        _notificationResult(true, 'Test webhook delivered successfully.');
+        if (typeof showToast === 'function') showToast('success', 'Test notification sent');
+    } catch (e) {
+        _notificationResult(false, e.message || 'Failed to send test webhook.');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = oldLabel;
+    }
 }
 
 // ── Theme tab ─────────────────────────────────────────────────────────────────

@@ -172,6 +172,7 @@ use admin::{
     api_audit_list,
     api_update_check, api_update_apply,
     api_admin_set_setting,
+    api_admin_notifications_test,
     api_ufw_status, api_ufw_toggle,
     api_admin_storage_stats, api_admin_docker_daemon,
     api_admin_storage_mounts, api_admin_storage_disks,
@@ -310,6 +311,7 @@ pub fn create_router(state: AppState) -> Router {
             .layer(axum::extract::DefaultBodyLimit::disable()))
         .route("/api/quota-check", get(api_quota_check))
         .route("/admin", get(admin_page))
+        .route("/admin/", get(admin_page))
         .route("/admin/{tab}", get(admin_tab_page))
         .route("/admin/roles/{name}/edit", get(role_permissions_page))
         .route("/admin/servers/{id}/edit", get(admin_edit_page))
@@ -335,6 +337,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/admin/updates/check", get(api_update_check))
         .route("/api/admin/updates/apply", post(api_update_apply))
         .route("/api/admin/settings", post(api_admin_set_setting))
+        .route("/api/admin/notifications/test", post(api_admin_notifications_test))
         .route("/api/admin/ufw/status", get(api_ufw_status))
         .route("/api/admin/ufw/toggle", post(api_ufw_toggle))
         .route("/api/admin/storage/stats", get(api_admin_storage_stats))

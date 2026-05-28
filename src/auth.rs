@@ -197,6 +197,9 @@ fn required_admin_permission_for_path(path: &str, method: &Method) -> &'static s
     if path == "/api/admin/settings" || path == "/api/admin/db-integrity" {
         return "panel.settings";
     }
+    if path == "/api/admin/notifications/test" {
+        return "panel.settings";
+    }
     if path.starts_with("/api/admin/storage/") {
         return "storage.manage";
     }

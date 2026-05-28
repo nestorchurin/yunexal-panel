@@ -38,6 +38,576 @@ function closeSidebar() {
     setTimeout(() => { if (window.fitAddonRef) window.fitAddonRef.fit(); }, 280);
 }
 
+// ── Command macros ──────────────────────────────────────────────────────────
+const _cmdInput = document.getElementById('cmd-input');
+const _cmdSuggestions = document.getElementById('cmd-suggestions');
+const _macroChipHost = document.getElementById('macro-chips');
+const _macroEditorList = document.getElementById('macro-editor-list');
+const _macroModalEl = document.getElementById('macroModal');
+const _macroNewLabel = document.getElementById('macro-new-label');
+const _macroNewCommand = document.getElementById('macro-new-command');
+const _macroNewHotkey = document.getElementById('macro-new-hotkey');
+const _macroCountEl = document.getElementById('macroCount');
+const _macroHoverPanel = document.getElementById('macro-hover-panel');
+const _macroShell = document.querySelector('.con-cmd-macro-shell');
+const _macroButton = _macroShell?.querySelector('.con-cmd-macros');
+
+const _cmdStateKey = `yu_console_cmd_state:${YU_SERVER_ID}`;
+const _defaultCommandMacros = [
+    { id: 'help', label: 'help', command: 'help' },
+    { id: 'list-files', label: 'list files', command: 'ls -lah' },
+    { id: 'processes', label: 'processes', command: 'ps aux --sort=-%cpu | head -n 12' },
+    { id: 'disk-usage', label: 'disk usage', command: 'df -h' },
+    { id: 'environment', label: 'env', command: 'printenv | sort' },
+];
+
+let _cmdSuggestionsHideTimer = null;
+let _macroModalInstance = null;
+let _macroTouchTimer = null;
+let _macroTouchSuppressClick = false;
+let _consoleState = 'stopped';
+let _macroKeyCaptureInput = null;
+
+function _cmdTrim(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function _cmdCloneDefaults() {
+    return _defaultCommandMacros.map(item => ({ ...item, hotkey: '' }));
+}
+
+function _cmdNormalizeHotkeyText(value) {
+    return String(value || '').replace(/\s+/g, '').trim();
+}
+
+function _cmdParseHotkey(event) {
+    const parts = [];
+    if (event.ctrlKey) parts.push('Ctrl');
+    if (event.altKey) parts.push('Alt');
+    if (event.shiftKey) parts.push('Shift');
+    if (event.metaKey) parts.push('Meta');
+
+    const key = String(event.key || '').trim();
+    if (!key) return '';
+
+    if (key.length === 1) {
+        parts.push(key.toUpperCase());
+    } else if (/^F\d{1,2}$/i.test(key) || ['Tab', 'Enter', 'Escape', 'Space', 'Backspace', 'Delete', 'Insert', 'Home', 'End', 'PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
+        parts.push(key[0].toUpperCase() + key.slice(1));
+    } else {
+        parts.push(key.charAt(0).toUpperCase() + key.slice(1));
+    }
+
+    if (!parts.length) return '';
+    if (parts.length === 1 && !/^F\d{1,2}$/i.test(parts[0])) return '';
+    return parts.join('+');
+}
+
+function _cmdHotkeyMatches(event, hotkey) {
+    const normalized = _cmdNormalizeHotkeyText(hotkey);
+    if (!normalized) return false;
+    const eventHotkey = _cmdParseHotkey(event);
+    if (!eventHotkey) return false;
+    return eventHotkey.toLowerCase() === normalized.toLowerCase();
+}
+
+function _cmdLoadState() {
+    let parsed = null;
+    try {
+        parsed = JSON.parse(localStorage.getItem(_cmdStateKey) || 'null');
+    } catch (_) {
+        parsed = null;
+    }
+
+    const macros = Array.isArray(parsed?.macros) && parsed.macros.length
+        ? parsed.macros.map((item, index) => ({
+            id: String(item?.id || `macro_${index}_${Date.now()}`),
+            label: _cmdTrim(item?.label || item?.command || `Macro ${index + 1}`),
+            command: _cmdTrim(item?.command || ''),
+            hotkey: _cmdNormalizeHotkeyText(item?.hotkey || ''),
+            usage: Number.isFinite(Number(item?.usage)) ? Number(item.usage) : 0,
+            lastUsed: Number.isFinite(Number(item?.lastUsed)) ? Number(item.lastUsed) : 0,
+        })).filter(item => item.command)
+        : _cmdCloneDefaults().map(item => ({ ...item, usage: 0, lastUsed: 0 }));
+
+    return {
+        macros: macros.length ? macros : _cmdCloneDefaults().map(item => ({ ...item, usage: 0, lastUsed: 0 })),
+    };
+}
+
+function _cmdSaveState() {
+    try {
+        localStorage.setItem(_cmdStateKey, JSON.stringify(_cmdState));
+    } catch (_) {}
+}
+
+function _cmdEscapeHtml(text) {
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function _cmdOpenModal() {
+    if (!_macroModalEl || typeof bootstrap === 'undefined') return;
+    if (!_macroModalInstance) {
+        _macroModalInstance = bootstrap.Modal.getOrCreateInstance(_macroModalEl);
+    }
+    _cmdRenderMacroEditor();
+    _macroModalInstance.show();
+}
+
+function _cmdCloseSuggestions() {
+    if (_cmdSuggestionsHideTimer) {
+        clearTimeout(_cmdSuggestionsHideTimer);
+        _cmdSuggestionsHideTimer = null;
+    }
+    if (_cmdSuggestions) {
+        _cmdSuggestions.classList.remove('open');
+        _cmdSuggestions.innerHTML = '';
+    }
+}
+
+function _cmdShowMacroHover() {
+    if (!_macroShell) return;
+    _cmdRenderMacroHover();
+    _macroShell.classList.add('is-open');
+}
+
+function _cmdHideMacroHover() {
+    if (!_macroShell) return;
+    _macroShell.classList.remove('is-open');
+}
+
+function _cmdGetPopularMacros(limit = 5) {
+    return (_cmdState.macros || [])
+        .slice()
+        .sort((left, right) => {
+            const usageDelta = Number(right.usage || 0) - Number(left.usage || 0);
+            if (usageDelta) return usageDelta;
+            const lastUsedDelta = Number(right.lastUsed || 0) - Number(left.lastUsed || 0);
+            if (lastUsedDelta) return lastUsedDelta;
+            return String(left.label || left.command || '').localeCompare(String(right.label || right.command || ''));
+        })
+        .slice(0, limit);
+}
+
+function _cmdRecordMacroUsage(macroId) {
+    const macro = (_cmdState.macros || []).find(item => item.id === macroId);
+    if (!macro) return;
+    macro.usage = Number(macro.usage || 0) + 1;
+    macro.lastUsed = Date.now();
+    _cmdSaveState();
+}
+
+function _cmdRunMacro(macro) {
+    if (!macro || !_cmdCanRunMacros()) return;
+    _cmdRecordMacroUsage(macro.id);
+    _cmdSend(macro.command);
+    _cmdRenderMacroHover();
+}
+
+function _cmdRunMacroByHotkey(event) {
+    if (!_cmdCanRunMacros()) return false;
+    if (!event || !event.key) return false;
+
+    const target = event.target;
+    if (target && (target.closest?.('input, textarea, select, [contenteditable="true"]'))) {
+        return false;
+    }
+
+    const macro = (_cmdState.macros || []).find(item => _cmdHotkeyMatches(event, item.hotkey));
+    if (!macro) return false;
+
+    event.preventDefault();
+    event.stopPropagation();
+    _cmdRunMacro(macro);
+    return true;
+}
+
+function _cmdCanRunMacros() {
+    return _consoleState === 'running';
+}
+
+function _cmdSetInputValue(value) {
+    if (!_cmdInput) return;
+    _cmdInput.value = value;
+    const end = value.length;
+    try { _cmdInput.setSelectionRange(end, end); } catch (_) {}
+    _cmdInput.focus();
+}
+
+function _cmdSend(rawCommand) {
+    const command = _cmdTrim(rawCommand);
+    if (!command) return;
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(command + '\n');
+    } else if (term) {
+        term.writeln('\x1b[31m[Console disconnected]\x1b[0m');
+    }
+
+    _cmdSaveState();
+    _cmdRenderMacroStrip();
+    _cmdCloseSuggestions();
+    if (_cmdInput) _cmdInput.value = '';
+}
+
+function _cmdRenderMacroStrip() {
+    if (!_macroChipHost) return;
+
+    _macroChipHost.innerHTML = '';
+    const macros = _cmdGetPopularMacros(8);
+    if (!macros.length) {
+        const empty = document.createElement('span');
+        empty.className = 'text-muted';
+        empty.style.fontSize = '.76rem';
+        empty.textContent = 'No macros yet. Add project commands in Manage.';
+        _macroChipHost.appendChild(empty);
+        return;
+    }
+
+    for (const macro of macros) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'con-macro-chip';
+        button.title = macro.command;
+        button.dataset.command = macro.command;
+        button.disabled = !_cmdCanRunMacros();
+        if (!button.disabled) {
+            button.title = macro.command;
+        } else {
+            button.title = 'Start the container before running macros';
+        }
+        button.innerHTML = `<i class="bi bi-lightning-charge-fill"></i><span class="macro-label">${_cmdEscapeHtml(macro.label || macro.command)}</span>`;
+        button.addEventListener('click', () => _cmdRunMacro(macro));
+        _macroChipHost.appendChild(button);
+    }
+}
+
+function _cmdRenderMacroHover() {
+    if (!_macroHoverPanel) return;
+
+    const macros = _cmdGetPopularMacros(5);
+    _macroHoverPanel.innerHTML = '';
+
+    const head = document.createElement('div');
+    head.className = 'con-cmd-macro-hover-head';
+    head.innerHTML = '<div class="con-cmd-macro-hover-title">Popular macros</div><div class="con-cmd-macro-hover-copy">Top 5 by your usage</div>';
+    _macroHoverPanel.appendChild(head);
+
+    const list = document.createElement('div');
+    list.className = 'con-cmd-macro-hover-list';
+
+    if (!macros.length) {
+        const empty = document.createElement('div');
+        empty.className = 'con-cmd-macro-hover-empty';
+        empty.textContent = 'No macros yet. Open settings to add project commands.';
+        _macroHoverPanel.appendChild(empty);
+        return;
+    }
+
+    for (const macro of macros) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'con-cmd-macro-hover-item';
+        item.disabled = !_cmdCanRunMacros();
+        item.title = _cmdCanRunMacros()
+            ? `Run ${macro.command}`
+            : 'Start the container before running macros';
+        item.innerHTML = `
+            <span class="con-cmd-macro-hover-main">
+                <span class="con-cmd-macro-hover-label">${_cmdEscapeHtml(macro.label || macro.command)}</span>
+                <span class="con-cmd-macro-hover-command">${_cmdEscapeHtml(macro.command)}</span>
+            </span>
+            <span class="con-cmd-macro-hover-meta">${Number(macro.usage || 0)} uses</span>
+            <i class="bi bi-arrow-return-left con-cmd-macro-hover-run"></i>
+        `;
+        item.addEventListener('click', () => _cmdRunMacro(macro));
+        list.appendChild(item);
+    }
+
+    _macroHoverPanel.appendChild(list);
+}
+
+function _cmdRenderMacroEditor() {
+    if (!_macroEditorList) return;
+
+    _macroEditorList.innerHTML = '';
+    for (const macro of _cmdState.macros) {
+        _macroEditorList.appendChild(_cmdCreateMacroRow(macro));
+    }
+}
+
+function _updateMacroCount() {
+    if (!_macroCountEl) return;
+    _macroCountEl.textContent = String((_cmdState.macros || []).length);
+}
+
+function _cmdSyncMacroControls() {
+    const enabled = _cmdCanRunMacros();
+
+    if (_macroChipHost) {
+        _macroChipHost.querySelectorAll('button.con-macro-chip').forEach(button => {
+            button.disabled = !enabled;
+            button.title = enabled
+                ? (button.dataset.command || button.title)
+                : 'Start the container before running macros';
+        });
+    }
+
+    if (_macroEditorList) {
+        _macroEditorList.querySelectorAll('.con-macro-editor-btn').forEach(button => {
+            button.disabled = !enabled;
+            button.title = enabled
+                ? (button.classList.contains('danger') ? 'Remove macro' : 'Run macro')
+                : 'Start the container before running macros';
+        });
+    }
+}
+
+function _cmdCreateMacroRow(macro = {}) {
+    const row = document.createElement('div');
+    row.className = 'con-macro-editor-row';
+    row.dataset.macroId = macro.id || `macro_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    row.dataset.usage = String(Number(macro.usage || 0));
+    row.dataset.lastUsed = String(Number(macro.lastUsed || 0));
+
+    const label = document.createElement('input');
+    label.type = 'text';
+    label.className = 'form-input';
+    label.placeholder = 'Label';
+    label.value = macro.label || '';
+
+    const command = document.createElement('input');
+    command.type = 'text';
+    command.className = 'form-input';
+    command.placeholder = 'Command';
+    command.value = macro.command || '';
+
+    const hotkey = document.createElement('input');
+    hotkey.type = 'text';
+    hotkey.className = 'form-input con-macro-hotkey-input';
+    hotkey.placeholder = 'Hotkey';
+    hotkey.value = _cmdNormalizeHotkeyText(macro.hotkey || '');
+    hotkey.readOnly = true;
+    hotkey.dataset.capture = '1';
+    hotkey.title = 'Click and press a key combo';
+    hotkey.addEventListener('focus', () => { _macroKeyCaptureInput = hotkey; });
+    hotkey.addEventListener('blur', () => {
+        if (_macroKeyCaptureInput === hotkey) _macroKeyCaptureInput = null;
+    });
+    hotkey.addEventListener('keydown', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Escape') {
+            hotkey.value = '';
+            return;
+        }
+        const binding = _cmdParseHotkey(event);
+        if (!binding) return;
+        hotkey.value = binding;
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'con-macro-editor-actions';
+
+    const runButton = document.createElement('button');
+    runButton.type = 'button';
+    runButton.className = 'con-macro-editor-btn';
+    runButton.title = 'Run macro';
+    runButton.disabled = !_cmdCanRunMacros();
+    if (!runButton.disabled) {
+        runButton.title = 'Run macro';
+    } else {
+        runButton.title = 'Start the container before running macros';
+    }
+    runButton.innerHTML = '<i class="bi bi-play-fill"></i>';
+    runButton.addEventListener('click', () => {
+        if (!_cmdCanRunMacros()) return;
+        _cmdSend(command.value);
+    });
+
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'con-macro-editor-btn danger';
+    deleteButton.title = 'Remove macro';
+    deleteButton.innerHTML = '<i class="bi bi-trash"></i>';
+    deleteButton.addEventListener('click', () => {
+        const macroName = _cmdTrim(label.value || command.value || 'this macro');
+        if (!confirm(`Delete macro "${macroName}"?`)) return;
+        row.remove();
+    });
+
+    actions.appendChild(runButton);
+    actions.appendChild(deleteButton);
+
+    row.appendChild(label);
+    row.appendChild(command);
+    row.appendChild(hotkey);
+    row.appendChild(actions);
+
+    return row;
+}
+
+function _cmdRenderAutocomplete(showDropdown = false) {
+    if (!_cmdSuggestions || !_cmdInput) return;
+    _cmdCloseSuggestions();
+}
+
+function openCommandMacros() {
+    _cmdHideMacroHover();
+    _cmdOpenModal();
+}
+
+function addCommandMacroRow() {
+    if (!_macroEditorList) return;
+    const label = _cmdTrim(_macroNewLabel?.value || '');
+    const command = _cmdTrim(_macroNewCommand?.value || '');
+    const hotkey = _cmdNormalizeHotkeyText(_macroNewHotkey?.value || '');
+    if (!label || !command) return;
+
+    _macroEditorList.appendChild(_cmdCreateMacroRow({ label, command, hotkey }));
+    if (_macroNewLabel) _macroNewLabel.value = '';
+    if (_macroNewCommand) _macroNewCommand.value = '';
+    if (_macroNewHotkey) _macroNewHotkey.value = '';
+    if (_macroNewLabel) _macroNewLabel.focus();
+}
+
+function saveCommandMacros() {
+    if (!_macroEditorList) return;
+
+    const rows = Array.from(_macroEditorList.querySelectorAll('.con-macro-editor-row'));
+    const macros = rows.map((row, index) => {
+        const inputs = row.querySelectorAll('input');
+        const label = _cmdTrim(inputs[0]?.value || '');
+        const command = _cmdTrim(inputs[1]?.value || '');
+        const hotkey = _cmdNormalizeHotkeyText(inputs[2]?.value || '');
+        return {
+            id: row.dataset.macroId || `macro_${index}`,
+            label,
+            command,
+            hotkey,
+            usage: Number.isFinite(Number(row.dataset.usage)) ? Number(row.dataset.usage) : 0,
+            lastUsed: Number.isFinite(Number(row.dataset.lastUsed)) ? Number(row.dataset.lastUsed) : 0,
+        };
+    }).filter(item => item.command)
+        .map((item, index) => ({
+            id: item.id || `macro_${index}`,
+            label: item.label || item.command,
+            command: item.command,
+            hotkey: item.hotkey || '',
+            usage: Number.isFinite(Number(item.usage)) ? Number(item.usage) : 0,
+            lastUsed: Number.isFinite(Number(item.lastUsed)) ? Number(item.lastUsed) : 0,
+        }));
+
+    _cmdState.macros = macros.length ? macros : _cmdCloneDefaults().map(item => ({ ...item, usage: 0, lastUsed: 0 }));
+    _cmdSaveState();
+    _cmdRenderMacroStrip();
+    _cmdRenderMacroHover();
+    _cmdRenderAutocomplete();
+    if (_macroModalInstance) _macroModalInstance.hide();
+}
+
+function resetCommandMacros() {
+    _cmdState.macros = _cmdCloneDefaults().map(item => ({ ...item, usage: 0, lastUsed: 0 }));
+    _cmdSaveState();
+    _cmdRenderMacroStrip();
+    _cmdRenderMacroHover();
+    _cmdRenderMacroEditor();
+    _cmdRenderAutocomplete();
+}
+
+_cmdState = _cmdLoadState();
+_updateMacroCount();
+_cmdRenderMacroHover();
+
+if (_macroButton) {
+    _macroButton.addEventListener('click', function (event) {
+        if (_macroTouchSuppressClick) {
+            event.preventDefault();
+            event.stopPropagation();
+            _macroTouchSuppressClick = false;
+            return;
+        }
+        openCommandMacros();
+    });
+
+    if (window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
+        _macroButton.addEventListener('touchstart', function () {
+            _macroTouchSuppressClick = false;
+            if (_macroTouchTimer) clearTimeout(_macroTouchTimer);
+            _macroTouchTimer = setTimeout(() => {
+                _macroTouchTimer = null;
+                _macroTouchSuppressClick = true;
+                _cmdShowMacroHover();
+            }, 350);
+        }, { passive: true });
+
+        const clearMacroTouch = function () {
+            if (_macroTouchTimer) {
+                clearTimeout(_macroTouchTimer);
+                _macroTouchTimer = null;
+            }
+        };
+
+        _macroButton.addEventListener('touchend', clearMacroTouch, { passive: true });
+        _macroButton.addEventListener('touchcancel', clearMacroTouch, { passive: true });
+
+        document.addEventListener('click', function (event) {
+            if (!_macroShell || !_macroShell.classList.contains('is-open')) return;
+            if (_macroShell.contains(event.target)) return;
+            _cmdHideMacroHover();
+        }, true);
+    }
+}
+
+if (_cmdInput) {
+    _cmdInput.addEventListener('input', function () {
+        _cmdRenderAutocomplete(false);
+    });
+
+    _cmdInput.addEventListener('focus', function () {
+        _cmdRenderAutocomplete(false);
+    });
+
+    _cmdInput.addEventListener('keydown', function (e) {
+        if (_cmdRunMacroByHotkey(e)) return;
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            _cmdSend(_cmdInput.value);
+        } else if (e.key === 'Escape') {
+            _cmdCloseSuggestions();
+            _cmdHideMacroHover();
+        }
+    });
+}
+
+document.addEventListener('keydown', function (e) {
+    if (_macroKeyCaptureInput) {
+        const captureTarget = e.target;
+        if (captureTarget === _macroKeyCaptureInput || _macroKeyCaptureInput.contains(captureTarget)) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Escape') {
+                _macroKeyCaptureInput.value = '';
+            } else {
+                const binding = _cmdParseHotkey(e);
+                if (binding) _macroKeyCaptureInput.value = binding;
+            }
+            return;
+        }
+    }
+
+    _cmdRunMacroByHotkey(e);
+}, true);
+
+_cmdRenderMacroStrip();
+_cmdRenderMacroHover();
+_cmdCloseSuggestions();
+
 // ── Terminal setup ────────────────────────────────────────────────────────────
 
 // ── HTML → ANSI converter (for servers like Vintage Story that output HTML) ───
@@ -132,6 +702,24 @@ function _detachConsoleResize() {
     _resizeAttached = false;
 }
 
+function _cleanupXtermMeasureOrphans() {
+    if (!document.body) return;
+
+    // Firefox can keep these xterm measurement probes in the scroll area after SPA detach.
+    const bodyChildren = Array.from(document.body.children);
+    for (const node of bodyChildren) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.id || node.className) continue;
+
+        const styleAttr = node.getAttribute('style') || '';
+        if (!/top:\s*-50000px/i.test(styleAttr)) continue;
+        if (!/width:\s*50000px/i.test(styleAttr)) continue;
+        if (!/white-space:\s*pre/i.test(styleAttr)) continue;
+
+        node.remove();
+    }
+}
+
 _attachConsoleResize();
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
@@ -207,8 +795,12 @@ window.addEventListener('yu:page-shown', (ev) => {
     const path = String(ev?.detail?.path || '');
     if (/^\/servers\/\d+\/console$/.test(path)) {
         document.body.classList.add('yu-console-page');
+        _cmdRenderMacroStrip();
+        _cmdRenderMacroHover();
+        _cmdRenderAutocomplete();
     } else {
         document.body.classList.remove('yu-console-page');
+        _cleanupXtermMeasureOrphans();
     }
     _consoleOnPageShown(path);
 });
@@ -248,22 +840,9 @@ fetch(`/api/servers/${YU_SERVER_ID}/disk`)
         }
     }).catch(() => {});
 
-const _cmdInput = document.getElementById('cmd-input');
-if (_cmdInput) {
-    _cmdInput.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const cmd = _cmdInput.value;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(cmd + '\n');
-            }
-            _cmdInput.value = '';
-        }
-    });
-}
-
 // ── Controls ──────────────────────────────────────────────────────────────────
 function updateControls(state) {
+    _consoleState = state;
     const btnStart   = document.getElementById('btn-start');
     const btnRestart = document.getElementById('btn-restart');
     const btnStop    = document.getElementById('btn-stop');
@@ -292,6 +871,10 @@ function updateControls(state) {
         btnStop.disabled = true;
         btnKill.disabled = true;
     }
+
+    _cmdRenderMacroStrip();
+    _cmdSyncMacroControls();
+    _cmdRenderMacroHover();
 }
 
 function sendAction(action) {
@@ -397,10 +980,12 @@ window._yuPageCleanup = function () {
         try { ws.close(); } catch (_) {}
         ws = null;
     }
+    _cmdCloseSuggestions();
     _detachConsoleResize();
     if (_termResizeObserver) { _termResizeObserver.disconnect(); _termResizeObserver = null; }
     _prevRx = null;
     _prevTx = null;
     _prevBlkRead = null;
     _prevBlkWrite = null;
+    _cleanupXtermMeasureOrphans();
 };

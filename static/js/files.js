@@ -15,13 +15,34 @@ function showToast(msg, type) {
 
 function fbShowModal(modalEl) {
     if (!modalEl) return;
+
+    const normalizeModalStack = () => {
+        // In SPA-attached views, parent stacking contexts can place backdrop above modal.
+        modalEl.style.zIndex = '2005';
+        document.querySelectorAll('.modal-backdrop').forEach((el, idx) => {
+            el.style.zIndex = String(2000 + idx);
+        });
+    };
+
+    const clearBootstrapBackdrops = () => {
+        document.querySelectorAll('.modal-backdrop').forEach((el) => el.remove());
+    };
+
     try {
         if (window.bootstrap?.Modal?.getOrCreateInstance) {
-            window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            window.bootstrap.Modal.getOrCreateInstance(modalEl, { backdrop: false }).show();
+            requestAnimationFrame(() => {
+                normalizeModalStack();
+                clearBootstrapBackdrops();
+            });
             return;
         }
         if (window.bootstrap?.Modal) {
-            new window.bootstrap.Modal(modalEl).show();
+            new window.bootstrap.Modal(modalEl, { backdrop: false }).show();
+            requestAnimationFrame(() => {
+                normalizeModalStack();
+                clearBootstrapBackdrops();
+            });
             return;
         }
     } catch (e) {
@@ -33,6 +54,7 @@ function fbShowModal(modalEl) {
     modalEl.classList.add('show');
     modalEl.removeAttribute('aria-hidden');
     document.body.classList.add('modal-open');
+    normalizeModalStack();
 }
 
 function fbHideModal(modalEl) {
@@ -131,17 +153,24 @@ function fbSyncHashToCurrentPath() {
     fbWriteHash(fb.dataset.path || '/');
 }
 
+function fbListPath(path) {
+    const sid = getServerId();
+    const target = document.getElementById('file-browser');
+    if (!sid || !target || !window.htmx || typeof htmx.ajax !== 'function') return false;
+    htmx.ajax('GET', `/api/servers/${sid}/files/list?path=${encodeURIComponent(path)}`, {
+        target,
+        swap: 'outerHTML',
+    });
+    return true;
+}
+
 // Dispatch on body so HTMX "hx-trigger='file-created from:body'" picks it up
 function refreshBrowser() {
     fbClearSelection();
     const fb = document.getElementById('file-browser');
     if (!fb) return;
     const path = fb.dataset.path || '/';
-    const sid  = getServerId();
-    htmx.ajax('GET', `/api/servers/${sid}/files/list?path=${encodeURIComponent(path)}`, {
-        target: '#file-browser',
-        swap: 'outerHTML',
-    });
+    fbListPath(path);
 }
 
 // ── Custom confirm dialog ──────────────────────────────────────────────────────
@@ -280,10 +309,7 @@ function fbInit() {
     ctxEl('fb-ctx-open')?.addEventListener('click', function () {
         if (!_ctxTarget) return;
         ctxHide();
-        htmx.ajax('GET',
-            `/api/servers/${getServerId()}/files/list?path=${encodeURIComponent(_ctxTarget.dataset.path)}`,
-            { target: '#file-browser', swap: 'outerHTML' }
-        );
+        fbListPath(_ctxTarget.dataset.path || '/');
     });
 
     // Rename — open modal
@@ -485,7 +511,7 @@ function fbEagerLoad() {
     const fb = document.getElementById('file-browser');
     if (!fb) return;
     const sid = getServerId();
-    if (!sid || !window.htmx) return;
+    if (!sid || !window.htmx || typeof htmx.ajax !== 'function') return;
 
     const hashPath = fbPathFromHash(location.hash);
     if (!hashPath && location.hash) {
@@ -499,10 +525,7 @@ function fbEagerLoad() {
         return;
     }
 
-    htmx.ajax('GET', `/api/servers/${sid}/files/list?path=${encodeURIComponent(targetPath)}`, {
-        target: '#file-browser',
-        swap: 'outerHTML',
-    });
+    fbListPath(targetPath);
 }
 
 // ── Auto-refresh: JSON diff (dashboard-style, no flicker) ────────────────────
@@ -633,6 +656,8 @@ async function fbPollJson() {
 }
 
 let _fbRefreshTimer = null;
+let _fbLastShownPath = '';
+let _fbLastShownAt = 0;
 
 function fbStartPolling() {
     if (_fbRefreshTimer) clearInterval(_fbRefreshTimer);
@@ -646,19 +671,28 @@ function fbStopPolling() {
     }
 }
 
-function fbOnPageShown(path) {
+function fbOnPageShown(path, opts = {}) {
     const p = String(path || window.location.pathname || '');
     if (!/^\/servers\/\d+\/files$/.test(p)) return;
+
+    const now = Date.now();
+    const forceRefresh = !!opts.refresh;
+    if (!forceRefresh && _fbLastShownPath === p && (now - _fbLastShownAt) < 600) {
+        return;
+    }
+    _fbLastShownPath = p;
+    _fbLastShownAt = now;
+
     fbEagerLoad();
     fbStartPolling();
     window._yuPageCleanup = fbStopPolling;
 }
 
-fbOnPageShown(window.location.pathname);
+fbOnPageShown(window.location.pathname, { refresh: false });
 
 window.addEventListener('yu:page-shown', (ev) => {
     const path = String(ev?.detail?.path || '');
-    fbOnPageShown(path);
+    fbOnPageShown(path, { refresh: !!ev?.detail?.refresh });
 });
 
 // ── Cleanup (SPA navigation teardown) ────────────────────────────────────────
@@ -887,9 +921,12 @@ async function fbExtractArchive(path, destination = 'folder') {
 // ── File upload ─────────────────────────────────────────────────────────────────────
 
 async function fbUploadFiles(files) {
+    const selectedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    if (!selectedFiles.length) return;
+
     const sid   = getServerId();
     const path  = currentBrowserPath();
-    const total = files.length;
+    const total = selectedFiles.length;
     let ok = 0;
     const CF_SAFE_CHUNK_BYTES = 85 * 1024 * 1024;
     const CHUNK_UPLOAD_THRESHOLD = 85 * 1024 * 1024;
@@ -901,14 +938,14 @@ async function fbUploadFiles(files) {
     const counter = document.getElementById('fb-up-counter');
     const panel   = document.getElementById('fb-upload-progress');
 
-    panel.style.display = 'block';
+    if (panel) panel.style.display = 'block';
 
     try {
         for (let i = 0; i < total; i++) {
-            const file = files[i];
-            counter.textContent = `${i + 1} / ${total}`;
-            label.textContent   = file.name;
-            bar.style.width     = '0%';
+            const file = selectedFiles[i];
+            if (counter) counter.textContent = `${i + 1} / ${total}`;
+            if (label) label.textContent = file.name;
+            if (bar) bar.style.width = '0%';
 
             const result = file.size > CHUNK_UPLOAD_THRESHOLD
                 ? await fbUploadFileInChunks(file, sid, path, bar, label)
@@ -921,8 +958,8 @@ async function fbUploadFiles(files) {
             }
         }
     } finally {
-        panel.style.display = 'none';
-        bar.style.width = '0%';
+        if (panel) panel.style.display = 'none';
+        if (bar) bar.style.width = '0%';
     }
 
     if (ok > 0) {
@@ -941,12 +978,12 @@ async function fbUploadFiles(files) {
 
             xhr.upload.addEventListener('progress', e => {
                 if (e.lengthComputable) {
-                    bar.style.width = Math.round(e.loaded / e.total * 100) + '%';
+                    if (bar) bar.style.width = Math.round(e.loaded / e.total * 100) + '%';
                 }
             });
 
             xhr.addEventListener('load', () => {
-                bar.style.width = '100%';
+                if (bar) bar.style.width = '100%';
                 resolve({ ok: xhr.status >= 200 && xhr.status < 300, body: xhr.responseText });
             });
 
@@ -970,7 +1007,7 @@ async function fbUploadFiles(files) {
         };
         const updateProgress = () => {
             const uploaded = progressByChunk.reduce((sum, n) => sum + n, 0);
-            bar.style.width = Math.min(100, Math.round(uploaded / file.size * 100)) + '%';
+            if (bar) bar.style.width = Math.min(100, Math.round(uploaded / file.size * 100)) + '%';
         };
 
         async function uploadChunk(chunkIndex, attempt = 1) {

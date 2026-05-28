@@ -11,6 +11,20 @@ function closeSidebar() {
     document.getElementById('sbOverlay').classList.remove('open');
 }
 
+if (!window.__yuServerSidebarEscInit) {
+    window.__yuServerSidebarEscInit = true;
+    document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') return;
+        const sidebar = document.getElementById('sidebar');
+        if (!sidebar || !sidebar.classList.contains('open')) return;
+        if (typeof window.closeSidebar === 'function') {
+            window.closeSidebar();
+        } else {
+            closeSidebar();
+        }
+    });
+}
+
 (function () {
     if (window.__yuServerSidebarSpaInit) return;
     window.__yuServerSidebarSpaInit = true;
@@ -41,6 +55,8 @@ function closeSidebar() {
     if (_isServerSidebarPath(_activePath) && initialMain) {
         initialMain.dataset.yuSpaPath = _activePath;
         _pageCache.set(_activePath, initialMain);
+        const initialTitle = (document.title || '').trim();
+        if (initialTitle) _pageTitles.set(_activePath, initialTitle);
     }
 
     function _normalizePath(path) {
@@ -246,6 +262,16 @@ function closeSidebar() {
                 try { window._yuPageCleanup(); }
                 catch (cleanupErr) { console.warn('Sidebar SPA cleanup failed:', cleanupErr); }
                 window._yuPageCleanup = undefined;
+            }
+
+            // Safety net: keep only one attached view to avoid flex/layout drift.
+            // If navigation raced or cache got out of sync, multiple .yu-main blocks
+            // can remain attached and create huge scrollable surfaces.
+            const attachedMains = Array.from(layout.querySelectorAll('.yu-main'));
+            for (const main of attachedMains) {
+                if (main !== targetMain) {
+                    _detachMain(main);
+                }
             }
 
             if (currentMain && currentMain !== targetMain) {

@@ -239,6 +239,12 @@ pub struct AdminTemplate {
     pub panel_name: String,
     pub settings_sftp_enabled: bool,
     pub settings_sftp_port: String,
+    pub notifications_enabled: bool,
+    pub notifications_webhook_url: String,
+    pub notifications_email_to: String,
+    pub notifications_on_server_down: bool,
+    pub notifications_on_disk_high: bool,
+    pub notifications_on_user_create: bool,
 }
 
 #[derive(Template)]

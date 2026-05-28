@@ -323,6 +323,12 @@ async fn build_admin_template(state: &AppState, tab: String, username: String, n
             let v = db::get_panel_setting(&state.db, "sftp_port").await;
             if v.is_empty() { "2022".into() } else { v }
         },
+        notifications_enabled: db::get_panel_setting_bool(&state.db, "notifications_enabled").await,
+        notifications_webhook_url: db::get_panel_setting(&state.db, "notifications_webhook_url").await,
+        notifications_email_to: db::get_panel_setting(&state.db, "notifications_email_to").await,
+        notifications_on_server_down: db::get_panel_setting_bool(&state.db, "notifications_on_server_down").await,
+        notifications_on_disk_high: db::get_panel_setting_bool(&state.db, "notifications_on_disk_high").await,
+        notifications_on_user_create: db::get_panel_setting_bool(&state.db, "notifications_on_user_create").await,
     }
 }
 
@@ -2449,6 +2455,10 @@ pub async fn api_admin_set_setting(
         "ufw_enabled", "bandwidth_enabled",
         "storage_unsafe_override",
         "sftp_enabled",
+        "notifications_enabled",
+        "notifications_on_server_down",
+        "notifications_on_disk_high",
+        "notifications_on_user_create",
     ];
     const STR_KEYS: &[&str] = &[
         "docker_default_quota",
@@ -2457,6 +2467,8 @@ pub async fn api_admin_set_setting(
         "panel_accent",
         "panel_name",
         "sftp_port",
+        "notifications_webhook_url",
+        "notifications_email_to",
     ];
     let is_bool = BOOL_KEYS.contains(&body.key.as_str());
     let is_str  = STR_KEYS.contains(&body.key.as_str());
@@ -2492,10 +2504,46 @@ pub async fn api_admin_set_setting(
         }
     }
 
+    if body.key == "notifications_webhook_url" {
+        let raw = body.value.trim();
+        if raw.len() > 1024 {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Webhook URL is too long"}))).into_response();
+        }
+        if !raw.is_empty() {
+            let parsed = match reqwest::Url::parse(raw) {
+                Ok(v) => v,
+                Err(_) => {
+                    return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Webhook URL must be a valid absolute URL"}))).into_response();
+                }
+            };
+            if parsed.scheme() != "http" && parsed.scheme() != "https" {
+                return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Webhook URL must use http or https"}))).into_response();
+            }
+        }
+    }
+
+    if body.key == "notifications_email_to" {
+        let raw = body.value.trim();
+        if raw.len() > 2048 {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Email recipients value is too long"}))).into_response();
+        }
+    }
+
+    let normalized_value = match body.key.as_str() {
+        "docker_default_quota"
+        | "container_storage_path"
+        | "panel_accent"
+        | "panel_name"
+        | "sftp_port"
+        | "notifications_webhook_url"
+        | "notifications_email_to" => body.value.trim().to_string(),
+        _ => body.value.clone(),
+    };
+
     let result = if body.key == "service_api_key" {
         db::set_service_api_key(&state.db, &body.value, &state.db_key).await
     } else {
-        db::set_panel_setting(&state.db, &body.key, &body.value).await
+        db::set_panel_setting(&state.db, &body.key, &normalized_value).await
     };
     match result {
         Ok(_) => {
@@ -2506,6 +2554,85 @@ pub async fn api_admin_set_setting(
         Err(e) => {
             error!("api_admin_set_setting: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response()
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct AdminNotificationsTestBody {
+    pub message: Option<String>,
+}
+
+pub async fn api_admin_notifications_test(
+    State(state): State<AppState>,
+    jar: PrivateCookieJar,
+    addr: ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<AdminNotificationsTestBody>,
+) -> impl IntoResponse {
+    if !auth::is_root_session(&state, &jar).await {
+        return (StatusCode::FORBIDDEN, Json(serde_json::json!({"error": "Root access required"}))).into_response();
+    }
+
+    if !db::get_panel_setting_bool(&state.db, "notifications_enabled").await {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Notifications are disabled"}))).into_response();
+    }
+
+    let webhook_url = db::get_panel_setting(&state.db, "notifications_webhook_url").await;
+    let webhook_url = webhook_url.trim().to_string();
+    if webhook_url.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Webhook URL is not configured"}))).into_response();
+    }
+
+    let parsed = match reqwest::Url::parse(&webhook_url) {
+        Ok(v) => v,
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Webhook URL is invalid"}))).into_response();
+        }
+    };
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Webhook URL must use http or https"}))).into_response();
+    }
+
+    let message = body
+        .message
+        .unwrap_or_else(|| "Test notification from Yunexal Panel".to_string())
+        .trim()
+        .to_string();
+
+    let payload = serde_json::json!({
+        "event": "panel.notification.test",
+        "title": "Yunexal Panel Notification Test",
+        "message": if message.is_empty() { "Test notification from Yunexal Panel" } else { &message },
+        "source": "admin",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+    });
+
+    let client = match reqwest::Client::builder()
+        .user_agent("yunexal-panel")
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response();
+        }
+    };
+
+    match client.post(parsed).json(&payload).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            let ip = auth::client_ip(&headers, addr);
+            let detail = format!("status={} webhook={}", resp.status(), webhook_url);
+            let _ = db::audit_log(&state.db, "admin", "notification.test", "webhook", &detail, &ip, &auth::user_agent(&headers)).await;
+            Json(serde_json::json!({"ok": true, "status": resp.status().as_u16()})).into_response()
+        }
+        Ok(resp) => {
+            (StatusCode::BAD_GATEWAY, Json(serde_json::json!({
+                "error": format!("Webhook returned HTTP {}", resp.status())
+            }))).into_response()
+        }
+        Err(e) => {
+            (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": format!("Webhook request failed: {e}")}))).into_response()
         }
     }
 }

@@ -107,8 +107,11 @@ pub async fn api_create_schedule(
     if schedules::compute_next_run(&body.cron_expression).is_none() {
         return (axum::http::StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"Invalid cron expression"}))).into_response();
     }
-    if !matches!(body.task_type.as_str(), "command" | "power" | "backup") {
+    if !matches!(body.task_type.as_str(), "command" | "power" | "backup" | "script") {
         return (axum::http::StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"Invalid task type"}))).into_response();
+    }
+    if let Err(err) = validate_task_payload(&body.task_type, &body.task_payload) {
+        return (axum::http::StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": err}))).into_response();
     }
     match schedules::create_schedule(&state.db, db_id, &body.name, &body.cron_expression, &body.task_type, &body.task_payload).await {
         Ok(id) => Json(serde_json::json!({"id": id})).into_response(),
@@ -137,6 +140,9 @@ pub async fn api_update_schedule(
     if schedules::compute_next_run(&body.cron_expression).is_none() {
         return (axum::http::StatusCode::BAD_REQUEST, Json(serde_json::json!({"error":"Invalid cron expression"}))).into_response();
     }
+    if let Err(err) = validate_task_payload(&body.task_type, &body.task_payload) {
+        return (axum::http::StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": err}))).into_response();
+    }
     // Verify schedule belongs to this server
     match schedules::get_schedule(&state.db, sid).await {
         Ok(Some(s)) if s.server_id == db_id => {}
@@ -145,6 +151,48 @@ pub async fn api_update_schedule(
     match schedules::update_schedule(&state.db, sid, &body.name, &body.cron_expression, &body.task_type, &body.task_payload, body.enabled).await {
         Ok(_) => Json(serde_json::json!({"ok": true})).into_response(),
         Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
+    }
+}
+
+fn validate_task_payload(task_type: &str, task_payload: &str) -> Result<(), String> {
+    let value: serde_json::Value = serde_json::from_str(task_payload)
+        .map_err(|_| "Task payload must be valid JSON".to_string())?;
+
+    match task_type {
+        "command" => {
+            let cmd = value.get("cmd").and_then(|v| v.as_str()).unwrap_or("").trim();
+            if cmd.is_empty() { Err("Command payload needs a cmd value".into()) } else { Ok(()) }
+        }
+        "power" => {
+            let action = value.get("action").and_then(|v| v.as_str()).unwrap_or("");
+            if matches!(action, "start" | "stop" | "restart" | "kill") { Ok(()) } else { Err("Power payload needs a valid action".into()) }
+        }
+        "backup" => Ok(()),
+        "script" => {
+            let steps = value.get("steps").and_then(|v| v.as_array()).ok_or_else(|| "Script payload needs a steps array".to_string())?;
+            if steps.is_empty() { return Err("Script needs at least one step".into()); }
+            for step in steps {
+                let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                match step_type {
+                    "command" => {
+                        let cmd = step.get("cmd").and_then(|v| v.as_str()).unwrap_or("").trim();
+                        if cmd.is_empty() { return Err("Script command step needs cmd".into()); }
+                    }
+                    "power" => {
+                        let action = step.get("action").and_then(|v| v.as_str()).unwrap_or("");
+                        if !matches!(action, "start" | "stop" | "restart" | "kill") { return Err("Script power step needs valid action".into()); }
+                    }
+                    "backup" => {}
+                    "delay" => {
+                        let secs = step.get("seconds").and_then(|v| v.as_u64()).unwrap_or(0);
+                        if secs == 0 { return Err("Delay step needs seconds > 0".into()); }
+                    }
+                    _ => return Err("Script steps must be command, power, backup, or delay".into()),
+                }
+            }
+            Ok(())
+        }
+        _ => Err("Invalid task type".into()),
     }
 }
 

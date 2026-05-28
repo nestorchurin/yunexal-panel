@@ -2,6 +2,26 @@
 const SID = window.YU_SERVER_ID;
 let _editingId = null;
 let _modal = null;
+const _scriptStepsEl = () => document.getElementById('m-script-steps');
+
+const _SCRIPT_STEP_INFO = {
+    command: {
+        label: 'Command',
+        hint: 'Runs a shell command inside the container.',
+    },
+    power: {
+        label: 'Power',
+        hint: 'Starts, stops, restarts, or kills the container.',
+    },
+    backup: {
+        label: 'Backup',
+        hint: 'Creates a volume archive with the selected prefix.',
+    },
+    delay: {
+        label: 'Delay',
+        hint: 'Waits before the next step starts.',
+    },
+};
 
 window._yuPageCleanup = function () {};
 
@@ -66,6 +86,7 @@ function renderSchedules(list) {
                     <span title="Next run"><i class="bi bi-arrow-right-circle" style="margin-right:.25rem;"></i>${s.next_run_at ? fmtTime(s.next_run_at) : '—'}</span>
                     <span title="Last run"><i class="bi bi-check2-circle" style="margin-right:.25rem;"></i>${s.last_run_at ? fmtTime(s.last_run_at) : 'Never'}</span>
                 </div>
+                ${s.task_type === 'script' ? `<div style="margin-top:.45rem;"><span class="con-sched-summary"><i class="bi bi-diagram-3"></i>${escHtml(scriptSummary(s.task_payload))}</span></div>` : ''}
             </div>
             <div style="display:flex;align-items:center;gap:.4rem;flex-shrink:0;">
                 <button class="btn-yu btn-yu-ghost" style="padding:.3rem .55rem;font-size:.75rem;" onclick="runNow(${s.id})" title="Run now">
@@ -93,12 +114,34 @@ function renderSchedules(list) {
 
 function typeBadge(type) {
     const cfg = {
-        command: { bg: 'rgba(99,102,241,.12)', color: '#818cf8', border: 'rgba(99,102,241,.2)', icon: 'bi-terminal' },
-        power:   { bg: 'rgba(245,158,11,.1)',  color: '#f59e0b', border: 'rgba(245,158,11,.2)', icon: 'bi-lightning' },
-        backup:  { bg: 'rgba(16,185,129,.1)',  color: '#10b981', border: 'rgba(16,185,129,.2)', icon: 'bi-archive'  },
+        command: { bg: 'rgba(99,102,241,.12)', color: '#818cf8', border: 'rgba(99,102,241,.2)', icon: 'bi-terminal', label: 'Command' },
+        power:   { bg: 'rgba(245,158,11,.1)',  color: '#f59e0b', border: 'rgba(245,158,11,.2)', icon: 'bi-lightning', label: 'Power' },
+        backup:  { bg: 'rgba(16,185,129,.1)',  color: '#10b981', border: 'rgba(16,185,129,.2)', icon: 'bi-archive', label: 'Backup'  },
+        script:  { bg: 'rgba(124,58,237,.12)', color: '#c4b5fd', border: 'rgba(124,58,237,.22)', icon: 'bi-diagram-3', label: 'Scenario' },
     };
     const c = cfg[type] || cfg.command;
-    return `<span style="font-size:.68rem;font-weight:600;background:${c.bg};color:${c.color};border:1px solid ${c.border};border-radius:5px;padding:.15rem .45rem;display:inline-flex;align-items:center;gap:.25rem;letter-spacing:.03em;"><i class="bi ${c.icon}"></i> ${type}</span>`;
+    return `<span style="font-size:.68rem;font-weight:600;background:${c.bg};color:${c.color};border:1px solid ${c.border};border-radius:5px;padding:.15rem .45rem;display:inline-flex;align-items:center;gap:.25rem;letter-spacing:.03em;"><i class="bi ${c.icon}"></i> ${c.label}</span>`;
+}
+
+function scriptSummary(taskPayload) {
+    try {
+        const payload = JSON.parse(taskPayload || '{}');
+        const steps = Array.isArray(payload.steps) ? payload.steps : [];
+        if (!steps.length) return 'Empty scenario';
+
+        const preview = steps.slice(0, 3).map((step) => {
+            const type = String(step?.type || '').toLowerCase();
+            if (type === 'command') return 'command';
+            if (type === 'power') return `power:${String(step.action || 'restart')}`;
+            if (type === 'backup') return 'backup';
+            if (type === 'delay') return `${Math.max(0, Number(step.seconds) || 0)}s wait`;
+            return type || 'step';
+        }).join(' -> ');
+
+        return `${steps.length} step${steps.length !== 1 ? 's' : ''}${preview ? ` | ${preview}` : ''}`;
+    } catch {
+        return 'Scenario';
+    }
 }
 
 function fmtTime(ts) {
@@ -112,25 +155,54 @@ function fmtTime(ts) {
 // ── Modal ────────────────────────────────────────────────────────────────────
 
 function openModal(sched) {
-    _editingId = sched ? sched.id : null;
-    document.getElementById('modal-title').innerHTML =
-        `<i class="bi bi-calendar-event me-2" style="color:#a78bfa;"></i>${sched ? 'Edit Schedule' : 'New Schedule'}`;
-    document.getElementById('m-name').value    = sched ? sched.name : '';
-    document.getElementById('m-cron').value    = sched ? sched.cron_expression : '0 3 * * *';
-    document.getElementById('m-type').value    = sched ? sched.task_type : 'command';
-    document.getElementById('m-enabled').checked = sched ? sched.enabled : true;
+    const titleEl = document.getElementById('modal-title');
+    const nameEl = document.getElementById('m-name');
+    const cronEl = document.getElementById('m-cron');
+    const typeEl = document.getElementById('m-type');
+    const enabledEl = document.getElementById('m-enabled');
+    const cmdEl = document.getElementById('m-cmd');
+    const actionEl = document.getElementById('m-action');
+    const prefixEl = document.getElementById('m-prefix');
 
+    if (!titleEl || !nameEl || !cronEl || !typeEl || !enabledEl || !cmdEl || !actionEl || !prefixEl) {
+        console.warn('Schedules modal elements are missing in DOM');
+        showToast('danger', 'Schedule modal is not ready. Reload the page.');
+        return;
+    }
+
+    if (!_modal) {
+        const modalEl = document.getElementById('schedModal');
+        if (!modalEl) {
+            showToast('danger', 'Schedule modal is missing. Reload the page.');
+            return;
+        }
+        _modal = new bootstrap.Modal(modalEl);
+    }
+
+    _editingId = sched ? sched.id : null;
+    titleEl.innerHTML =
+        `<i class="bi bi-calendar-event me-2" style="color:#a78bfa;"></i>${sched ? 'Edit Schedule' : 'New Schedule'}`;
+    nameEl.value = sched ? sched.name : '';
+    cronEl.value = sched ? sched.cron_expression : '0 3 * * *';
+    typeEl.value = sched ? sched.task_type : 'command';
+    enabledEl.checked = sched ? sched.enabled : true;
+
+    _renderScriptSteps([]);
     if (sched) {
         try {
             const p = JSON.parse(sched.task_payload || '{}');
-            document.getElementById('m-cmd').value    = p.cmd    || '';
-            document.getElementById('m-action').value = p.action || 'restart';
-            document.getElementById('m-prefix').value = p.prefix || 'backup';
+            cmdEl.value = p.cmd || '';
+            actionEl.value = p.action || 'restart';
+            prefixEl.value = p.prefix || 'backup';
+            if (sched.task_type === 'script') {
+                _renderScriptSteps(Array.isArray(p.steps) ? p.steps : []);
+            }
         } catch { }
     } else {
-        document.getElementById('m-cmd').value    = '';
-        document.getElementById('m-action').value = 'restart';
-        document.getElementById('m-prefix').value = 'backup';
+        cmdEl.value = '';
+        actionEl.value = 'restart';
+        prefixEl.value = 'backup';
+        _renderScriptSteps([{ type: 'command', cmd: '' }]);
     }
 
     onTypeChange();
@@ -143,6 +215,182 @@ function onTypeChange() {
     document.getElementById('payload-command').style.display = t === 'command' ? '' : 'none';
     document.getElementById('payload-power').style.display   = t === 'power'   ? '' : 'none';
     document.getElementById('payload-backup').style.display  = t === 'backup'  ? '' : 'none';
+    document.getElementById('payload-script').style.display  = t === 'script'  ? '' : 'none';
+
+    if (t === 'script' && _scriptStepsEl() && !_scriptStepsEl().children.length) {
+        _renderScriptSteps([{ type: 'command', cmd: '' }]);
+    }
+}
+
+function _reindexScriptSteps(host = _scriptStepsEl()) {
+    if (!host) return;
+    Array.from(host.querySelectorAll('.con-script-step')).forEach((row, index) => {
+        const stepNo = index + 1;
+        row.dataset.stepNo = String(stepNo);
+        const noEl = row.querySelector('.con-script-step-no');
+        if (noEl) noEl.textContent = String(stepNo);
+    });
+}
+
+function _normalizeScriptStep(step = {}) {
+    const type = String(step.type || 'command').toLowerCase();
+    if (type === 'delay') {
+        return { type: 'delay', seconds: Number(step.seconds || 0) };
+    }
+    if (type === 'power') {
+        return { type: 'power', action: String(step.action || 'restart') };
+    }
+    if (type === 'backup') {
+        return { type: 'backup', prefix: String(step.prefix || 'backup') };
+    }
+    return { type: 'command', cmd: String(step.cmd || '') };
+}
+
+function _renderScriptSteps(steps) {
+    const host = _scriptStepsEl();
+    if (!host) return;
+    const items = Array.isArray(steps) && steps.length ? steps.map(_normalizeScriptStep) : [];
+    host.innerHTML = '';
+    const initial = items.length ? items : [{ type: 'command', cmd: '' }];
+    initial.forEach((step, index) => host.appendChild(_createScriptStepRow(step, index)));
+    _reindexScriptSteps(host);
+}
+
+function _createScriptStepRow(step = {}, index = 0) {
+    const stepNo = index + 1;
+    const row = document.createElement('div');
+    row.className = 'con-script-step';
+    row.dataset.stepType = step.type || 'command';
+    row.dataset.stepNo = String(stepNo);
+
+    const head = document.createElement('div');
+    head.className = 'con-script-step-head';
+
+    const headLeft = document.createElement('div');
+
+    const tag = document.createElement('div');
+    tag.className = 'con-script-step-tag';
+
+    const no = document.createElement('span');
+    no.className = 'con-script-step-no';
+    no.textContent = String(stepNo);
+
+    const kind = document.createElement('span');
+    kind.className = 'con-script-step-kind';
+    kind.textContent = _SCRIPT_STEP_INFO[step.type || 'command']?.label || 'Command';
+
+    tag.appendChild(no);
+    tag.appendChild(kind);
+
+    const hint = document.createElement('div');
+    hint.className = 'con-script-step-hint';
+    hint.textContent = _SCRIPT_STEP_INFO[step.type || 'command']?.hint || '';
+
+    headLeft.appendChild(tag);
+    headLeft.appendChild(hint);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'con-script-step-remove';
+    remove.innerHTML = '<i class="bi bi-trash3"></i>';
+    remove.title = 'Remove step';
+    remove.addEventListener('click', () => {
+        const host = _scriptStepsEl();
+        if (!host) return;
+        row.remove();
+        if (!host.children.length) {
+            _renderScriptSteps([{ type: 'command', cmd: '' }]);
+            return;
+        }
+        _reindexScriptSteps(host);
+    });
+
+    head.appendChild(headLeft);
+    head.appendChild(remove);
+
+    const fields = document.createElement('div');
+    fields.className = 'con-script-step-fields';
+
+    const type = document.createElement('select');
+    type.className = 'form-input';
+    type.dataset.stepField = 'type';
+    type.innerHTML = `
+        <option value="command">Command</option>
+        <option value="power">Power</option>
+        <option value="backup">Backup</option>
+        <option value="delay">Delay</option>
+    `;
+    type.value = step.type || 'command';
+
+    const cmd = document.createElement('input');
+    cmd.type = 'text';
+    cmd.className = 'form-input con-script-step-value';
+    cmd.dataset.stepField = 'command';
+    cmd.placeholder = 'Shell command';
+    cmd.value = step.cmd || '';
+
+    const action = document.createElement('select');
+    action.className = 'form-input con-script-step-value';
+    action.dataset.stepField = 'action';
+    action.innerHTML = `
+        <option value="start">Start</option>
+        <option value="stop">Stop</option>
+        <option value="restart">Restart</option>
+        <option value="kill">Kill</option>
+    `;
+    action.value = step.action || 'restart';
+
+    const prefix = document.createElement('input');
+    prefix.type = 'text';
+    prefix.className = 'form-input con-script-step-value';
+    prefix.dataset.stepField = 'prefix';
+    prefix.placeholder = 'Backup prefix';
+    prefix.value = step.prefix || 'backup';
+
+    const seconds = document.createElement('input');
+    seconds.type = 'number';
+    seconds.min = '0';
+    seconds.step = '1';
+    seconds.className = 'form-input con-script-step-value';
+    seconds.dataset.stepField = 'seconds';
+    seconds.placeholder = 'Seconds';
+    seconds.value = Number.isFinite(Number(step.seconds)) ? String(step.seconds) : '0';
+
+    fields.appendChild(type);
+    fields.appendChild(cmd);
+    fields.appendChild(action);
+    fields.appendChild(prefix);
+    fields.appendChild(seconds);
+
+    function updateKind(typeValue) {
+        const info = _SCRIPT_STEP_INFO[typeValue] || _SCRIPT_STEP_INFO.command;
+        row.dataset.stepType = typeValue;
+        kind.textContent = info.label;
+        hint.textContent = info.hint;
+    }
+
+    function syncFields() {
+        const t = type.value;
+        updateKind(t);
+        cmd.hidden = t !== 'command';
+        action.hidden = t !== 'power';
+        prefix.hidden = t !== 'backup';
+        seconds.hidden = t !== 'delay';
+    }
+
+    type.addEventListener('change', syncFields);
+    syncFields();
+
+    row.appendChild(head);
+    row.appendChild(fields);
+    return row;
+}
+
+function addScriptStepRow() {
+    const host = _scriptStepsEl();
+    if (!host) return;
+    host.appendChild(_createScriptStepRow({ type: 'command', cmd: '' }, host.children.length));
+    _reindexScriptSteps(host);
 }
 
 function updateCronPreview() {
@@ -195,6 +443,30 @@ async function saveSchedule() {
     if (type === 'command') payload = { cmd: document.getElementById('m-cmd').value.trim() };
     if (type === 'power')   payload = { action: document.getElementById('m-action').value };
     if (type === 'backup')  payload = { prefix: document.getElementById('m-prefix').value.trim() || 'backup' };
+    if (type === 'script') {
+        const steps = Array.from((_scriptStepsEl()?.querySelectorAll('.con-script-step')) || []).map(row => {
+            const stepType = row.querySelector('[data-step-field="type"]')?.value || 'command';
+            if (stepType === 'command') {
+                return { type: 'command', cmd: row.querySelector('[data-step-field="command"]')?.value.trim() || '' };
+            }
+            if (stepType === 'power') {
+                return { type: 'power', action: row.querySelector('[data-step-field="action"]')?.value || 'restart' };
+            }
+            if (stepType === 'backup') {
+                return { type: 'backup', prefix: row.querySelector('[data-step-field="prefix"]')?.value.trim() || 'backup' };
+            }
+            return {
+                type: 'delay',
+                seconds: Math.max(0, parseInt(row.querySelector('[data-step-field="seconds"]')?.value || '0', 10) || 0),
+            };
+        }).filter(step => {
+            if (step.type === 'command') return !!step.cmd;
+            if (step.type === 'delay') return Number(step.seconds) > 0;
+            return true;
+        });
+        if (!steps.length) { showToast('danger', 'Script needs at least one step'); return; }
+        payload = { steps };
+    }
 
     const btn = document.getElementById('m-save-btn');
     const orig = btn.innerHTML;

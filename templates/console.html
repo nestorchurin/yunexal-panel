@@ -3,12 +3,12 @@
 <head>
     {% include "_head_common.html" %}
     <title>{{ container.name }} - Console</title>
-    <link href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" rel="stylesheet" integrity="sha384-9ftsg11+LSxVUaknegCfeKvlkO9EdIPI2op725RqY87IvhyGjElmpjZlP3LhTQjn" crossorigin="anonymous">
+    <link href="/static/vendor/xterm.5.3.0.patched.min.css?v=1" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js" integrity="sha384-xjfWUeCWdMtvpAb/SmM6lMzS6pQGcQa0loOl1d97j6Odw0vjK9nW3+dTb/bn/mwH" crossorigin="anonymous" nonce="{{nonce}}"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js" integrity="sha384-dpjGwSSISUTz2taP54Bor7qkyMR20sSO9oe11UVYnGs2/YdUBf7HW30XKQx9PCzn" crossorigin="anonymous" nonce="{{nonce}}"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous" nonce="{{nonce}}"></script>
     <link href="/static/css/base.css?v=2" rel="stylesheet">
-    <link href="/static/css/console.css?v=6" rel="stylesheet">
+    <link href="/static/css/console.css?v=7" rel="stylesheet">
 </head>
 <body>
     <div class="yu-layout">
@@ -44,6 +44,13 @@
                         <div class="con-cmd-bar">
                             <span class="con-cmd-icon"><i class="bi bi-chevron-right"></i></span>
                             <input type="text" id="cmd-input" class="con-cmd-input" placeholder="Type a command…" autocomplete="off" spellcheck="false">
+                            <div class="con-cmd-macro-shell">
+                                <button type="button" class="con-cmd-macros" aria-label="Open macro settings" title="Open macro settings">
+                                    <i class="bi bi-lightning-charge-fill"></i>
+                                    <span id="macroCount" class="con-cmd-macro-count">0</span>
+                                </button>
+                                <div id="macro-hover-panel" class="con-cmd-macro-hover" aria-label="Popular macros"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -77,26 +84,62 @@
                     </div>
                 </div>
             </div>
-        </main>
-    </div>
 
-    <!-- Kill Confirm Modal -->
-    <div class="modal fade" id="killModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content" style="background:#111119;border:1px solid rgba(239,68,68,.3);border-radius:14px;">
-                <div class="modal-header" style="border-bottom:1px solid rgba(255,255,255,.07);">
-                    <h6 class="modal-title" style="color:#ef4444;font-weight:600;"><i class="bi bi-exclamation-triangle me-2"></i>Force Stop?</h6>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body" style="font-size:.875rem;color:#6a6a8a;">
-                    Forcibly killing the server may cause data corruption. Are you sure?
-                </div>
-                <div class="modal-footer d-flex gap-2 justify-content-end" style="border-top:1px solid rgba(255,255,255,.07);">
-                    <button type="button" class="btn-yu btn-yu-ghost" style="width:auto;" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn-yu btn-yu-danger" style="width:auto;" onclick="sendAction('kill'); bootstrap.Modal.getInstance(document.getElementById('killModal')).hide();">Kill Server</button>
+            <!-- Command Macros Modal -->
+            <div class="modal fade" id="macroModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h6 class="modal-title"><i class="bi bi-sliders me-2"></i>Command Macros</h6>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="con-macro-help">Macros and history are stored in your browser for this server only. Add project-specific commands here, then use Tab or the quick strip to run them faster.</p>
+                            <div class="con-macro-modal-quick">
+                                <div class="con-macro-modal-hd">
+                                    <div class="con-macro-modal-title">Quick run</div>
+                                    <div class="con-macro-modal-copy">Run the saved macros without editing them.</div>
+                                </div>
+                                <div id="macro-chips" class="con-macro-chips con-macro-chips-modal"></div>
+                            </div>
+                            <div id="macro-editor-list" class="con-macro-editor-list"></div>
+                            <div class="con-macro-editor-add">
+                                <input type="text" id="macro-new-label" class="form-input" placeholder="Label">
+                                <input type="text" id="macro-new-command" class="form-input" placeholder="Command">
+                                <input type="text" id="macro-new-hotkey" class="form-input con-macro-hotkey-input" placeholder="Hotkey">
+                                <button type="button" class="btn-yu btn-yu-primary" onclick="addCommandMacroRow()">Add</button>
+                            </div>
+                        </div>
+                        <div class="modal-footer d-flex gap-2 justify-content-between flex-wrap">
+                            <button type="button" class="btn-yu btn-yu-ghost" onclick="resetCommandMacros()">Restore defaults</button>
+                            <div class="d-flex gap-2 justify-content-end flex-wrap">
+                                <button type="button" class="btn-yu btn-yu-ghost" data-bs-dismiss="modal">Close</button>
+                                <button type="button" class="btn-yu btn-yu-primary" onclick="saveCommandMacros()">Save macros</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
+
+            <!-- Kill Confirm Modal -->
+            <div class="modal fade" id="killModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content" style="background:#111119;border:1px solid rgba(239,68,68,.3);border-radius:14px;">
+                        <div class="modal-header" style="border-bottom:1px solid rgba(255,255,255,.07);">
+                            <h6 class="modal-title" style="color:#ef4444;font-weight:600;"><i class="bi bi-exclamation-triangle me-2"></i>Force Stop?</h6>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body" style="font-size:.875rem;color:#6a6a8a;">
+                            Forcibly killing the server may cause data corruption. Are you sure?
+                        </div>
+                        <div class="modal-footer d-flex gap-2 justify-content-end" style="border-top:1px solid rgba(255,255,255,.07);">
+                            <button type="button" class="btn-yu btn-yu-ghost" style="width:auto;" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn-yu btn-yu-danger" style="width:auto;" onclick="sendAction('kill'); bootstrap.Modal.getInstance(document.getElementById('killModal')).hide();">Kill Server</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
 
     {% include "_scripts_server.html" %}
@@ -104,7 +147,7 @@
         window.YU_SERVER_ID = '{{id}}';
         window.YU_CAN_POWER = {% if can_power %}true{% else %}false{% endif %};
     </script>
-    <script src="/static/js/console.js?v=3" nonce="{{nonce}}"></script>
+    <script src="/static/js/console.js?v=5" nonce="{{nonce}}"></script>
     {% include "_script_footer.html" %}
 </body>
 </html>
