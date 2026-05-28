@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1b] - 2026-05-28
+
+### Fixed
+- **fix(console):** macro delete in the Command Macros modal now stays available when the container is stopped; only macro run actions are blocked.
+- **fix(console):** popular-macros hover panel now waits 500ms before hiding after mouse leave, so moving the cursor into the popup is reliable.
+- **fix(console):** bumped `console.js` cache-bust to `v=6` to ship the hotfix immediately.
+
 ## [1.0.1] - 2026-05-28
 
 ### Added

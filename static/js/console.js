@@ -65,8 +65,10 @@ let _cmdSuggestionsHideTimer = null;
 let _macroModalInstance = null;
 let _macroTouchTimer = null;
 let _macroTouchSuppressClick = false;
+let _macroHoverHideTimer = null;
 let _consoleState = 'stopped';
 let _macroKeyCaptureInput = null;
+const _macroHoverHideDelayMs = 500;
 
 function _cmdTrim(value) {
     return String(value || '').replace(/\s+/g, ' ').trim();
@@ -170,15 +172,33 @@ function _cmdCloseSuggestions() {
     }
 }
 
+function _cmdClearMacroHoverHideTimer() {
+    if (_macroHoverHideTimer) {
+        clearTimeout(_macroHoverHideTimer);
+        _macroHoverHideTimer = null;
+    }
+}
+
 function _cmdShowMacroHover() {
     if (!_macroShell) return;
+    _cmdClearMacroHoverHideTimer();
     _cmdRenderMacroHover();
     _macroShell.classList.add('is-open');
 }
 
 function _cmdHideMacroHover() {
     if (!_macroShell) return;
+    _cmdClearMacroHoverHideTimer();
     _macroShell.classList.remove('is-open');
+}
+
+function _cmdHideMacroHoverDelayed() {
+    if (!_macroShell) return;
+    _cmdClearMacroHoverHideTimer();
+    _macroHoverHideTimer = setTimeout(() => {
+        _macroHoverHideTimer = null;
+        _cmdHideMacroHover();
+    }, _macroHoverHideDelayMs);
 }
 
 function _cmdGetPopularMacros(limit = 5) {
@@ -360,10 +380,11 @@ function _cmdSyncMacroControls() {
 
     if (_macroEditorList) {
         _macroEditorList.querySelectorAll('.con-macro-editor-btn').forEach(button => {
-            button.disabled = !enabled;
-            button.title = enabled
-                ? (button.classList.contains('danger') ? 'Remove macro' : 'Run macro')
-                : 'Start the container before running macros';
+            const isDelete = button.classList.contains('danger');
+            button.disabled = isDelete ? false : !enabled;
+            button.title = isDelete
+                ? 'Remove macro'
+                : (enabled ? 'Run macro' : 'Start the container before running macros');
         });
     }
 }
@@ -523,6 +544,17 @@ function resetCommandMacros() {
 _cmdState = _cmdLoadState();
 _updateMacroCount();
 _cmdRenderMacroHover();
+
+if (_macroShell) {
+    _macroShell.addEventListener('mouseenter', _cmdShowMacroHover);
+    _macroShell.addEventListener('mouseleave', _cmdHideMacroHoverDelayed);
+    _macroShell.addEventListener('focusin', _cmdShowMacroHover);
+    _macroShell.addEventListener('focusout', function (event) {
+        if (!_macroShell.contains(event.relatedTarget)) {
+            _cmdHideMacroHoverDelayed();
+        }
+    });
+}
 
 if (_macroButton) {
     _macroButton.addEventListener('click', function (event) {
