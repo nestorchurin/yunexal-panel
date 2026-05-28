@@ -214,14 +214,14 @@ Templates and static assets are compiled into a single binary — no external ru
 |---|---|
 | ✅ | Panel Settings — UFW, bandwidth, sidebar visibility, panel updates |
 | ✅ | API Keys — service API key for external integrations |
-| 🔜 | Notifications — email / webhook alerts for events (container down, login, etc.) |
+| ✅ | Notifications — email / webhook alerts for events (container down, login, etc.) |
 | 🔜 | Themes — custom colour schemes and branding per installation |
 
 ### Other
 | Status | Feature |
 |---|---|
 | 🔜 | Support Windows as a host level (Yes, it's possible I think) |
-| 🔜 | Mobile app (Flutter or React Native) |
+| ✅ | Mobile app (PWA via HTTPS) |
 | 🔜 | Support ARM servers |
 | 🔜 | Marketplace — pre-configured server templates for popular games and applications |
 | 🔜 | Community plugins — allow third-party extensions for additional features and integrations |
